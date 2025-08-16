@@ -1,0 +1,141 @@
+# Moniq CLI - .gitignore
+
+# =============================================================================
+# COMMERCIAL FILES (not for open source)
+# =============================================================================
+
+# Commercial binaries and executables
+/moniq
+/moniq-*
+/moniq-darwin-*
+/moniq-linux-*
+*.exe
+*.dmg
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Commercial installation and update scripts
+scripts/
+install.sh
+update.sh
+create_binaries.sh
+
+# Commercial configuration (API endpoints remain in open source)
+
+# =============================================================================
+# BUILD ARTIFACTS
+# =============================================================================
+
+# Go build artifacts
+dist/
+build/
+release/
+binaries/
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# Binary directories
+bin/
+out/
+
+# =============================================================================
+# DEVELOPMENT FILES
+# =============================================================================
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Editor backup files
+*.bak
+*.backup
+*.tmp
+
+# =============================================================================
+# LOGS AND TEMPORARY FILES
+# =============================================================================
+
+# Log files
+*.log
+/tmp/moniq.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# =============================================================================
+# ENVIRONMENT AND SECRETS
+# =============================================================================
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Key files
+*.key
+*.pem
+*.crt
+
+# Configuration files with sensitive data
+config.yaml
+.moniq/
+
+# =============================================================================
+# OS SPECIFIC
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+# Go modules
+go.sum
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# TESTING
+# =============================================================================
+
+# Test coverage
+coverage.txt
+coverage.html
+
+# Test artifacts
+test-results/
+coverage/

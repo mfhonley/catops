@@ -40,13 +40,20 @@
 - **Permissions**: User-level installation (no root required)
 - **Network**: Internet access for Telegram bot and cloud mode features
 
+### Development Requirements
+
+- **Go 1.21+**: [Download Go](https://golang.org/dl/)
+- **Git**: For cloning the repository
+- **Basic Go knowledge**: For building from source
+- **Telegram bot token**: For bot functionality (optional)
+
 ## 🛠️ Installation
 
 ### From Source (Recommended)
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/moniq-cli.git
+git clone https://github.com/honley1/moniq-cli.git
 cd moniq-cli
 
 # Build the binary
@@ -55,6 +62,40 @@ go build -o moniq ./cmd/moniq
 # Install to system
 sudo cp moniq /usr/local/bin/
 sudo chmod +x /usr/local/bin/moniq
+```
+
+### From Git (For Developers)
+
+```bash
+# Clone and build from source
+git clone https://github.com/honley1/moniq-cli.git
+cd moniq-cli
+
+# Install Go dependencies
+go mod download
+
+# Build binary
+go build -o moniq ./cmd/moniq
+
+# Test locally
+./moniq --version
+
+# Install system-wide (optional)
+sudo cp moniq /usr/local/bin/
+sudo chmod +x /usr/local/bin/moniq
+
+# Create config directory
+mkdir -p ~/.moniq
+
+# Initialize basic config
+cat > ~/.moniq/config.yaml << EOF
+mode: local
+telegram_token: ""
+chat_id: 0
+cpu_threshold: 80.0
+mem_threshold: 85.0
+disk_threshold: 90.0
+EOF
 ```
 
 ### Quick Start

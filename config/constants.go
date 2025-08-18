@@ -20,9 +20,7 @@ const (
 
 // Application constants
 const (
-	APP_NAME    = "Moniq CLI"
-	APP_VERSION = "0.1.6" // Current version from version.txt
-	USER_AGENT  = "Moniq-CLI/0.1.6"
+	USER_AGENT  = "Moniq-CLI/1.0.0"
 )
 
 // Operation modes

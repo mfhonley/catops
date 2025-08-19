@@ -31,12 +31,16 @@ var VERSION string
 
 // Helper functions for server operations
 
-// getCurrentVersion returns current version from version.txt
+// getCurrentVersion returns current version using same logic as --version flag
 func getCurrentVersion() string {
-	if versionData, err := os.ReadFile("version.txt"); err == nil {
-		return strings.TrimSpace(string(versionData))
+	version := VERSION
+	if version == "" {
+		// Read version from version.txt if VERSION is not set
+		if versionData, err := os.ReadFile("version.txt"); err == nil {
+			version = strings.TrimSpace(string(versionData))
+		}
 	}
-	return "1.0.0" // Fallback версия
+	return version
 }
 
 // Send alert analytics to backend

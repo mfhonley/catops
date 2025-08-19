@@ -31,6 +31,14 @@ var VERSION string
 
 // Helper functions for server operations
 
+// getCurrentVersion returns current version from version.txt
+func getCurrentVersion() string {
+	if versionData, err := os.ReadFile("version.txt"); err == nil {
+		return strings.TrimSpace(string(versionData))
+	}
+	return "1.0.0" // Fallback версия
+}
+
 // Send alert analytics to backend
 func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Metrics) {
 
@@ -51,7 +59,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		"server_info": map[string]interface{}{
 			"hostname":      hostname,
 			"os_type":       metrics.OSName,
-			"moniq_version": VERSION,
+			"moniq_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
 			"cpu_usage":      metrics.CPUUsage,
@@ -88,7 +96,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", constants.USER_AGENT)
 		req.Header.Set("X-Platform", runtime.GOOS)
-		req.Header.Set("X-Version", VERSION)
+		req.Header.Set("X-Version", getCurrentVersion())
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
@@ -135,7 +143,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		"server_info": map[string]interface{}{
 			"hostname":      hostname,
 			"os_type":       metrics.OSName,
-			"moniq_version": VERSION,
+			"moniq_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
 			"cpu_usage":      metrics.CPUUsage,
@@ -181,7 +189,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", constants.USER_AGENT)
 		req.Header.Set("X-Platform", runtime.GOOS)
-		req.Header.Set("X-Version", VERSION)
+		req.Header.Set("X-Version", getCurrentVersion())
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
@@ -233,17 +241,6 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		// Keep original arch value for other architectures
 	}
 
-	// Определяем версию
-	moniqVersion := VERSION
-	if moniqVersion == "" {
-		// Читаем версию из файла version.txt как в install.sh
-		if versionData, err := os.ReadFile("version.txt"); err == nil {
-			moniqVersion = strings.TrimSpace(string(versionData))
-		} else {
-			moniqVersion = "0.1.3" // Fallback версия
-		}
-	}
-
 	serverData := map[string]interface{}{
 		"platform":     platform, // Убираем "-" + arch
 		"architecture": arch,
@@ -253,7 +250,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		"server_info": map[string]string{
 			"hostname":      hostname,
 			"os_type":       osName,
-			"moniq_version": moniqVersion,
+			"moniq_version": getCurrentVersion(),
 		},
 	}
 
@@ -269,7 +266,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", constants.USER_AGENT)
 	req.Header.Set("X-Platform", platform)
-	req.Header.Set("X-Version", "1.0.0")
+	req.Header.Set("X-Version", getCurrentVersion())
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

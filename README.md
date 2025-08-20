@@ -228,6 +228,16 @@ moniq processes
 moniq config show
 ```
 
+### 4. Uninstall (When Needed)
+
+```bash
+# Remove Moniq CLI completely
+moniq uninstall
+
+# Or force uninstall without confirmation
+moniq uninstall --yes
+```
+
 ## 🔧 Configuration
 
 ### Telegram Bot Setup
@@ -308,6 +318,7 @@ disk_threshold: 90.0           # Disk alert threshold
 | `moniq cleanup` | Clean up old backup files and duplicate processes | `moniq cleanup` |
 | `moniq force-cleanup` | Force cleanup of all processes and start fresh | `moniq force-cleanup` |
 | `moniq update` | Check and install updates | `moniq update` |
+| `moniq uninstall` | Completely remove Moniq CLI and all components | `moniq uninstall` |
 
 ## 📊 Metrics & Monitoring
 
@@ -383,6 +394,22 @@ moniq update
 moniq cleanup
 ```
 
+### Uninstall Management
+```bash
+# Completely remove Moniq CLI
+moniq uninstall
+
+# Force uninstall without confirmation
+moniq uninstall --yes
+```
+
+**What gets removed:**
+- CLI binary from all PATH locations
+- Configuration directory (`~/.moniq`)
+- Log files (`/tmp/moniq.log`, `/tmp/moniq.pid`)
+- Autostart services (systemd/launchd/crontab)
+- All associated files and services
+
 ## 🔍 Troubleshooting
 
 ### Common Issues
@@ -397,6 +424,27 @@ tail -f /tmp/moniq.log
 
 # Restart service
 moniq restart
+```
+
+#### Multiple Processes Running
+```bash
+# Check for duplicate processes
+ps aux | grep "moniq daemon"
+
+# Clean up duplicate processes
+moniq cleanup
+
+# Force cleanup of all processes
+moniq force-cleanup
+```
+
+#### Complete Uninstall
+```bash
+# Remove Moniq CLI completely
+moniq uninstall
+
+# Force uninstall without confirmation
+moniq uninstall --yes
 ```
 
 #### Telegram Notifications Not Working

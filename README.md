@@ -4,7 +4,15 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
 
-**Moniq CLI** is a lightweight, open-source system monitoring tool designed for server administrators and DevOps engineers. It provides system metrics, alerting, and integration capabilities with both local and cloud operation modes.
+**Moniq CLI** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
+
+```bash
+# Install in seconds (from website)
+curl -sfL https://get.moniq.sh/install.sh | bash
+
+# Or from GitHub
+git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+```
 
 ## 🚀 Features
 
@@ -12,14 +20,14 @@
 - **System Metrics**: CPU, Memory, Disk, Network, I/O monitoring
 - **Advanced Metrics**: IOPS, I/O Wait, HTTPS connections, process monitoring
 - **Cross-platform Support**: Linux (systemd) and macOS (launchd) compatibility
-- **Lightweight**: Minimal resource footprint (< 1MB binary)
+- **Ultra-Lightweight**: Minimal resource footprint (< 1MB binary)
 - **Terminal UI**: Clean, color-coded terminal interface
 
 ### Alerting & Notifications
 - **Telegram Integration**: Instant alerts via Telegram bot with remote commands
 - **Configurable Thresholds**: Customizable CPU, Memory, and Disk limits
 - **Alert System**: Configurable threshold-based notifications
-- **Dual Mode Operation**: Local mode (no backend) or Cloud mode (with analytics)
+- **Dual Mode**: Local mode (offline) or Cloud mode (with backend integration)
 
 ### System Management
 - **Background Service**: Daemon mode with auto-start capabilities
@@ -30,100 +38,197 @@
 ### Configuration & Updates
 - **Configuration Management**: YAML-based configuration system
 - **Update System**: Automatic version checking and updates
-- **Local/Cloud Modes**: Flexible operation modes
+- **Operation Modes**: Local (offline) or Cloud (with backend analytics)
 
 ## 📋 Requirements
 
 - **Operating System**: Linux (systemd) or macOS (launchd)
-- **Go Version**: 1.21 or higher (for building from source)
 - **Architecture**: AMD64 or ARM64
 - **Permissions**: User-level installation (no root required)
-- **Network**: Internet access for Telegram bot and cloud mode features
+- **Network**: Internet access for Telegram bot and backend integration (optional)
 
-### Development Requirements
+## 🔄 Operation Modes
+
+### Local Mode (Default)
+- **Offline Operation**: Works completely without internet
+- **Local Storage**: All data stored locally
+- **No Backend**: No external data transmission
+- **Use Case**: Air-gapped servers, development, testing
+
+### Cloud Mode
+- **Backend Integration**: Sends metrics and analytics to backend
+- **Real-time Monitoring**: Centralized monitoring dashboard
+- **Data Analytics**: Historical data and insights
+- **Use Case**: Production servers, team monitoring, centralized management
+
+**Mode is automatically determined:**
+- **Local**: If `auth_token` or `server_token` is missing
+- **Cloud**: If both `auth_token` and `server_token` are present
+
+### Development Requirements (For Building from Source)
 
 - **Go 1.21+**: [Download Go](https://golang.org/dl/)
 - **Git**: For cloning the repository
 - **Basic Go knowledge**: For building from source
-- **Telegram bot token**: For bot functionality (optional)
 
 ## 🛠️ Installation
 
-### From Source (Recommended)
+### Method 1: One-Command Installation (Recommended)
+
+**One curl command, zero setup hell:**
 
 ```bash
-# Clone the repository
-git clone https://github.com/honley1/moniq-cli.git
-cd moniq-cli
-
-# Build the binary
-go build -o moniq ./cmd/moniq
-
-# Install to system
-sudo cp moniq /usr/local/bin/
-sudo chmod +x /usr/local/bin/moniq
+# Install in one command
+curl -sfL https://get.moniq.sh/install.sh | bash
 ```
 
-### From Git (For Developers)
+**Quick installation with Telegram setup:**
 
 ```bash
-# Clone and build from source
-git clone https://github.com/honley1/moniq-cli.git
-cd moniq-cli
+# Install with bot token and group ID
+curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+```
 
-# Install Go dependencies
-go mod download
+**That's it!** The script will automatically:
+- Download the correct binary for your platform
+- Make it executable
+- Add it to your PATH
+- Create configuration directory
 
-# Build binary
-go build -o moniq ./cmd/moniq
+**Step-by-step installation with Telegram setup:**
 
-# Test locally
+1. **Create a Telegram Bot**
+   - Open [@BotFather](https://t.me/botfather) in Telegram
+   - Send `/newbot` command
+   - Follow instructions to create a bot
+   - Save the received token
+
+2. **Create a Group and Add Bot**
+   - Create a new group in Telegram
+   - Add your bot to the group as administrator
+   - Add [@myidbot](https://t.me/myidbot) to the group
+   - Send `/getid` in the group and copy the group ID
+
+3. **Install Moniq**
+   ```bash
+   curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+   ```
+
+4. **Verify Installation**
+   ```bash
+   moniq status
+   ```
+
+**Manual download (if you prefer):**
+
+```bash
+# Linux AMD64
+curl -L -o moniq https://get.moniq.sh/moniq-linux-amd64
+
+# Linux ARM64  
+curl -L -o moniq https://get.moniq.sh/moniq-linux-arm64
+
+# macOS AMD64
+curl -L -o moniq https://get.moniq.sh/moniq-darwin-amd64
+
+# macOS ARM64 (Apple Silicon)
+curl -L -o moniq https://get.moniq.sh/moniq-darwin-arm64
+
+# Make executable and move to PATH
+chmod +x moniq
+sudo mv moniq /usr/local/bin/
+```
+
+### Method 2: From Source (For Developers & Advanced Users)
+
+**Simple GitHub installation:**
+
+```bash
+# Clone and build in one command
+git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+
+# Make executable and test
+chmod +x moniq
 ./moniq --version
 
 # Install system-wide (optional)
 sudo cp moniq /usr/local/bin/
 sudo chmod +x /usr/local/bin/moniq
-
-# Create config directory
-mkdir -p ~/.moniq
-
-# Initialize basic config
-cat > ~/.moniq/config.yaml << EOF
-mode: local
-telegram_token: ""
-chat_id: 0
-cpu_threshold: 80.0
-mem_threshold: 85.0
-disk_threshold: 90.0
-EOF
 ```
 
-### Quick Start
+**Or step by step:**
 
 ```bash
+# 1. Clone repository
+git clone https://github.com/honley1/moniq.sh.git
+cd moniq.sh
+
+# 2. Build binary
+go build -o moniq ./cmd/moniq
+
+# 3. Test locally
+./moniq --version
+
+# 4. Install system-wide (optional)
+sudo cp moniq /usr/local/bin/
+sudo chmod +x /usr/local/bin/moniq
+```
+
+**Configuration will be created automatically on first run.**
+
+## 🚀 Quick Start
+
+**Get started in seconds with one command:**
+
+### 1. One-Command Installation
+
+**Option A: From Website (Recommended)**
+```bash
+# Basic installation
+curl -sfL https://get.moniq.sh/install.sh | bash
+
+# Or with Telegram setup
+curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+```
+
+**Option B: From GitHub**
+```bash
+# Clone and build
+git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+
+# Make executable and test
+chmod +x moniq
+./moniq --version
+```
+
+### 2. First Run
+```bash
+# Verify installation
+moniq --version
+
 # Start monitoring service
 moniq start
 
 # Check system status
 moniq status
+```
+
+### 3. Basic Usage
+
+```bash
+# View system metrics
+moniq status
 
 # View top processes
 moniq processes
 
-# Configure Telegram bot
-moniq config token=YOUR_BOT_TOKEN
-moniq config group=YOUR_CHAT_ID
-
-# Set alert thresholds
-moniq set cpu=80 mem=85 disk=90
-
-# Apply changes
-moniq restart
+# View configuration
+moniq config show
 ```
 
 ## 🔧 Configuration
 
-### Basic Setup
+### Telegram Bot Setup
 
 ```bash
 # Initialize Telegram configuration
@@ -139,20 +244,36 @@ moniq set disk=90
 moniq restart
 ```
 
+### Authentication Setup (Optional)
+
+```bash
+# Set your user token for personal dashboard access
+moniq config auth=YOUR_AUTH_TOKEN
+
+# Server will be automatically registered and server_token will be saved
+# This enables Cloud Mode with backend analytics
+```
+
 ### Configuration File
 
 The configuration is stored in `~/.moniq/config.yaml`:
 
 ```yaml
-mode: local                    # local or cloud
+mode: local                    # automatically determined based on tokens
 telegram_token: "BOT_TOKEN"    # Telegram bot token
 chat_id: -1001234567890        # Telegram chat ID
-auth_token: ""                 # Backend auth token (cloud mode)
-server_token: ""               # Backend server token (cloud mode)
+auth_token: "USER_TOKEN"       # Your personal dashboard token (optional)
+server_token: "SERVER_TOKEN"   # Generated by backend (auto-saved)
 cpu_threshold: 80.0            # CPU alert threshold
 mem_threshold: 85.0            # Memory alert threshold
 disk_threshold: 90.0           # Disk alert threshold
 ```
+
+**Note:** 
+- Configuration is created automatically on first run
+- `mode` is automatically determined: `local` (no tokens) or `cloud` (both tokens present)
+- `server_token` is automatically generated and saved when you set `auth_token`
+- Analytics are only sent to backend when both tokens are present
 
 ## 📚 Commands Reference
 
@@ -164,6 +285,7 @@ disk_threshold: 90.0           # Disk alert threshold
 | `moniq processes` | Show detailed information about running processes | `moniq processes -n 20` |
 | `moniq start` | Start background monitoring service | `moniq start` |
 | `moniq restart` | Stop and restart the monitoring service | `moniq restart` |
+| `moniq stop` | Stop the monitoring service | `moniq stop` |
 
 ### Configuration Commands
 
@@ -174,14 +296,6 @@ disk_threshold: 90.0           # Disk alert threshold
 | `moniq config show` | Display current configuration | `moniq config show` |
 | `moniq set` | Configure alert thresholds | `moniq set cpu=90 mem=80` |
 
-### Authentication Commands
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `moniq auth login` | Login with backend authentication token | `moniq auth login <token>` |
-| `moniq auth logout` | Logout and clear authentication | `moniq auth logout` |
-| `moniq auth info` | Show authentication status | `moniq auth info` |
-
 ### System Commands
 
 | Command | Description | Example |
@@ -191,32 +305,6 @@ disk_threshold: 90.0           # Disk alert threshold
 | `moniq autostart status` | Check autostart status | `moniq autostart status` |
 | `moniq cleanup` | Clean up old backup files | `moniq cleanup` |
 | `moniq update` | Check and install updates | `moniq update` |
-
-## 🔄 Operation Modes
-
-### Local Mode (Default)
-- **No Backend Dependency**: Works completely offline
-- **Telegram Alerts**: Local notifications via Telegram bot
-- **Local Configuration**: All settings stored locally
-- **Process Monitoring**: Full system monitoring capabilities
-- **No Analytics**: Metrics are not sent to external services
-
-### Cloud Mode
-- **Backend Integration**: Full backend analytics and management
-- **Server Registration**: Automatic server registration and management
-- **Analytics**: Metrics and alerts sent to backend dashboard
-- **Version Updates**: Automatic update checking and notifications
-- **Multi-server Management**: Centralized server management
-
-### Switching Between Modes
-
-```bash
-# Switch to Cloud Mode
-moniq auth login <your_auth_token>
-
-# Switch to Local Mode
-moniq auth logout
-```
 
 ## 📊 Metrics & Monitoring
 
@@ -360,20 +448,18 @@ moniq-cli/
 - **Alert Engine**: Threshold monitoring and notification system
 - **Telegram Bot**: Remote monitoring and control interface
 - **Process Manager**: Service lifecycle management
-- **Configuration System**: YAML-based configuration with mode support
+- **Configuration System**: YAML-based configuration
 
 ## 🧪 Development
 
 ### Building from Source
 ```bash
-# Clone repository
-git clone https://github.com/your-org/moniq-cli.git
-cd moniq-cli
+# Quick build
+git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
 
-# Install dependencies
-go mod download
-
-# Build binary
+# Or step by step
+git clone https://github.com/honley1/moniq.sh.git
+cd moniq.sh
 go build -o moniq ./cmd/moniq
 
 # Run tests
@@ -385,6 +471,18 @@ go test ./...
 - Linux/macOS development environment
 - Telegram bot token for testing
 - Basic knowledge of system administration
+
+### Building Binaries
+```bash
+# Build manually for your platform
+go build -o moniq ./cmd/moniq
+
+# Or build for specific platforms
+GOOS=linux GOARCH=amd64 go build -o moniq-linux-amd64 ./cmd/moniq
+GOOS=darwin GOARCH=amd64 go build -o moniq-darwin-amd64 ./cmd/moniq
+GOOS=linux GOARCH=arm64 go build -o moniq-linux-arm64 ./cmd/moniq
+GOOS=darwin GOARCH=arm64 go build -o moniq-darwin-arm64 ./cmd/moniq
+```
 
 ## 📄 License
 
@@ -403,25 +501,13 @@ We welcome contributions! Please see our contributing guidelines for details on 
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/moniq-cli/issues)
-- **Contributions**: [Pull Requests](https://github.com/your-org/moniq-cli/pulls)
+- **Issues**: [GitHub Issues](https://github.com/honley1/moniq.sh/issues)
+- **Contributions**: [Pull Requests](https://github.com/honley1/moniq.sh/pulls)
 
-## 🔮 Roadmap
 
-### Upcoming Features
-- [ ] **Performance Optimization**: Enhanced resource efficiency
-- [ ] **Additional Metrics**: Extended system monitoring capabilities
-- [ ] **Platform Support**: Additional operating system support
-
-### Version History
-- **v0.1.6** - Current stable release
-- **v0.1.5** - Added I/O metrics and process monitoring
-- **v0.1.4** - Improved Telegram bot integration
-- **v0.1.3** - Added cloud mode and backend integration
-- **v0.1.2** - Enhanced alert system and thresholds
-- **v0.1.1** - Basic monitoring and Telegram alerts
-- **v0.1.0** - Initial release with core functionality
 
 ---
 
-**Moniq CLI** - Open-source system monitoring made simple. 🚀
+**Moniq CLI** - Ultra-lightweight server monitoring. 🚀
+
+Built with ❤️ by the open source community.

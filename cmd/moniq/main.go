@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -961,6 +962,142 @@ Examples:
 		},
 	}
 
+	// Uninstall command
+	uninstallCmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Completely remove Moniq CLI from the system",
+		Long: `Completely remove Moniq CLI from the system.
+
+This command will:
+• Stop the monitoring service
+• Remove the binary from PATH
+• Delete configuration files
+• Remove autostart services
+• Clean up all Moniq-related files
+
+Examples:
+  moniq uninstall        # Remove Moniq CLI completely
+  moniq uninstall --yes  # Skip confirmation prompt`,
+		Run: func(cmd *cobra.Command, args []string) {
+			ui.PrintHeader()
+			ui.PrintSection("Uninstall Moniq CLI")
+
+			// Check if --yes flag is set
+			skipConfirm := cmd.Flags().Lookup("yes").Changed
+
+			if !skipConfirm {
+				ui.PrintStatus("warning", "This will completely remove Moniq CLI from your system!")
+				ui.PrintStatus("info", "All configuration and data will be lost.")
+
+				fmt.Print("\nAre you sure you want to continue? (y/N): ")
+				var response string
+				fmt.Scanln(&response)
+
+				if response != "y" && response != "Y" {
+					ui.PrintStatus("info", "Uninstall cancelled")
+					ui.PrintSectionEnd()
+					return
+				}
+			}
+
+			// Remove autostart services FIRST (before stopping service)
+			ui.PrintStatus("info", "Removing autostart services...")
+			switch runtime.GOOS {
+			case "linux":
+				homeDir, _ := os.UserHomeDir()
+				systemdService := homeDir + "/.config/systemd/user/moniq.service"
+				if _, err := os.Stat(systemdService); err == nil {
+					exec.Command("systemctl", "--user", "disable", "moniq.service").Run()
+					exec.Command("systemctl", "--user", "stop", "moniq.service").Run()
+					os.Remove(systemdService)
+					ui.PrintStatus("success", "Systemd service removed")
+				}
+			case "darwin":
+				homeDir, _ := os.UserHomeDir()
+				launchAgent := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
+				if _, err := os.Stat(launchAgent); err == nil {
+					exec.Command("launchctl", "unload", launchAgent).Run()
+					os.Remove(launchAgent)
+				}
+				ui.PrintStatus("success", "Launchd service removed")
+			}
+
+			// Remove configuration directory
+			ui.PrintStatus("info", "Removing configuration files...")
+			configDir := os.Getenv("HOME") + "/.moniq"
+			if err := os.RemoveAll(configDir); err == nil {
+				ui.PrintStatus("success", "Configuration directory removed: "+configDir)
+			} else {
+				ui.PrintStatus("warning", "Could not remove configuration directory")
+			}
+
+			// Remove log files
+			ui.PrintStatus("info", "Removing log files...")
+			logFiles := []string{
+				"/tmp/moniq.log",
+				"/tmp/moniq.pid",
+			}
+
+			for _, logFile := range logFiles {
+				if _, err := os.Stat(logFile); err == nil {
+					if err := os.Remove(logFile); err == nil {
+						ui.PrintStatus("success", "Removed log file: "+logFile)
+					}
+				}
+			}
+
+			// Stop the service (after removing config)
+			ui.PrintStatus("info", "Stopping Moniq monitoring service...")
+			if err := exec.Command("moniq", "stop").Run(); err != nil {
+				ui.PrintStatus("warning", "Service was not running or already stopped")
+			} else {
+				ui.PrintStatus("success", "Service stopped")
+			}
+
+			// Remove ALL Moniq binaries from PATH LAST
+			ui.PrintStatus("info", "Removing Moniq binaries...")
+			binaryPaths := []string{
+				"/usr/local/bin/moniq",
+				"/usr/bin/moniq",
+				os.Getenv("HOME") + "/.local/bin/moniq",
+			}
+
+			// Also search for any other moniq binaries in PATH
+			pathDirs := strings.Split(os.Getenv("PATH"), ":")
+			for _, dir := range pathDirs {
+				if strings.Contains(dir, "moniq") || strings.Contains(dir, ".local") || strings.Contains(dir, "bin") {
+					potentialPath := filepath.Join(dir, "moniq")
+					if _, err := os.Stat(potentialPath); err == nil {
+						binaryPaths = append(binaryPaths, potentialPath)
+					}
+				}
+			}
+
+			// Remove all found binaries
+			binaryRemoved := false
+			for _, path := range binaryPaths {
+				if _, err := os.Stat(path); err == nil {
+					if err := os.Remove(path); err == nil {
+						ui.PrintStatus("success", "Removed binary: "+path)
+						binaryRemoved = true
+					} else {
+						ui.PrintStatus("warning", "Could not remove binary: "+path)
+					}
+				}
+			}
+
+			if !binaryRemoved {
+				ui.PrintStatus("warning", "Could not find any Moniq binaries in standard locations")
+			}
+
+			ui.PrintStatus("success", "Moniq CLI completely removed from the system")
+			ui.PrintSectionEnd()
+		},
+	}
+
+	// Add --yes flag to uninstall command
+	uninstallCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
+
 	// Cleanup command
 	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
@@ -1347,6 +1484,7 @@ This command shows the full token that is currently stored in the configuration.
 	rootCmd.AddCommand(setCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(daemonCmd)
+	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(cleanupCmd)
 	rootCmd.AddCommand(autostartCmd)
 	rootCmd.AddCommand(authCmd)

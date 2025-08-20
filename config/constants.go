@@ -7,8 +7,9 @@ const (
 	EVENTS_URL    = "https://api.moniq.sh/api/data/events"
 
 	// Server management endpoints
-	SERVERS_URL = "https://api.moniq.sh/api/servers/change-owner"
-	INSTALL_URL = "https://api.moniq.sh/api/downloads/install"
+	SERVERS_URL   = "https://api.moniq.sh/api/servers/change-owner"
+	INSTALL_URL   = "https://api.moniq.sh/api/downloads/install"
+	UNINSTALL_URL = "https://api.moniq.sh/api/servers/uninstall"
 
 	// Version and update endpoints
 	VERSIONS_URL = "https://api.moniq.sh/api/versions/check"
@@ -20,7 +21,7 @@ const (
 
 // Application constants
 const (
-	USER_AGENT  = "Moniq-CLI/1.0.0"
+	USER_AGENT = "Moniq-CLI/1.0.0"
 )
 
 // Operation modes

@@ -73,8 +73,72 @@ func StopProcess() error {
 	return nil
 }
 
+// KillDuplicateProcesses kills any duplicate moniq daemon processes
+func KillDuplicateProcesses() {
+	// Find all moniq daemon processes
+	cmd := exec.Command("pgrep", "-f", "moniq daemon")
+	output, err := cmd.Output()
+	if err != nil {
+		// No processes found, which is fine
+		return
+	}
+
+	// Parse PIDs
+	pids := strings.Fields(string(output))
+	if len(pids) <= 1 {
+		// Only one or no processes, which is fine
+		return
+	}
+
+	// Kill all but the first process (keep one)
+	for i := 1; i < len(pids); i++ {
+		pid, err := strconv.Atoi(pids[i])
+		if err != nil {
+			continue
+		}
+		
+		// Kill the duplicate process
+		process, err := os.FindProcess(pid)
+		if err == nil {
+			process.Kill()
+		}
+	}
+}
+
+// CleanupZombieProcesses cleans up any zombie moniq processes
+func CleanupZombieProcesses() {
+	// Find zombie processes
+	cmd := exec.Command("ps", "aux")
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "[moniq]") && strings.Contains(line, "<defunct>") {
+			// Extract PID from zombie process line
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				pid, err := strconv.Atoi(fields[1])
+				if err == nil {
+					// Try to kill zombie process
+					process, err := os.FindProcess(pid)
+					if err == nil {
+						process.Kill()
+					}
+				}
+			}
+		}
+	}
+}
+
 // StartProcess starts the monitoring process in background
 func StartProcess() error {
+	// Clean up any existing issues first
+	KillDuplicateProcesses()
+	CleanupZombieProcesses()
+	
 	if IsRunning() {
 		return fmt.Errorf("moniq is already running")
 	}

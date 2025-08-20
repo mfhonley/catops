@@ -316,6 +316,51 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	return false
 }
 
+// Отправка уведомления об удалении на бэкенд
+func sendUninstallNotification(authToken, serverToken string) bool {
+	uninstallData := map[string]interface{}{
+		"auth_token":   authToken,
+		"server_token": serverToken,
+		"action":       "uninstall",
+		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()),
+	}
+
+	jsonData, _ := json.Marshal(uninstallData)
+
+	// Создаем запрос
+	req, err := http.NewRequest("POST", constants.UNINSTALL_URL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return false
+	}
+
+	// Устанавливаем заголовки (как требует бэкенд)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", constants.USER_AGENT)
+	req.Header.Set("X-Platform", runtime.GOOS) // linux/darwin/windows
+	req.Header.Set("X-Version", getCurrentVersion())
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Логируем результат
+	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		if resp.StatusCode == 200 {
+			f.WriteString(fmt.Sprintf("[%s] INFO: Uninstall notification sent successfully\n",
+				time.Now().Format("2006-01-02 15:04:05")))
+		} else {
+			f.WriteString(fmt.Sprintf("[%s] WARNING: Uninstall notification failed with status %d\n",
+				time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+		}
+	}
+
+	return resp.StatusCode == 200
+}
+
 // Передача владения сервером
 func transferServerOwnership(oldToken, newToken, serverToken string) bool {
 	changeData := map[string]interface{}{
@@ -987,6 +1032,7 @@ Examples:
 
 			if !skipConfirm {
 				ui.PrintStatus("warning", "This will completely remove Moniq CLI from your system!")
+				ui.PrintStatus("warning", "This will completely remove Moniq CLI from your system!")
 				ui.PrintStatus("info", "All configuration and data will be lost.")
 
 				fmt.Print("\nAre you sure you want to continue? (y/N): ")
@@ -997,6 +1043,16 @@ Examples:
 					ui.PrintStatus("info", "Uninstall cancelled")
 					ui.PrintSectionEnd()
 					return
+				}
+			}
+
+			// Send uninstall notification to backend if we have tokens
+			if cfg.AuthToken != "" && cfg.ServerToken != "" {
+				ui.PrintStatus("info", "Notifying backend about uninstall...")
+				if sendUninstallNotification(cfg.AuthToken, cfg.ServerToken) {
+					ui.PrintStatus("success", "Backend notified about uninstall")
+				} else {
+					ui.PrintStatus("warning", "Could not notify backend (continuing with uninstall)")
 				}
 			}
 
@@ -1101,14 +1157,24 @@ Examples:
 	// Cleanup command
 	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
-		Short: "Clean up old backup files",
-		Long: `Clean up old backup files created during updates.
-This will remove specific old backup files and clean up files older than 30 days.
+		Short: "Clean up old backup files and duplicate processes",
+		Long: `Clean up old backup files created during updates and kill duplicate moniq processes.
+This will remove specific old backup files, clean up files older than 30 days, and ensure only one moniq daemon is running.
+
 Examples:
-  moniq cleanup          # Clean up old backups`,
+  moniq cleanup          # Clean up old backups and processes`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
-			ui.PrintSection("Cleaning Up Old Backups")
+			ui.PrintSection("Cleaning Up Old Backups and Processes")
+
+			// Clean up duplicate processes first
+			ui.PrintStatus("info", "Checking for duplicate processes...")
+			process.KillDuplicateProcesses()
+			process.CleanupZombieProcesses()
+			ui.PrintStatus("success", "Process cleanup completed")
+
+			// Clean up old backup files
+			ui.PrintStatus("info", "Cleaning up old backup files...")
 			executable, err := os.Executable()
 			if err != nil {
 				ui.PrintStatus("error", "Could not determine binary location")
@@ -1128,6 +1194,40 @@ Examples:
 			cmd2 := exec.Command("find", backupDir, "-name", "moniq.backup.*", "-mtime", "+30", "-delete")
 			cmd2.Run() // Ignore errors
 			ui.PrintStatus("success", fmt.Sprintf("Cleanup completed. Removed %d old backup files", removedCount))
+			ui.PrintSectionEnd()
+		},
+	}
+
+	// Force cleanup command
+	forceCleanupCmd := &cobra.Command{
+		Use:   "force-cleanup",
+		Short: "Force cleanup of all duplicate processes and zombie processes",
+		Long: `Force cleanup of all duplicate moniq processes and zombie processes.
+This command will kill ALL moniq daemon processes and clean up any zombie processes.
+Use this when you have multiple processes running and need a fresh start.
+
+Examples:
+  moniq force-cleanup    # Kill all processes and start fresh`,
+		Run: func(cmd *cobra.Command, args []string) {
+			ui.PrintHeader()
+			ui.PrintSection("Force Cleanup of All Processes")
+
+			ui.PrintStatus("warning", "This will kill ALL moniq daemon processes!")
+
+			// Kill all moniq daemon processes
+			ui.PrintStatus("info", "Killing all moniq daemon processes...")
+			killCmd := exec.Command("pkill", "-f", "moniq daemon")
+			killCmd.Run() // Ignore errors
+
+			// Clean up zombie processes
+			ui.PrintStatus("info", "Cleaning up zombie processes...")
+			process.CleanupZombieProcesses()
+
+			// Remove PID file
+			os.Remove(constants.PID_FILE)
+
+			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
+			ui.PrintStatus("info", "Run 'moniq start' to start fresh monitoring service.")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -1486,6 +1586,7 @@ This command shows the full token that is currently stored in the configuration.
 	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(cleanupCmd)
+	rootCmd.AddCommand(forceCleanupCmd)
 	rootCmd.AddCommand(autostartCmd)
 	rootCmd.AddCommand(authCmd)
 

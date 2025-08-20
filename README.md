@@ -34,6 +34,8 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 - **Process Monitoring**: Top processes by resource usage with detailed information
 - **Service Control**: Start, stop, restart, and status commands
 - **Auto-start Management**: Systemd/launchd service creation and management
+- **Duplicate Process Protection**: Automatic detection and cleanup of multiple instances
+- **Zombie Process Cleanup**: Automatic cleanup of defunct processes
 
 ### Configuration & Updates
 - **Configuration Management**: YAML-based configuration system
@@ -303,7 +305,8 @@ disk_threshold: 90.0           # Disk alert threshold
 | `moniq autostart enable` | Enable autostart on boot | `moniq autostart enable` |
 | `moniq autostart disable` | Disable autostart on boot | `moniq autostart disable` |
 | `moniq autostart status` | Check autostart status | `moniq autostart status` |
-| `moniq cleanup` | Clean up old backup files | `moniq cleanup` |
+| `moniq cleanup` | Clean up old backup files and duplicate processes | `moniq cleanup` |
+| `moniq force-cleanup` | Force cleanup of all processes and start fresh | `moniq force-cleanup` |
 | `moniq update` | Check and install updates | `moniq update` |
 
 ## 📊 Metrics & Monitoring

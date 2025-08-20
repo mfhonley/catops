@@ -204,13 +204,27 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 				for i := 0; i < limit; i++ {
 					proc := metrics.TopProcesses[i]
+
+					// Status emoji
+					statusEmoji := "⚪" // Default
+					switch proc.Status {
+					case "R":
+						statusEmoji = "🟢" // Running
+					case "S":
+						statusEmoji = "🟡" // Sleeping
+					case "Z":
+						statusEmoji = "🔴" // Zombie
+					case "D":
+						statusEmoji = "🔵" // Disk sleep
+					}
+
 					processText += fmt.Sprintf(
-						"<b>%d.</b> <code>%s</code>\n"+
-							"• PID: <code>%d</code> | User: <code>%s</code>\n"+
+						"<b>%d.</b> <code>%s</code> %s\n"+
+							"• PID: <code>%d</code> | User: <code>%s</code> | TTY: <code>%s</code>\n"+
 							"• CPU: <b>%.1f%%</b> | Memory: <b>%.1f%%</b> (%s)\n"+
 							"• Command: <code>%s</code>\n\n",
-						i+1, proc.Name,
-						proc.PID, proc.User,
+						i+1, proc.Name, statusEmoji,
+						proc.PID, proc.User, proc.TTY,
 						proc.CPUUsage, proc.MemoryUsage, formatBytes(proc.MemoryKB*1024),
 						truncateCommand(proc.Command, 40))
 				}

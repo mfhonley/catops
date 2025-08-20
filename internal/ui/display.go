@@ -342,24 +342,39 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 
 	// Column headers
 	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%-6s %-15s %-8s %-8s %-12s %s%s\n",
-		WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "COMMAND", NC))
+	result.WriteString(fmt.Sprintf("%s%-6s %-15s %-8s %-8s %-12s %-8s %-8s %s%s\n",
+		WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
 
 	// Separator
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		CYAN, strings.Repeat("─", 80), NC))
+		CYAN, strings.Repeat("─", 100), NC))
 
 	// Process rows
 	for _, proc := range processes {
+		// Color code for status
+		statusColor := GRAY
+		switch proc.Status {
+		case "R":
+			statusColor = GREEN // Running
+		case "S":
+			statusColor = YELLOW // Sleeping
+		case "Z":
+			statusColor = RED // Zombie
+		case "D":
+			statusColor = BLUE // Disk sleep
+		}
+
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%-6d %-15s %-8.1f %-8.1f %-12s %s\n",
+		result.WriteString(fmt.Sprintf("%-6d %-15s %-8.1f %-8.1f %-12s %s%-8s%s %-8s %s\n",
 			proc.PID,
 			truncateString(proc.User, 15),
 			proc.CPUUsage,
 			proc.MemoryUsage,
 			formatKB(proc.MemoryKB),
-			truncateString(proc.Command, 30)))
+			statusColor, proc.Status, NC,
+			truncateString(proc.TTY, 8),
+			truncateString(proc.Command, 25)))
 	}
 
 	return result.String()

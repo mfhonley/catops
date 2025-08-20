@@ -80,6 +80,18 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 			"disk_threshold":   cfg.DiskThreshold,
 		},
 		"alerts": alerts,
+
+		// ✅ NEW: Add process analytics data
+		"process_analytics": map[string]interface{}{
+			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 10),
+			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 10),
+			"process_summary": map[string]interface{}{
+				"total_processes":    len(metrics.TopProcesses),
+				"running_processes":  countProcessesByStatus(metrics.TopProcesses, "R"),
+				"sleeping_processes": countProcessesByStatus(metrics.TopProcesses, "S"),
+				"zombie_processes":   countProcessesByStatus(metrics.TopProcesses, "Z"),
+			},
+		},
 	}
 
 	jsonData, _ := json.Marshal(alertData)
@@ -173,6 +185,18 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 			// Для остановки можно попытаться получить uptime из PID файла
 			return 0
 		}(),
+
+		// ✅ NEW: Add process analytics data for service events
+		"process_analytics": map[string]interface{}{
+			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 5),
+			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 5),
+			"process_summary": map[string]interface{}{
+				"total_processes":    len(metrics.TopProcesses),
+				"running_processes":  countProcessesByStatus(metrics.TopProcesses, "R"),
+				"sleeping_processes": countProcessesByStatus(metrics.TopProcesses, "S"),
+				"zombie_processes":   countProcessesByStatus(metrics.TopProcesses, "Z"),
+			},
+		},
 	}
 
 	jsonData, _ := json.Marshal(serviceData)
@@ -314,6 +338,43 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 
 	return false
+}
+
+// Helper functions for process analytics
+func countProcessesByStatus(processes []metrics.ProcessInfo, status string) int {
+	count := 0
+	for _, proc := range processes {
+		if proc.Status == status {
+			count++
+		}
+	}
+	return count
+}
+
+func getTopProcessesByCPU(processes []metrics.ProcessInfo, limit int) []metrics.ProcessInfo {
+	sorted := make([]metrics.ProcessInfo, len(processes))
+	copy(sorted, processes)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].CPUUsage > sorted[j].CPUUsage
+	})
+
+	if limit < len(sorted) {
+		return sorted[:limit]
+	}
+	return sorted
+}
+
+func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metrics.ProcessInfo {
+	sorted := make([]metrics.ProcessInfo, len(processes))
+	copy(sorted, processes)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].MemoryUsage > sorted[j].MemoryUsage
+	})
+
+	if limit < len(sorted) {
+		return sorted[:limit]
+	}
+	return sorted
 }
 
 // Отправка уведомления об удалении на бэкенд
@@ -859,7 +920,7 @@ Examples:
 			signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 			// Start monitoring loop
-			ticker := time.NewTicker(30 * time.Second)
+			ticker := time.NewTicker(60 * time.Second)     // Changed from 30 to 60 seconds
 			updateTicker := time.NewTicker(24 * time.Hour) // Check updates every minute (for testing)
 			defer ticker.Stop()
 			defer updateTicker.Stop()
@@ -916,6 +977,11 @@ Examples:
 						// Отправляем аналитику на бэк только если в cloud mode
 						if currentCfg.IsCloudMode() {
 							sendAlertAnalytics(currentCfg, alerts, currentMetrics)
+						}
+					} else {
+						// ✅ NEW: Если пороги НЕ превышены, отправляем обычную аналитику
+						if currentCfg.IsCloudMode() {
+							sendServiceAnalytics(currentCfg, "system_monitoring", currentMetrics)
 						}
 					}
 

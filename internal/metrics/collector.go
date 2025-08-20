@@ -18,6 +18,17 @@ type ProcessInfo struct {
 	MemoryKB    int64   `json:"memory_kb"`
 	Command     string  `json:"command"`
 	User        string  `json:"user"`
+
+	// New fields for backend analytics
+	Status      string `json:"status"`       // R (running), S (sleeping), Z (zombie), D (disk sleep)
+	StartTime   int64  `json:"start_time"`   // Unix timestamp when process started
+	Threads     int    `json:"threads"`      // Number of threads
+	VirtualMem  int64  `json:"virtual_mem"`  // Virtual memory size (VSZ) in KB
+	ResidentMem int64  `json:"resident_mem"` // Resident memory size (RSS) in KB
+	TTY         string `json:"tty"`          // Terminal (pts/0, ?, etc.)
+	CPU         int    `json:"cpu"`          // CPU number (0, 1, 2, etc.)
+	Priority    int    `json:"priority"`     // Process priority
+	Nice        int    `json:"nice"`         // Nice value
 }
 
 // ResourceUsage represents detailed resource information
@@ -35,15 +46,15 @@ type Metrics struct {
 	DiskUsage     float64 `json:"disk_usage"`
 	MemoryUsage   float64 `json:"memory_usage"`
 	HTTPSRequests int64   `json:"https_requests"`
-	
+
 	// New I/O metrics (exactly like HTTPS connections)
-	IOPS          int64   `json:"iops"`           // Input/Output Operations Per Second
-	IOWait        float64 `json:"io_wait"`        // I/O Wait percentage
-	
-	OSName        string  `json:"os_name"`
-	IPAddress     string  `json:"ip_address"`
-	Uptime        string  `json:"uptime"`
-	Timestamp     string  `json:"timestamp"`
+	IOPS   int64   `json:"iops"`    // Input/Output Operations Per Second
+	IOWait float64 `json:"io_wait"` // I/O Wait percentage
+
+	OSName    string `json:"os_name"`
+	IPAddress string `json:"ip_address"`
+	Uptime    string `json:"uptime"`
+	Timestamp string `json:"timestamp"`
 
 	// New detailed resource fields
 	CPUDetails    ResourceUsage `json:"cpu_details"`
@@ -286,7 +297,7 @@ func GetHTTPSRequests() (int64, error) {
 // GetIOPS returns Input/Output Operations Per Second
 func GetIOPS() (int64, error) {
 	var iops int64
-	
+
 	switch runtime.GOOS {
 	case "linux":
 		// Method 1: /proc/diskstats
@@ -304,7 +315,7 @@ func GetIOPS() (int64, error) {
 				}
 			}
 		}
-		
+
 		// Method 2: iostat если доступен
 		cmd = exec.Command("iostat", "-x", "1", "2")
 		output, err = cmd.Output()
@@ -326,7 +337,7 @@ func GetIOPS() (int64, error) {
 				}
 			}
 		}
-		
+
 	case "darwin":
 		// macOS: используем iostat
 		cmd := exec.Command("iostat", "1", "2")
@@ -345,14 +356,14 @@ func GetIOPS() (int64, error) {
 			}
 		}
 	}
-	
+
 	return iops, nil
 }
 
 // GetIOWait returns I/O Wait percentage
 func GetIOWait() (float64, error) {
 	var ioWait float64
-	
+
 	switch runtime.GOOS {
 	case "linux":
 		// Метод 1: /proc/stat
@@ -375,7 +386,7 @@ func GetIOWait() (float64, error) {
 				}
 			}
 		}
-		
+
 		// Метод 2: iostat
 		cmd = exec.Command("iostat", "-x", "1", "2")
 		output, err = cmd.Output()
@@ -392,7 +403,7 @@ func GetIOWait() (float64, error) {
 				}
 			}
 		}
-		
+
 		// Метод 3: vmstat
 		cmd = exec.Command("vmstat", "1", "2")
 		output, err = cmd.Output()
@@ -407,7 +418,7 @@ func GetIOWait() (float64, error) {
 				}
 			}
 		}
-		
+
 	case "darwin":
 		// macOS: используем vm_stat и iostat
 		cmd := exec.Command("vm_stat")
@@ -425,7 +436,7 @@ func GetIOWait() (float64, error) {
 				}
 			}
 		}
-		
+
 		// Альтернативный метод через iostat
 		cmd = exec.Command("iostat", "1", "2")
 		output, err = cmd.Output()
@@ -443,7 +454,7 @@ func GetIOWait() (float64, error) {
 			}
 		}
 	}
-	
+
 	return ioWait, nil
 }
 
@@ -865,6 +876,24 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 				command = command[:47] + "..."
 			}
 
+			// Parse additional process information for Linux
+			status := parts[7]                           // Process status (R, S, Z, D)
+			ttt := parts[6]                              // TTY
+			vsz, _ := strconv.ParseInt(parts[4], 10, 64) // Virtual memory
+
+			// Get start time (simplified - just use current time for now)
+			startTime := time.Now().Unix()
+
+			// Get CPU number (simplified - use 0 for now)
+			cpuNum := 0
+
+			// Get thread count (simplified - use 1 for now)
+			threadCount := 1
+
+			// Priority and Nice (simplified - use defaults for now)
+			priority := 20
+			nice := 0
+
 			process := ProcessInfo{
 				PID:         pid,
 				Name:        parts[10],
@@ -873,6 +902,17 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 				MemoryKB:    memKB,
 				Command:     command,
 				User:        user,
+
+				// New fields
+				Status:      status,
+				StartTime:   startTime,
+				Priority:    priority,
+				Nice:        nice,
+				VirtualMem:  vsz,
+				ResidentMem: memKB, // RSS is same as MemoryKB for now
+				TTY:         ttt,
+				CPU:         cpuNum,
+				Threads:     threadCount,
 			}
 
 			processes = append(processes, process)
@@ -920,6 +960,24 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 				command = command[:47] + "..."
 			}
 
+			// Parse additional process information for macOS
+			status := parts[7]                           // Process status (R, S, Z, D)
+			ttt := parts[6]                              // TTY
+			vsz, _ := strconv.ParseInt(parts[4], 10, 64) // Virtual memory
+
+			// Get start time (simplified - just use current time for now)
+			startTime := time.Now().Unix()
+
+			// Get CPU number (simplified - use 0 for now)
+			cpuNum := 0
+
+			// Get thread count (simplified - use 1 for now)
+			threadCount := 1
+
+			// Priority and Nice (simplified - use defaults for now)
+			priority := 20
+			nice := 0
+
 			process := ProcessInfo{
 				PID:         pid,
 				Name:        parts[10],
@@ -928,6 +986,17 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 				MemoryKB:    memKB,
 				Command:     command,
 				User:        user,
+
+				// New fields
+				Status:      status,
+				StartTime:   startTime,
+				Priority:    priority,
+				Nice:        nice,
+				VirtualMem:  vsz,
+				ResidentMem: memKB, // RSS is same as MemoryKB for now
+				TTY:         ttt,
+				CPU:         cpuNum,
+				Threads:     threadCount,
 			}
 
 			processes = append(processes, process)

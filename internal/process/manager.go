@@ -133,6 +133,19 @@ func CleanupZombieProcesses() {
 	}
 }
 
+// KillAllMoniqProcesses kills ALL moniq daemon processes for complete cleanup
+func KillAllMoniqProcesses() {
+	// Kill all moniq daemon processes
+	killCmd := exec.Command("pkill", "-f", "moniq daemon")
+	killCmd.Run() // Ignore errors
+	
+	// Clean up zombie processes
+	CleanupZombieProcesses()
+	
+	// Remove PID file
+	os.Remove(constants.PID_FILE)
+}
+
 // StartProcess starts the monitoring process in background
 func StartProcess() error {
 	// Clean up any existing issues first
@@ -155,6 +168,9 @@ func StartProcess() error {
 
 // RestartProcess stops and starts the monitoring process
 func RestartProcess() error {
+	// Kill any duplicate processes before stopping
+	KillDuplicateProcesses()
+	
 	// Stop if running
 	if IsRunning() {
 		err := StopProcess()

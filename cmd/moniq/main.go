@@ -1166,13 +1166,10 @@ Examples:
 				}
 			}
 
-			// stop the service (after removing config)
-			ui.PrintStatus("info", "Stopping Moniq monitoring service...")
-			if err := exec.Command("moniq", "stop").Run(); err != nil {
-				ui.PrintStatus("warning", "Service was not running or already stopped")
-			} else {
-				ui.PrintStatus("success", "Service stopped")
-			}
+			// stop ALL moniq processes (after removing config)
+			ui.PrintStatus("info", "Stopping all Moniq monitoring processes...")
+			process.KillAllMoniqProcesses()
+			ui.PrintStatus("success", "All processes stopped")
 
 			// remove ALL Moniq binaries from PATH LAST
 			ui.PrintStatus("info", "Removing Moniq binaries...")
@@ -1280,15 +1277,7 @@ Examples:
 
 			// kill all moniq daemon processes
 			ui.PrintStatus("info", "Killing all moniq daemon processes...")
-			killCmd := exec.Command("pkill", "-f", "moniq daemon")
-			killCmd.Run() // Ignore errors
-
-			// clean up zombie processes
-			ui.PrintStatus("info", "Cleaning up zombie processes...")
-			process.CleanupZombieProcesses()
-
-			// remove PID file
-			os.Remove(constants.PID_FILE)
+			process.KillAllMoniqProcesses()
 
 			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
 			ui.PrintStatus("info", "Run 'moniq start' to start fresh monitoring service.")

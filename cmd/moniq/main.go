@@ -172,21 +172,21 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		},
 		"service_name": "moniq",
 		"service_status": func() string {
-			if eventType == "service_start" {
+			if eventType == "service_start" || eventType == "system_monitoring" {
 				return "running"
 			}
 			return "stopped"
 		}(),
 		"service_pid": pid,
 		"service_uptime": func() int64 {
-			if eventType == "service_start" {
+			if eventType == "service_start" || eventType == "service_stop" {
 				return 0
 			}
-			// Для остановки можно попытаться получить uptime из PID файла
+			// could try to get uptime from PID file for stop events
 			return 0
 		}(),
 
-		// ✅ NEW: Add process analytics data for service events
+		// add process analytics data for service events
 		"process_analytics": map[string]interface{}{
 			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 5),
 			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 5),
@@ -201,9 +201,9 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 
 	jsonData, _ := json.Marshal(serviceData)
 
-	// Отправляем аналитику на бэк
+	// send analytics to backend
 	go func() {
-		// Логируем начало запроса аналитики сервиса
+		// log service analytics request start
 		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			defer logFile.Close()
 			logFile.WriteString(fmt.Sprintf("[%s] INFO: Analytics request started - Type: service_%s, URL: %s\n",
@@ -223,7 +223,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			// Логируем ошибку, но не прерываем работу
+			// log analytics send error
 			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 				defer f.Close()
 				f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to send service analytics: %v\n",
@@ -233,7 +233,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		}
 		defer resp.Body.Close()
 
-		// Логируем успешную отправку аналитики сервиса
+		// log analytics success
 		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 			defer logFile.Close()
 			logFile.WriteString(fmt.Sprintf("[%s] INFO: Analytics sent - Type: service_%s, Status: success\n",
@@ -258,7 +258,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		osName = metrics.OSName
 	}
 
-	// Определяем платформу
+	// determine platform
 	platform := runtime.GOOS
 	arch := runtime.GOARCH
 	switch arch {
@@ -271,10 +271,10 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 
 	serverData := map[string]interface{}{
-		"platform":     platform, // Убираем "-" + arch
+		"platform":     platform, // remove "-" + arch
 		"architecture": arch,
 		"type":         "install",
-		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()), // Строка с Unix timestamp как в install.sh
+		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()), // string with Unix timestamp like in install.sh
 		"user_token":   userToken,
 		"server_info": map[string]string{
 			"hostname":      hostname,
@@ -285,13 +285,11 @@ func registerServer(userToken string, cfg *config.Config) bool {
 
 	jsonData, _ := json.Marshal(serverData)
 
-	// Создаем запрос с заголовками как в install.sh
 	req, err := http.NewRequest("POST", constants.INSTALL_URL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return false
 	}
 
-	// Устанавливаем заголовки точно как в install.sh
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", constants.USER_AGENT)
 	req.Header.Set("X-Platform", platform)
@@ -304,7 +302,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 	defer resp.Body.Close()
 
-	// Читаем тело ответа
+	// read response body
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	var result map[string]interface{}
@@ -313,21 +311,21 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 
 	if result["success"] == true {
-		// Сохраняем server_token если он есть в ответе
-		// server_token находится в data.server_token
+		// save server_token if it exists in response
+		// server_token is in data.server_token
 
 		if data, ok := result["data"].(map[string]interface{}); ok {
 			if serverToken, ok := data["server_token"].(string); ok && serverToken != "" {
-				// Логируем найденный server_token
+				// log found server_token
 
-				// Устанавливаем server_token в переданный объект cfg
+				// set server_token in passed cfg object
 				cfg.ServerToken = serverToken
 			} else {
-				// Логируем что server_token не найден
+				// log that server_token not found
 
 			}
 		} else {
-			// Логируем что data секция не найдена
+			// log that data section not found
 			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 				defer f.Close()
 				f.WriteString(fmt.Sprintf("[%s] ERROR: data section not found in response\n",
@@ -377,7 +375,7 @@ func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metri
 	return sorted
 }
 
-// Отправка уведомления об удалении на бэкенд
+// send uninstall notification to backend
 func sendUninstallNotification(authToken, serverToken string) bool {
 	uninstallData := map[string]interface{}{
 		"auth_token":   authToken,
@@ -388,13 +386,13 @@ func sendUninstallNotification(authToken, serverToken string) bool {
 
 	jsonData, _ := json.Marshal(uninstallData)
 
-	// Создаем запрос
+	// create request
 	req, err := http.NewRequest("POST", constants.UNINSTALL_URL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return false
 	}
 
-	// Устанавливаем заголовки (как требует бэкенд)
+	// set headers (as required by backend)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", constants.USER_AGENT)
 	req.Header.Set("X-Platform", runtime.GOOS) // linux/darwin/windows
@@ -407,7 +405,7 @@ func sendUninstallNotification(authToken, serverToken string) bool {
 	}
 	defer resp.Body.Close()
 
-	// Логируем результат
+	// log result
 	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		defer f.Close()
 		if resp.StatusCode == 200 {
@@ -422,7 +420,7 @@ func sendUninstallNotification(authToken, serverToken string) bool {
 	return resp.StatusCode == 200
 }
 
-// Передача владения сервером
+// transfer server ownership
 func transferServerOwnership(oldToken, newToken, serverToken string) bool {
 	changeData := map[string]interface{}{
 		"old_user_token": oldToken,
@@ -449,25 +447,25 @@ func transferServerOwnership(oldToken, newToken, serverToken string) bool {
 }
 
 func main() {
-	// Load configuration
+	// load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create root command
+	// create root command
 	rootCmd := &cobra.Command{
 		Use:                "moniq",
 		Short:              "Professional Moniq CLI Tool",
 		DisableSuggestions: true,
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Check if --version flag is set
+			// check if --version flag is set
 			if cmd.Flags().Lookup("version").Changed {
 				version := VERSION
 				if version == "" {
-					// Read version from version.txt if VERSION is not set
+					// read version from version.txt if VERSION is not set
 					if versionData, err := os.ReadFile("version.txt"); err == nil {
 						version = strings.TrimSpace(string(versionData))
 					}
@@ -480,7 +478,7 @@ func main() {
 
 			ui.PrintSection("Core Features")
 
-			// Features section
+			// features section
 			featuresData := map[string]string{
 				"System Monitoring": "CPU, Memory, Disk metrics",
 				"Alert System":      "Telegram notifications",
@@ -491,7 +489,7 @@ func main() {
 			fmt.Print(ui.CreateBeautifulList(featuresData))
 			ui.PrintSectionEnd()
 
-			// Quick Start section
+			// quick start section
 			ui.PrintSection("Quick Start")
 			quickStartData := map[string]string{
 				"Start Service":  "moniq start",
@@ -503,7 +501,7 @@ func main() {
 			fmt.Print(ui.CreateBeautifulList(quickStartData))
 			ui.PrintSectionEnd()
 
-			// Available Commands section
+			// available commands section
 			ui.PrintSection("Commands")
 			commandsData := map[string]string{
 				"status":  "Show system metrics",
@@ -520,10 +518,10 @@ func main() {
 		},
 	}
 
-	// Add version flag
+	// add version flag
 	rootCmd.Flags().BoolP("version", "v", false, "Show version information")
 
-	// Status command
+	// status command
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Display current system metrics and alert thresholds",
@@ -537,7 +535,7 @@ Examples:
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 
-			// Get system information
+			// get system information
 			hostname, _ := os.Hostname()
 			metrics, err := metrics.GetMetrics()
 			if err != nil {
@@ -545,7 +543,7 @@ Examples:
 				return
 			}
 
-			// System Information section
+			// system information section
 			ui.PrintSection("System Information")
 			systemData := map[string]string{
 				"Hostname": hostname,
@@ -556,7 +554,7 @@ Examples:
 			fmt.Print(ui.CreateBeautifulList(systemData))
 			ui.PrintSectionEnd()
 
-			// Timestamp section
+			// timestamp section
 			ui.PrintSection("Timestamp")
 			timestampData := map[string]string{
 				"Current Time": metrics.Timestamp,
@@ -564,7 +562,7 @@ Examples:
 			fmt.Print(ui.CreateBeautifulList(timestampData))
 			ui.PrintSectionEnd()
 
-			// Metrics section
+			// metrics section
 			ui.PrintSection("Current Metrics")
 			metricsData := map[string]string{
 				"CPU Usage":         fmt.Sprintf("%s (%d cores, %d active)", utils.FormatPercentage(metrics.CPUUsage), metrics.CPUDetails.Total, metrics.CPUDetails.Used),
@@ -577,7 +575,7 @@ Examples:
 			fmt.Print(ui.CreateBeautifulList(metricsData))
 			ui.PrintSectionEnd()
 
-			// Thresholds section
+			// thresholds section
 			ui.PrintSection("Alert Thresholds")
 			thresholdData := map[string]string{
 				"CPU Threshold":    utils.FormatPercentage(cfg.CPUThreshold),
@@ -587,7 +585,7 @@ Examples:
 			fmt.Print(ui.CreateBeautifulList(thresholdData))
 			ui.PrintSectionEnd()
 
-			// Daemon Status
+			// daemon status
 			ui.PrintSection("Daemon Status")
 			if process.IsRunning() {
 				ui.PrintStatus("success", "Monitoring daemon is running")
@@ -598,7 +596,7 @@ Examples:
 		},
 	}
 
-	// Processes command
+	// processes command
 	processesCmd := &cobra.Command{
 		Use:   "processes",
 		Short: "Show detailed information about running processes",
@@ -614,7 +612,7 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Process Information")
 
-			// Get metrics with process information
+			// get metrics with process information
 			currentMetrics, err := metrics.GetMetrics()
 			if err != nil {
 				ui.PrintStatus("error", fmt.Sprintf("Error getting metrics: %v", err))
@@ -622,20 +620,20 @@ Examples:
 				return
 			}
 
-			// Get limit from flags
+			// get limit from flags
 			limit, _ := cmd.Flags().GetInt("limit")
 
-			// Show top processes by CPU
+			// show top processes by CPU
 			ui.PrintSection("Top Processes by CPU Usage")
 			if len(currentMetrics.TopProcesses) > 0 {
-				// Sort by CPU usage
+				// sort by CPU usage
 				sortedProcesses := make([]metrics.ProcessInfo, len(currentMetrics.TopProcesses))
 				copy(sortedProcesses, currentMetrics.TopProcesses)
 				sort.Slice(sortedProcesses, func(i, j int) bool {
 					return sortedProcesses[i].CPUUsage > sortedProcesses[j].CPUUsage
 				})
 
-				// Show top N processes
+				// show top N processes
 				if limit < len(sortedProcesses) {
 					sortedProcesses = sortedProcesses[:limit]
 				}
@@ -646,17 +644,17 @@ Examples:
 			}
 			ui.PrintSectionEnd()
 
-			// Show top processes by Memory
+			// show top processes by memory
 			ui.PrintSection("Top Processes by Memory Usage")
 			if len(currentMetrics.TopProcesses) > 0 {
-				// Sort by CPU usage
+				// sort by CPU usage
 				sortedProcesses := make([]metrics.ProcessInfo, len(currentMetrics.TopProcesses))
 				copy(sortedProcesses, currentMetrics.TopProcesses)
 				sort.Slice(sortedProcesses, func(i, j int) bool {
 					return sortedProcesses[i].MemoryUsage > sortedProcesses[j].MemoryUsage
 				})
 
-				// Show top N processes
+				// show top N processes
 				if limit < len(sortedProcesses) {
 					sortedProcesses = sortedProcesses[:limit]
 				}
@@ -670,7 +668,7 @@ Examples:
 	}
 	processesCmd.Flags().IntP("limit", "n", 10, "Number of processes to show")
 
-	// Restart command
+	// restart command
 	restartCmd := &cobra.Command{
 		Use:   "restart",
 		Short: "Stop and restart the monitoring service",
@@ -684,7 +682,7 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Restarting Monitoring Service")
 
-			// Stop current process
+			// stop current process
 			if process.IsRunning() {
 				err := process.StopProcess()
 				if err != nil {
@@ -695,7 +693,7 @@ Examples:
 				ui.PrintStatus("success", "Monitoring service stopped")
 			}
 
-			// Start new process
+			// start new process
 			err := process.StartProcess()
 			if err != nil {
 				ui.PrintStatus("error", fmt.Sprintf("Failed to start: %v", err))
@@ -705,7 +703,7 @@ Examples:
 
 			ui.PrintStatus("success", "Monitoring service restarted successfully")
 
-			// Check if Telegram is configured
+			// check if Telegram is configured
 			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 				ui.PrintStatus("info", "Telegram bot will be started automatically")
 			}
@@ -714,7 +712,7 @@ Examples:
 		},
 	}
 
-	// Update command
+	// update command
 	updateCmd := &cobra.Command{
 		Use:   "update",
 		Short: "Download and install the latest version",
@@ -725,19 +723,19 @@ The update process is handled by the official update script.
 Examples:
   moniq update          # Check and install updates`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Execute the update script directly
+			// execute the update script directly
 			updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_MONIQ_URL+"/update.sh | bash")
 			updateCmd.Stdout = os.Stdout
 			updateCmd.Stderr = os.Stderr
 
 			if err := updateCmd.Run(); err != nil {
-				// Don't treat any exit code as error (update.sh handles its own exit codes)
+				// don't treat any exit code as error (update.sh handles its own exit codes)
 				return
 			}
 		},
 	}
 
-	// Start command
+	// start command
 	startCmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start background monitoring service",
@@ -776,7 +774,7 @@ Examples:
 		},
 	}
 
-	// Set command
+	// set command
 	setCmd := &cobra.Command{
 		Use:   "set",
 		Short: "Configure alert thresholds for CPU, Memory, and Disk",
@@ -804,7 +802,7 @@ Examples:
 				return
 			}
 
-			// Parse arguments and update config
+			// parse arguments and update config
 			for _, arg := range args {
 				parts := strings.Split(arg, "=")
 				if len(parts) != 2 {
@@ -839,7 +837,7 @@ Examples:
 				ui.PrintStatus("success", fmt.Sprintf("Set %s threshold to %.1f%%", metric, value))
 			}
 
-			// Save configuration
+			// save configuration
 			err := config.SaveConfig(cfg)
 			if err != nil {
 				ui.PrintStatus("error", fmt.Sprintf("Failed to save config: %v", err))
@@ -853,19 +851,19 @@ Examples:
 		},
 	}
 
-	// Daemon command (hidden)
+	// daemon command (hidden)
 	daemonCmd := &cobra.Command{
 		Use:    "daemon",
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
-			// This is the actual monitoring daemon
-			// Write PID file
+			// this is the actual monitoring daemon
+			// write PID file
 			pid := os.Getpid()
 			if f, err := os.Create(constants.PID_FILE); err == nil {
 				f.WriteString(fmt.Sprintf("%d", pid))
 				f.Close()
 
-				// Логируем старт сервиса
+				// log service start
 				if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 					defer logFile.Close()
 					logFile.WriteString(fmt.Sprintf("[%s] INFO: Service started - PID: %d\n",
@@ -873,7 +871,7 @@ Examples:
 				}
 			}
 
-			// Send startup notification
+			// send startup notification
 			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 				hostname, _ := os.Hostname()
 				ipAddress, _ := metrics.GetIPAddress()
@@ -904,22 +902,22 @@ Examples:
 
 				telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, startupMessage)
 
-				// Отправляем аналитику о старте сервиса
+				// send service start analytics
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
 					sendServiceAnalytics(cfg, "service_start", currentMetrics)
 				}
 			}
 
-			// Start Telegram bot in background if configured
+			// start Telegram bot in background if configured
 			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 				go telegram.StartBotInBackground(cfg)
 			}
 
-			// Setup signal handling for graceful shutdown
+			// setup signal handling for graceful shutdown
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-			// Start monitoring loop
+			// start monitoring loop
 			ticker := time.NewTicker(60 * time.Second)     // Changed from 30 to 60 seconds
 			updateTicker := time.NewTicker(24 * time.Hour) // Check updates every minute (for testing)
 			defer ticker.Stop()
@@ -928,20 +926,20 @@ Examples:
 			for {
 				select {
 				case <-ticker.C:
-					// Reload config to get latest changes
+					// reload config to get latest changes
 					currentCfg, err := config.LoadConfig()
 					if err != nil {
-						// If config reload fails, use cached config
+						// if config reload fails, use cached config
 						currentCfg = cfg
 					}
 
-					// Get current metrics
+					// get current metrics
 					currentMetrics, err := metrics.GetMetrics()
 					if err != nil {
 						continue
 					}
 
-					// Check for alerts
+					// check for alerts
 					alerts := []string{}
 					if utils.CheckCPUAlert(currentMetrics.CPUUsage, currentCfg.CPUThreshold) {
 						alerts = append(alerts, fmt.Sprintf("CPU: %.1f%% (limit: %.1f%%)", currentMetrics.CPUUsage, currentCfg.CPUThreshold))
@@ -953,11 +951,11 @@ Examples:
 						alerts = append(alerts, fmt.Sprintf("Disk: %.1f%% (limit: %.1f%%)", currentMetrics.DiskUsage, currentCfg.DiskThreshold))
 					}
 
-					// Send alert if any thresholds exceeded
+					// send alert if any thresholds exceeded
 					if len(alerts) > 0 && currentCfg.TelegramToken != "" && currentCfg.ChatID != 0 {
 						hostname, _ := os.Hostname()
 
-						// Логируем алерт
+						// log alert
 						if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 							defer logFile.Close()
 							logFile.WriteString(fmt.Sprintf("[%s] ALERT: Thresholds exceeded - %s\n",
@@ -974,29 +972,29 @@ Examples:
 
 						telegram.SendToTelegram(currentCfg.TelegramToken, currentCfg.ChatID, alertMessage)
 
-						// Отправляем аналитику на бэк только если в cloud mode
+						// send analytics to backend only if in cloud mode
 						if currentCfg.IsCloudMode() {
 							sendAlertAnalytics(currentCfg, alerts, currentMetrics)
 						}
 					} else {
-						// ✅ NEW: Если пороги НЕ превышены, отправляем обычную аналитику
+						// if thresholds are not exceeded, send regular analytics
 						if currentCfg.IsCloudMode() {
 							sendServiceAnalytics(currentCfg, "system_monitoring", currentMetrics)
 						}
 					}
 
 				case <-updateTicker.C:
-					// Check for updates once per day
+					// check for updates once per day
 					if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-						// Get current version
+						// get current version
 						cmd := exec.Command("moniq", "--version")
 						output, err := cmd.Output()
 						if err == nil {
 							currentVersion := strings.TrimSpace(string(output))
 							currentVersion = strings.TrimPrefix(currentVersion, "v")
 
-							// Check API for latest version
-							// Логируем начало запроса проверки версии
+							// check API for latest version
+							// log version check request start
 							if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 								defer logFile.Close()
 								logFile.WriteString(fmt.Sprintf("[%s] INFO: Version check request started - URL: %s\n",
@@ -1052,20 +1050,20 @@ Examples:
 
 						telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, shutdownMessage)
 
-						// Отправляем аналитику об остановке сервиса
+						// send service stop analytics
 						if currentMetrics, err := metrics.GetMetrics(); err == nil {
 							sendServiceAnalytics(cfg, "service_stop", currentMetrics)
 						}
 					}
 
-					// Логируем остановку сервиса
+					// log service stop
 					if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 						defer logFile.Close()
 						logFile.WriteString(fmt.Sprintf("[%s] INFO: Service stopped - PID: %d\n",
 							time.Now().Format("2006-01-02 15:04:05"), pid))
 					}
 
-					// Remove PID file
+					// remove PID file
 					os.Remove(constants.PID_FILE)
 					return
 				}
@@ -1073,7 +1071,7 @@ Examples:
 		},
 	}
 
-	// Uninstall command
+	// uninstall command
 	uninstallCmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Completely remove Moniq CLI from the system",
@@ -1093,7 +1091,7 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Uninstall Moniq CLI")
 
-			// Check if --yes flag is set
+			// check if --yes flag is set
 			skipConfirm := cmd.Flags().Lookup("yes").Changed
 
 			if !skipConfirm {
@@ -1112,7 +1110,7 @@ Examples:
 				}
 			}
 
-			// Send uninstall notification to backend if we have tokens
+			// send uninstall notification to backend if we have tokens
 			if cfg.AuthToken != "" && cfg.ServerToken != "" {
 				ui.PrintStatus("info", "Notifying backend about uninstall...")
 				if sendUninstallNotification(cfg.AuthToken, cfg.ServerToken) {
@@ -1122,7 +1120,7 @@ Examples:
 				}
 			}
 
-			// Remove autostart services FIRST (before stopping service)
+			// remove autostart services FIRST (before stopping service)
 			ui.PrintStatus("info", "Removing autostart services...")
 			switch runtime.GOOS {
 			case "linux":
@@ -1144,7 +1142,7 @@ Examples:
 				ui.PrintStatus("success", "Launchd service removed")
 			}
 
-			// Remove configuration directory
+			// remove configuration directory
 			ui.PrintStatus("info", "Removing configuration files...")
 			configDir := os.Getenv("HOME") + "/.moniq"
 			if err := os.RemoveAll(configDir); err == nil {
@@ -1153,7 +1151,7 @@ Examples:
 				ui.PrintStatus("warning", "Could not remove configuration directory")
 			}
 
-			// Remove log files
+			// remove log files
 			ui.PrintStatus("info", "Removing log files...")
 			logFiles := []string{
 				"/tmp/moniq.log",
@@ -1168,7 +1166,7 @@ Examples:
 				}
 			}
 
-			// Stop the service (after removing config)
+			// stop the service (after removing config)
 			ui.PrintStatus("info", "Stopping Moniq monitoring service...")
 			if err := exec.Command("moniq", "stop").Run(); err != nil {
 				ui.PrintStatus("warning", "Service was not running or already stopped")
@@ -1176,7 +1174,7 @@ Examples:
 				ui.PrintStatus("success", "Service stopped")
 			}
 
-			// Remove ALL Moniq binaries from PATH LAST
+			// remove ALL Moniq binaries from PATH LAST
 			ui.PrintStatus("info", "Removing Moniq binaries...")
 			binaryPaths := []string{
 				"/usr/local/bin/moniq",
@@ -1184,7 +1182,7 @@ Examples:
 				os.Getenv("HOME") + "/.local/bin/moniq",
 			}
 
-			// Also search for any other moniq binaries in PATH
+			// also search for any other moniq binaries in PATH
 			pathDirs := strings.Split(os.Getenv("PATH"), ":")
 			for _, dir := range pathDirs {
 				if strings.Contains(dir, "moniq") || strings.Contains(dir, ".local") || strings.Contains(dir, "bin") {
@@ -1195,7 +1193,7 @@ Examples:
 				}
 			}
 
-			// Remove all found binaries
+			// remove all found binaries
 			binaryRemoved := false
 			for _, path := range binaryPaths {
 				if _, err := os.Stat(path); err == nil {
@@ -1217,10 +1215,10 @@ Examples:
 		},
 	}
 
-	// Add --yes flag to uninstall command
+	// add --yes flag to uninstall command
 	uninstallCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
 
-	// Cleanup command
+	// cleanup command
 	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
 		Short: "Clean up old backup files and duplicate processes",
@@ -1233,13 +1231,13 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Cleaning Up Old Backups and Processes")
 
-			// Clean up duplicate processes first
+			// clean up duplicate processes first
 			ui.PrintStatus("info", "Checking for duplicate processes...")
 			process.KillDuplicateProcesses()
 			process.CleanupZombieProcesses()
 			ui.PrintStatus("success", "Process cleanup completed")
 
-			// Clean up old backup files
+			// clean up old backup files
 			ui.PrintStatus("info", "Cleaning up old backup files...")
 			executable, err := os.Executable()
 			if err != nil {
@@ -1264,7 +1262,7 @@ Examples:
 		},
 	}
 
-	// Force cleanup command
+	// force cleanup command
 	forceCleanupCmd := &cobra.Command{
 		Use:   "force-cleanup",
 		Short: "Force cleanup of all duplicate processes and zombie processes",
@@ -1280,16 +1278,16 @@ Examples:
 
 			ui.PrintStatus("warning", "This will kill ALL moniq daemon processes!")
 
-			// Kill all moniq daemon processes
+			// kill all moniq daemon processes
 			ui.PrintStatus("info", "Killing all moniq daemon processes...")
 			killCmd := exec.Command("pkill", "-f", "moniq daemon")
 			killCmd.Run() // Ignore errors
 
-			// Clean up zombie processes
+			// clean up zombie processes
 			ui.PrintStatus("info", "Cleaning up zombie processes...")
 			process.CleanupZombieProcesses()
 
-			// Remove PID file
+			// remove PID file
 			os.Remove(constants.PID_FILE)
 
 			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
@@ -1298,7 +1296,7 @@ Examples:
 		},
 	}
 
-	// Config command
+	// config command
 	configCmd := &cobra.Command{
 		Use:   "config",
 		Short: "Configure Telegram bot and backend analytics",
@@ -1329,7 +1327,7 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 
 			arg := args[0]
 			if arg == "show" {
-				// Show current configuration
+				// show current configuration
 				ui.PrintSection("Telegram Bot Configuration")
 				ui.PrintStatus("info", "Current Telegram Configuration:")
 				if cfg.TelegramToken != "" {
@@ -1365,7 +1363,7 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 				return
 			}
 
-			// Parse argument
+			// parse argument
 			parts := strings.Split(arg, "=")
 			if len(parts) != 2 {
 				ui.PrintStatus("error", "Invalid format. Use: token=..., group=..., or auth=...")
@@ -1409,7 +1407,7 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 				return
 			}
 
-			// Save configuration (только если не было registerServer)
+			// save configuration (only if registerServer was not called)
 			if cfg.AuthToken == "" || cfg.ServerToken != "" {
 				err := config.SaveConfig(cfg)
 				if err != nil {
@@ -1424,7 +1422,7 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 		},
 	}
 
-	// Autostart command
+	// autostart command
 	autostartCmd := &cobra.Command{
 		Use:   "autostart",
 		Short: "Enable or disable autostart on boot",
@@ -1467,7 +1465,7 @@ Examples:
 		},
 	}
 
-	// Auth command
+	// auth command
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Authentication commands",
@@ -1479,7 +1477,7 @@ Commands:
   status   Show authentication status`,
 	}
 
-	// Login subcommand
+	// login subcommand
 	loginCmd := &cobra.Command{
 		Use:   "login [token]",
 		Short: "Login with authentication token",
@@ -1502,7 +1500,7 @@ Examples:
 				return
 			}
 
-			// Если у нас уже есть server_token, перепривязываем сервер
+			// if we already have server_token, transfer ownership
 			if cfg.ServerToken != "" && cfg.AuthToken != "" {
 				ui.PrintStatus("info", "Server is already registered, transferring ownership...")
 
@@ -1515,7 +1513,7 @@ Examples:
 
 				ui.PrintStatus("success", "Server ownership transferred successfully")
 			} else {
-				// Первый раз логинимся - регистрируем сервер
+				// first time logging in - register server
 				ui.PrintStatus("info", "Registering server with your account...")
 
 				if !registerServer(newToken, cfg) {
@@ -1528,7 +1526,7 @@ Examples:
 				ui.PrintStatus("success", "Server registered successfully")
 			}
 
-			// Обновляем auth_token (server_token уже сохранен в registerServer)
+			// update auth_token (server_token is already saved in registerServer)
 			cfg.AuthToken = newToken
 			if err := config.SaveConfig(cfg); err != nil {
 				ui.PrintStatus("error", "Failed to save authentication token")
@@ -1540,7 +1538,7 @@ Examples:
 		},
 	}
 
-	// Logout subcommand
+	// logout subcommand
 	logoutCmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Logout and clear authentication",
@@ -1549,17 +1547,17 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Authentication")
 
-			// Load current config
+			// load current config
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				ui.PrintStatus("error", "Failed to load config")
 				return
 			}
 
-			// Clear auth token
+			// clear auth token
 			cfg.AuthToken = ""
 
-			// Save config
+			// save config
 			if err := config.SaveConfig(cfg); err != nil {
 				ui.PrintStatus("error", "Failed to clear authentication token")
 				return
@@ -1571,7 +1569,7 @@ Examples:
 		},
 	}
 
-	// Status subcommand
+	// status subcommand
 	statusAuthCmd := &cobra.Command{
 		Use:   "info",
 		Short: "Show authentication status",
@@ -1580,7 +1578,7 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Authentication Status")
 
-			// Load current config
+			// load current config
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				ui.PrintStatus("error", "Failed to load config")
@@ -1605,7 +1603,7 @@ Examples:
 		},
 	}
 
-	// Token subcommand
+	// token subcommand
 	tokenCmd := &cobra.Command{
 		Use:   "token",
 		Short: "Show current authentication token",
@@ -1616,7 +1614,7 @@ This command shows the full token that is currently stored in the configuration.
 			ui.PrintHeader()
 			ui.PrintSection("Authentication Token")
 
-			// Load current config
+			// load current config
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				ui.PrintStatus("error", "Failed to load config")
@@ -1635,13 +1633,13 @@ This command shows the full token that is currently stored in the configuration.
 		},
 	}
 
-	// Add auth subcommands
+	// add auth subcommands
 	authCmd.AddCommand(loginCmd)
 	authCmd.AddCommand(logoutCmd)
 	authCmd.AddCommand(statusAuthCmd)
 	authCmd.AddCommand(tokenCmd)
 
-	// Add commands to root
+	// add commands to root
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(processesCmd)
 	rootCmd.AddCommand(restartCmd)
@@ -1656,18 +1654,18 @@ This command shows the full token that is currently stored in the configuration.
 	rootCmd.AddCommand(autostartCmd)
 	rootCmd.AddCommand(authCmd)
 
-	// Execute
+	// execute
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-// Autostart functions
+// autostart functions
 func enableAutostart(executable string) {
 	switch runtime.GOOS {
 	case "linux":
-		// Create systemd user service
+		// create systemd user service
 		homeDir, _ := os.UserHomeDir()
 		systemdDir := homeDir + "/.config/systemd/user"
 		os.MkdirAll(systemdDir, 0755)
@@ -1692,7 +1690,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 			return
 		}
 
-		// Enable and start service
+		// enable and start service
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
 		exec.Command("systemctl", "--user", "enable", "moniq.service").Run()
 		exec.Command("systemctl", "--user", "start", "moniq.service").Run()
@@ -1701,7 +1699,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 		ui.PrintStatus("info", "Moniq will start automatically on boot")
 
 	case "darwin":
-		// Create launchd service
+		// create launchd service
 		homeDir, _ := os.UserHomeDir()
 		launchAgentsDir := homeDir + "/Library/LaunchAgents"
 		os.MkdirAll(launchAgentsDir, 0755)
@@ -1734,7 +1732,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 			return
 		}
 
-		// Load the service
+		// load the service
 		exec.Command("launchctl", "load", plistFile).Run()
 
 		ui.PrintStatus("success", "Launchd service created and enabled")
@@ -1748,10 +1746,10 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 func disableAutostart() {
 	switch runtime.GOOS {
 	case "linux":
-		// Disable systemd service (without stopping to avoid duplicate Telegram messages)
+		// disable systemd service (without stopping to avoid duplicate Telegram messages)
 		exec.Command("systemctl", "--user", "disable", "moniq.service").Run()
 
-		// Remove service file
+		// remove service file
 		homeDir, _ := os.UserHomeDir()
 		serviceFile := homeDir + "/.config/systemd/user/moniq.service"
 		os.Remove(serviceFile)
@@ -1759,10 +1757,10 @@ func disableAutostart() {
 		ui.PrintStatus("success", "Systemd service disabled and removed")
 
 	case "darwin":
-		// Unload launchd service
+		// unload launchd service
 		exec.Command("launchctl", "unload", "~/Library/LaunchAgents/com.moniq.monitor.plist").Run()
 
-		// Remove plist file
+		// remove plist file
 		homeDir, _ := os.UserHomeDir()
 		plistFile := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
 		os.Remove(plistFile)
@@ -1777,7 +1775,7 @@ func disableAutostart() {
 func checkAutostartStatus() {
 	switch runtime.GOOS {
 	case "linux":
-		// Check systemd service status
+		// check systemd service status
 		cmd := exec.Command("systemctl", "--user", "is-enabled", "moniq.service")
 		if err := cmd.Run(); err == nil {
 			ui.PrintStatus("success", "Autostart is enabled (systemd)")
@@ -1786,7 +1784,7 @@ func checkAutostartStatus() {
 		}
 
 	case "darwin":
-		// Check launchd service status
+		// check launchd service status
 		homeDir, _ := os.UserHomeDir()
 		plistFile := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
 		if _, err := os.Stat(plistFile); err == nil {

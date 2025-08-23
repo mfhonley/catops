@@ -1006,3 +1006,147 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 
 	return processes, nil
 }
+
+// GetServerSpecs returns server specifications for registration
+func GetServerSpecs() (map[string]interface{}, error) {
+	specs := make(map[string]interface{})
+
+	// Get CPU cores
+	cpuCores, err := GetCPUCores()
+	if err != nil {
+		specs["cpu_cores"] = 0
+	} else {
+		specs["cpu_cores"] = cpuCores
+	}
+
+	// Get total memory in GB
+	totalMemory, err := GetTotalMemory()
+	if err != nil {
+		specs["total_memory"] = 0
+	} else {
+		specs["total_memory"] = totalMemory
+	}
+
+	// Get total storage in GB
+	totalStorage, err := GetTotalStorage()
+	if err != nil {
+		specs["total_storage"] = 0
+	} else {
+		specs["total_storage"] = totalStorage
+	}
+
+	return specs, nil
+}
+
+// GetCPUCores returns the number of CPU cores
+func GetCPUCores() (int64, error) {
+	switch runtime.GOOS {
+	case "linux":
+		// Try /proc/cpuinfo first
+		cmd := exec.Command("grep", "-c", "^processor", "/proc/cpuinfo")
+		output, err := cmd.Output()
+		if err == nil {
+			cores := strings.TrimSpace(string(output))
+			if count, err := strconv.ParseInt(cores, 10, 64); err == nil && count > 0 {
+				return count, nil
+			}
+		}
+
+		// Try nproc command
+		cmd = exec.Command("nproc")
+		output, err = cmd.Output()
+		if err == nil {
+			cores := strings.TrimSpace(string(output))
+			if count, err := strconv.ParseInt(cores, 10, 64); err == nil && count > 0 {
+				return count, nil
+			}
+		}
+
+	case "darwin":
+		// macOS method
+		cmd := exec.Command("sysctl", "-n", "hw.ncpu")
+		output, err := cmd.Output()
+		if err == nil {
+			cores := strings.TrimSpace(string(output))
+			if count, err := strconv.ParseInt(cores, 10, 64); err == nil && count > 0 {
+				return count, nil
+			}
+		}
+	}
+
+	// Fallback to runtime
+	return int64(runtime.NumCPU()), nil
+}
+
+// GetTotalMemory returns total memory in GB
+func GetTotalMemory() (int64, error) {
+	switch runtime.GOOS {
+	case "linux":
+		// Try /proc/meminfo
+		cmd := exec.Command("grep", "MemTotal", "/proc/meminfo")
+		output, err := cmd.Output()
+		if err == nil {
+			line := strings.TrimSpace(string(output))
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				if kb, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+					return kb / 1024 / 1024, nil // Convert KB to GB
+				}
+			}
+		}
+
+	case "darwin":
+		// macOS method
+		cmd := exec.Command("sysctl", "-n", "hw.memsize")
+		output, err := cmd.Output()
+		if err == nil {
+			bytes := strings.TrimSpace(string(output))
+			if memBytes, err := strconv.ParseInt(bytes, 10, 64); err == nil {
+				return memBytes / 1024 / 1024 / 1024, nil // Convert bytes to GB
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("could not get total memory")
+}
+
+// GetTotalStorage returns total storage in GB
+func GetTotalStorage() (int64, error) {
+	switch runtime.GOOS {
+	case "linux":
+		// Try df command for root filesystem
+		cmd := exec.Command("df", "-BG", "/")
+		output, err := cmd.Output()
+		if err == nil {
+			lines := strings.Split(string(output), "\n")
+			if len(lines) >= 2 {
+				parts := strings.Fields(lines[1])
+				if len(parts) >= 2 {
+					// Remove 'G' suffix and parse
+					sizeStr := strings.TrimSuffix(parts[1], "G")
+					if size, err := strconv.ParseInt(sizeStr, 10, 64); err == nil {
+						return size, nil
+					}
+				}
+			}
+		}
+
+	case "darwin":
+		// macOS method
+		cmd := exec.Command("df", "-g", "/")
+		output, err := cmd.Output()
+		if err == nil {
+			lines := strings.Split(string(output), "\n")
+			if len(lines) >= 2 {
+				parts := strings.Fields(lines[1])
+				if len(parts) >= 2 {
+					if size, err := strconv.ParseInt(parts[1], 10, 64); err == nil {
+						return size, nil
+					}
+				}
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("could not get total storage")
+}

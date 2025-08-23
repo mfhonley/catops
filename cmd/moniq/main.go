@@ -251,11 +251,11 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 
 	var osName string
-	metrics, err := metrics.GetMetrics()
+	systemMetrics, err := metrics.GetMetrics()
 	if err != nil {
 		osName = runtime.GOOS // Fallback
 	} else {
-		osName = metrics.OSName
+		osName = systemMetrics.OSName
 	}
 
 	// determine platform
@@ -270,6 +270,23 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		// Keep original arch value for other architectures
 	}
 
+	// Get server specifications
+	serverSpecs, err := metrics.GetServerSpecs()
+	if err != nil {
+		// Log error but continue with default values
+		if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer f.Close()
+			f.WriteString(fmt.Sprintf("[%s] WARNING: Could not get server specs: %v\n",
+				time.Now().Format("2006-01-02 15:04:05"), err))
+		}
+		// Set default values
+		serverSpecs = map[string]interface{}{
+			"cpu_cores":     0,
+			"total_memory":  0,
+			"total_storage": 0,
+		}
+	}
+
 	serverData := map[string]interface{}{
 		"platform":     platform, // remove "-" + arch
 		"architecture": arch,
@@ -281,6 +298,10 @@ func registerServer(userToken string, cfg *config.Config) bool {
 			"os_type":       osName,
 			"moniq_version": getCurrentVersion(),
 		},
+		// Add server specifications
+		"cpu_cores":     serverSpecs["cpu_cores"],
+		"total_memory":  serverSpecs["total_memory"],
+		"total_storage": serverSpecs["total_storage"],
 	}
 
 	jsonData, _ := json.Marshal(serverData)

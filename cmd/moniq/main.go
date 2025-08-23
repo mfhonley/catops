@@ -306,6 +306,30 @@ func registerServer(userToken string, cfg *config.Config) bool {
 
 	jsonData, _ := json.Marshal(serverData)
 
+	// Debug: Log what we're sending
+	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: JSON data: %s\n",
+			time.Now().Format("2006-01-02 15:04:05"), string(jsonData)))
+	}
+
+	// Debug: Log pretty JSON for better readability
+	prettyJSON, _ := json.MarshalIndent(serverData, "", "  ")
+	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: Pretty JSON:\n%s\n",
+			time.Now().Format("2006-01-02 15:04:05"), string(prettyJSON)))
+	}
+
+	// Debug: Log HTTP request details
+	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: Sending to URL: %s\n",
+			time.Now().Format("2006-01-02 15:04:05"), constants.INSTALL_URL))
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: Request method: POST\n",
+			time.Now().Format("2006-01-02 15:04:05")))
+	}
+
 	req, err := http.NewRequest("POST", constants.INSTALL_URL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return false

@@ -1102,7 +1102,7 @@ func GetTotalMemory() (int64, error) {
 		if err == nil {
 			bytes := strings.TrimSpace(string(output))
 			if memBytes, err := strconv.ParseInt(bytes, 10, 64); err == nil {
-				return memBytes / 1024 / 1024 / 1024, nil // Convert bytes to GB
+				return memBytes / (1024 * 1024 * 1024), nil // Convert bytes to GB
 			}
 		}
 	}

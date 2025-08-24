@@ -27,12 +27,12 @@ import (
 	"moniq/pkg/utils"
 )
 
-// VERSION will be set by ldflags during build
+// VERSION is set during build via ldflags
 var VERSION string
 
 // Helper functions for server operations
 
-// getCurrentVersion returns current version using same logic as --version flag
+// getCurrentVersion retrieves the current version from build flags or version.txt
 func getCurrentVersion() string {
 	version := VERSION
 	if version == "" {
@@ -44,7 +44,7 @@ func getCurrentVersion() string {
 	return version
 }
 
-// Send alert analytics to backend
+// sendAlertAnalytics sends alert data to the backend for monitoring and analytics
 func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Metrics) {
 
 	if cfg.AuthToken == "" || cfg.ServerToken == "" {
@@ -81,7 +81,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		},
 		"alerts": alerts,
 
-		// ✅ NEW: Add process analytics data
+		// Include detailed process analytics for backend monitoring
 		"process_analytics": map[string]interface{}{
 			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 10),
 			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 10),
@@ -96,7 +96,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 
 	jsonData, _ := json.Marshal(alertData)
 
-	// Отправляем аналитику на бэк
+	// Send analytics data to backend asynchronously
 	go func() {
 		// Логируем начало запроса аналитики
 		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {

@@ -20,7 +20,7 @@ import (
 	"moniq/pkg/utils"
 )
 
-// formatBytes formats bytes into human readable format
+// formatBytes converts bytes to human-readable format (KB, MB, GB, etc.)
 func formatBytes(bytes int64) string {
 	const unit = 1024
 	if bytes < unit {
@@ -34,7 +34,7 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// truncateCommand truncates command string for display
+// truncateCommand shortens long command strings for better display
 func truncateCommand(command string, maxLen int) string {
 	if len(command) <= maxLen {
 		return command
@@ -42,7 +42,7 @@ func truncateCommand(command string, maxLen int) string {
 	return command[:maxLen-3] + "..."
 }
 
-// SendToTelegram sends a message to Telegram
+// SendToTelegram sends a formatted message to a specific Telegram chat
 func SendToTelegram(token string, chatID int64, message string) error {
 	if token == "" || chatID == 0 {
 		return fmt.Errorf("telegram not configured")
@@ -82,7 +82,7 @@ func SendToTelegram(token string, chatID int64, message string) error {
 	return nil
 }
 
-// SetupBotCommands sets up bot commands
+// SetupBotCommands configures the bot's command menu in Telegram
 func SetupBotCommands(bot *tgbotapi.BotAPI) error {
 	commands := []tgbotapi.BotCommand{
 		{Command: "start", Description: "Start monitoring service"},
@@ -98,7 +98,7 @@ func SetupBotCommands(bot *tgbotapi.BotAPI) error {
 	return err
 }
 
-// HandleBotCommand handles bot commands
+// HandleBotCommand processes incoming bot commands and responds accordingly
 func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.Config) {
 	// Check if message is from the authorized group only
 	if update.Message.Chat.ID != cfg.ChatID {

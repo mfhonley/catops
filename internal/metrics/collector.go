@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// ProcessInfo represents information about a running process
+// ProcessInfo contains detailed information about a running system process
 type ProcessInfo struct {
 	PID         int     `json:"pid"`
 	Name        string  `json:"name"`
@@ -19,16 +19,16 @@ type ProcessInfo struct {
 	Command     string  `json:"command"`
 	User        string  `json:"user"`
 
-	// New fields for backend analytics
-	Status      string `json:"status"`       // R (running), S (sleeping), Z (zombie), D (disk sleep)
-	StartTime   int64  `json:"start_time"`   // Unix timestamp when process started
-	Threads     int    `json:"threads"`      // Number of threads
+	// Extended process details for comprehensive monitoring
+	Status      string `json:"status"`       // Process state: R (running), S (sleeping), Z (zombie), D (disk sleep)
+	StartTime   int64  `json:"start_time"`   // Process start time as Unix timestamp
+	Threads     int    `json:"threads"`      // Number of threads used by the process
 	VirtualMem  int64  `json:"virtual_mem"`  // Virtual memory size (VSZ) in KB
 	ResidentMem int64  `json:"resident_mem"` // Resident memory size (RSS) in KB
-	TTY         string `json:"tty"`          // Terminal (pts/0, ?, etc.)
-	CPU         int    `json:"cpu"`          // CPU number (0, 1, 2, etc.)
-	Priority    int    `json:"priority"`     // Process priority
-	Nice        int    `json:"nice"`         // Nice value
+	TTY         string `json:"tty"`          // Terminal device (pts/0, ?, etc.)
+	CPU         int    `json:"cpu"`          // CPU number this process is running on
+	Priority    int    `json:"priority"`     // Process priority (lower = higher priority)
+	Nice        int    `json:"nice"`         // Process nice value (affects scheduling)
 }
 
 // ResourceUsage represents detailed resource information
@@ -40,32 +40,32 @@ type ResourceUsage struct {
 	Usage     float64 `json:"usage_percent"`
 }
 
-// Metrics represents system metrics
+// Metrics contains comprehensive system monitoring data
 type Metrics struct {
 	CPUUsage      float64 `json:"cpu_usage"`
 	DiskUsage     float64 `json:"disk_usage"`
 	MemoryUsage   float64 `json:"memory_usage"`
 	HTTPSRequests int64   `json:"https_requests"`
 
-	// New I/O metrics (exactly like HTTPS connections)
+	// I/O performance metrics for storage monitoring
 	IOPS   int64   `json:"iops"`    // Input/Output Operations Per Second
-	IOWait float64 `json:"io_wait"` // I/O Wait percentage
+	IOWait float64 `json:"io_wait"` // I/O Wait percentage (indicates storage bottlenecks)
 
 	OSName    string `json:"os_name"`
 	IPAddress string `json:"ip_address"`
 	Uptime    string `json:"uptime"`
 	Timestamp string `json:"timestamp"`
 
-	// New detailed resource fields
-	CPUDetails    ResourceUsage `json:"cpu_details"`
-	MemoryDetails ResourceUsage `json:"memory_details"`
-	DiskDetails   ResourceUsage `json:"disk_details"`
+	// Detailed resource breakdown for granular monitoring
+	CPUDetails    ResourceUsage `json:"cpu_details"`    // CPU cores and usage breakdown
+	MemoryDetails ResourceUsage `json:"memory_details"` // Memory allocation and availability
+	DiskDetails   ResourceUsage `json:"disk_details"`   // Disk space and usage details
 
-	// Process monitoring
-	TopProcesses []ProcessInfo `json:"top_processes"`
+	// Process monitoring and analysis
+	TopProcesses []ProcessInfo `json:"top_processes"` // Top processes by resource consumption
 }
 
-// GetCPUUsage returns CPU usage percentage
+// GetCPUUsage retrieves the current CPU usage percentage across all cores
 func GetCPUUsage() (float64, error) {
 	switch runtime.GOOS {
 	case "linux":

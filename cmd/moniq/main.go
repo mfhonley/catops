@@ -692,7 +692,7 @@ Examples:
 			// show top processes by memory
 			ui.PrintSection("Top Processes by Memory Usage")
 			if len(currentMetrics.TopProcesses) > 0 {
-				// sort by CPU usage
+				// sort by memory usage
 				sortedProcesses := make([]metrics.ProcessInfo, len(currentMetrics.TopProcesses))
 				copy(sortedProcesses, currentMetrics.TopProcesses)
 				sort.Slice(sortedProcesses, func(i, j int) bool {
@@ -750,7 +750,7 @@ Examples:
 
 			// check if Telegram is configured
 			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-				ui.PrintStatus("info", "Telegram bot will be started automatically")
+				ui.PrintStatus("info", "Telegram notifications enabled")
 			}
 
 			ui.PrintSectionEnd()
@@ -841,7 +841,6 @@ Examples:
 
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: moniq set cpu=90 mem=90 disk=90")
-				ui.PrintStatus("info", "You can set individual thresholds: moniq set cpu=90")
 				ui.PrintStatus("info", "Supported: cpu, mem, disk")
 				ui.PrintSectionEnd()
 				return
@@ -1166,7 +1165,6 @@ Examples:
 			}
 
 			// remove autostart services FIRST (before stopping service)
-			ui.PrintStatus("info", "Removing autostart services...")
 			switch runtime.GOOS {
 			case "linux":
 				homeDir, _ := os.UserHomeDir()
@@ -1175,7 +1173,6 @@ Examples:
 					exec.Command("systemctl", "--user", "disable", "moniq.service").Run()
 					exec.Command("systemctl", "--user", "stop", "moniq.service").Run()
 					os.Remove(systemdService)
-					ui.PrintStatus("success", "Systemd service removed")
 				}
 			case "darwin":
 				homeDir, _ := os.UserHomeDir()
@@ -1184,11 +1181,9 @@ Examples:
 					exec.Command("launchctl", "unload", launchAgent).Run()
 					os.Remove(launchAgent)
 				}
-				ui.PrintStatus("success", "Launchd service removed")
 			}
 
 			// remove configuration directory
-			ui.PrintStatus("info", "Removing configuration files...")
 			configDir := os.Getenv("HOME") + "/.moniq"
 			if err := os.RemoveAll(configDir); err == nil {
 				ui.PrintStatus("success", "Configuration directory removed: "+configDir)
@@ -1197,7 +1192,6 @@ Examples:
 			}
 
 			// remove log files
-			ui.PrintStatus("info", "Removing log files...")
 			logFiles := []string{
 				"/tmp/moniq.log",
 				"/tmp/moniq.pid",
@@ -1212,12 +1206,10 @@ Examples:
 			}
 
 			// stop ALL moniq processes (after removing config)
-			ui.PrintStatus("info", "Stopping all Moniq monitoring processes...")
 			process.KillAllMoniqProcesses()
 			ui.PrintStatus("success", "All processes stopped")
 
 			// remove ALL Moniq binaries from PATH LAST
-			ui.PrintStatus("info", "Removing Moniq binaries...")
 			binaryPaths := []string{
 				"/usr/local/bin/moniq",
 				"/usr/bin/moniq",
@@ -1274,13 +1266,11 @@ Examples:
 			ui.PrintSection("Cleaning Up Old Backups and Processes")
 
 			// clean up duplicate processes first
-			ui.PrintStatus("info", "Checking for duplicate processes...")
 			process.KillDuplicateProcesses()
 			process.CleanupZombieProcesses()
 			ui.PrintStatus("success", "Process cleanup completed")
 
 			// clean up old backup files
-			ui.PrintStatus("info", "Cleaning up old backup files...")
 			executable, err := os.Executable()
 			if err != nil {
 				ui.PrintStatus("error", "Could not determine binary location")
@@ -1321,7 +1311,6 @@ Examples:
 			ui.PrintStatus("warning", "This will kill ALL moniq daemon processes!")
 
 			// kill all moniq daemon processes
-			ui.PrintStatus("info", "Killing all moniq daemon processes...")
 			process.KillAllMoniqProcesses()
 
 			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
@@ -1337,24 +1326,14 @@ Examples:
 		Long: `Configure Telegram bot token and group ID.
 This allows you to set up or change your configuration for notifications.
 
-Examples:
-  moniq config token=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz  # Set bot token
-  moniq config group=123456789                              # Set group ID
-  moniq config show                                         # Show current config
-
-Note: For backend analytics authentication, use 'moniq auth login <token>' instead.`,
+Use 'moniq config show' to see current settings.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Configuration")
 
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: moniq config [token=...|group=...|show]")
-				ui.PrintStatus("info", "Examples:")
-				ui.PrintStatus("info", "  moniq config token=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz")
-				ui.PrintStatus("info", "  moniq config group=123456789")
-				ui.PrintStatus("info", "  moniq config show")
-				ui.PrintStatus("info", "")
-				ui.PrintStatus("info", "Note: For backend analytics authentication, use 'moniq auth login <token>'")
+				ui.PrintStatus("info", "Run 'moniq config show' to see current settings")
 				ui.PrintSectionEnd()
 				return
 			}
@@ -1363,7 +1342,6 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 			if arg == "show" {
 				// show current configuration
 				ui.PrintSection("Telegram Bot Configuration")
-				ui.PrintStatus("info", "Current Telegram Configuration:")
 				if cfg.TelegramToken != "" {
 					ui.PrintStatus("success", fmt.Sprintf("Bot Token: %s...%s", cfg.TelegramToken[:10], cfg.TelegramToken[len(cfg.TelegramToken)-10:]))
 				} else {
@@ -1377,19 +1355,16 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 				ui.PrintSectionEnd()
 
 				ui.PrintSection("Backend Analytics Configuration")
-				ui.PrintStatus("info", "Current Backend Configuration:")
 				if cfg.AuthToken != "" {
 					ui.PrintStatus("success", fmt.Sprintf("Auth Token: %s...%s", cfg.AuthToken[:10], cfg.AuthToken[len(cfg.AuthToken)-10:]))
 					ui.PrintStatus("info", "Analytics will be sent to backend")
 				} else {
 					ui.PrintStatus("warning", "Auth Token: Not configured")
-					ui.PrintStatus("info", "Analytics won't be sent to backend (monitoring works normally)")
-					ui.PrintStatus("info", "To enable analytics, run: moniq config auth=your_token")
+					ui.PrintStatus("info", "Analytics won't be sent to backend")
 				}
 				ui.PrintSectionEnd()
 
 				ui.PrintSection("Alert Thresholds")
-				ui.PrintStatus("info", "Current Thresholds:")
 				ui.PrintStatus("success", fmt.Sprintf("CPU Threshold: %.1f%%", cfg.CPUThreshold))
 				ui.PrintStatus("success", fmt.Sprintf("Memory Threshold: %.1f%%", cfg.MemThreshold))
 				ui.PrintStatus("success", fmt.Sprintf("Disk Threshold: %.1f%%", cfg.DiskThreshold))
@@ -1429,14 +1404,12 @@ Note: For backend analytics authentication, use 'moniq auth login <token>' inste
 				ui.PrintStatus("success", fmt.Sprintf("Group ID updated to: %d", groupID))
 
 			case "auth":
-				ui.PrintStatus("error", "Use 'moniq auth login <token>' instead of 'moniq config auth=<token>'")
-				ui.PrintStatus("info", "The 'moniq auth login' command is the preferred way to authenticate")
+				ui.PrintStatus("error", "Use 'moniq auth login <token>' instead")
 				ui.PrintSectionEnd()
 				return
 
 			default:
 				ui.PrintStatus("error", "Unknown setting. Use: token, group, or show")
-				ui.PrintStatus("info", "For authentication, use: moniq auth login <token>")
 				ui.PrintSectionEnd()
 				return
 			}

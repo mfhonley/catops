@@ -100,6 +100,21 @@ func SetupBotCommands(bot *tgbotapi.BotAPI) error {
 
 // HandleBotCommand handles bot commands
 func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.Config) {
+	// Check if message is from the authorized group only
+	if update.Message.Chat.ID != cfg.ChatID {
+		// Send warning message for unauthorized chats
+		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
+		msg.ParseMode = "HTML"
+		msg.Text = `🚫 <b>Unauthorized Group</b>
+
+🤖 <b>This bot is configured for a specific group only!</b>
+
+🌐 <b>This bot is created by moniq.sh</b>
+• Visit <a href="https://moniq.sh">moniq.sh</a> for your own monitoring solution`
+
+		bot.Send(msg)
+		return
+	}
 
 	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 	msg.ParseMode = "HTML"
@@ -375,7 +390,13 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 /set token=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 /set group=123456789
 
-🔧 <b>Note:</b> Changes made with /set require /restart to take effect immediately.`
+🔒 <b>Security:</b>
+• Bot responds only in the configured group
+• All actions are logged for security monitoring
+
+🔧 <b>Note:</b> Changes made with /set require /restart to take effect immediately.
+
+🌐 <b>Official Website:</b> <a href="https://moniq.sh">moniq.sh</a>`
 
 	default:
 		msg.Text = "❓ <b>Unknown command!</b>\n\nUse /help to see available commands."
@@ -415,6 +436,20 @@ func StartTelegramBot(cfg *config.Config) {
 	for update := range updates {
 		if update.Message == nil {
 			continue
+		}
+
+		// Log attempts to use bot in unauthorized groups
+		if update.Message.IsCommand() && update.Message.Chat.ID != cfg.ChatID {
+			// Log security attempt
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] SECURITY: Bot command attempted in unauthorized group %d from user %d (%s %s)\n",
+					time.Now().Format("2006-01-02 15:04:05"),
+					update.Message.Chat.ID,
+					update.Message.From.ID,
+					update.Message.From.FirstName,
+					update.Message.From.LastName))
+			}
 		}
 
 		if update.Message.IsCommand() {

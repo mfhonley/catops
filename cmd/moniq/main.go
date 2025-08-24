@@ -542,6 +542,7 @@ func main() {
 				"Apply Changes":  "moniq restart",
 				"Check Status":   "moniq status",
 				"Telegram Bot":   "Auto-configured",
+				"Cloud Mode":     "moniq auth login <token>",
 			}
 			fmt.Print(ui.CreateBeautifulList(quickStartData))
 			ui.PrintSectionEnd()
@@ -554,6 +555,7 @@ func main() {
 				"restart": "Restart monitoring service",
 				"set":     "Set alert thresholds",
 				"update":  "Update to latest version",
+				"auth":    "Manage Cloud Mode authentication",
 			}
 			fmt.Print(ui.CreateBeautifulList(commandsData))
 			ui.PrintSectionEnd()

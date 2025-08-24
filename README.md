@@ -494,7 +494,7 @@ Cloud Mode sends data to these secure endpoints:
 4. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
 
 **Visual Reference:**
-![Auth Token Location](docs/images/auth-token-location.jpg)
+![Auth Token Location](docs/images/auth-token-location.png)
 
 
 

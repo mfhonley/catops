@@ -126,7 +126,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
 
 **After installation:**
 - ✅ **Local Mode**: Working immediately with Telegram bot
-- ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard
+- ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
 - ✅ **Automatic Mode Detection**: CLI automatically switches between modes
 
 **That's it!** The script will automatically:
@@ -134,7 +134,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
 - Make it executable
 - Configure Telegram bot integration
 - Start monitoring service in Local Mode
-- **Ready for Cloud Mode**: Just run `moniq auth login <token>` to enable web dashboard
+- **Ready for Cloud Mode**: Just run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
 - Add it to your PATH
 - Create configuration directory
 
@@ -244,7 +244,9 @@ moniq config show
 **Get your auth token from [dash.moniq.sh](https://dash.moniq.sh):**
 1. Visit [dash.moniq.sh](https://dash.moniq.sh)
 2. Create account or login
-3. Copy your personal auth token
+3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
+4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
+5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
 
 **Authenticate with backend:**
 ```bash
@@ -261,6 +263,9 @@ moniq auth info
 - ✅ Metrics start streaming to [dash.moniq.sh](https://dash.moniq.sh)
 - ✅ Your server appears in the dashboard
 - ✅ Real-time monitoring available from anywhere
+
+**Dashboard Reference:**
+![Profile Settings](docs/images/auth-token-location.png)
 
 ### 4. Start Monitoring
 
@@ -321,8 +326,8 @@ moniq autostart status
 
 **Example**:
 ```bash
-# Get token from [dash.moniq.sh](https://dash.moniq.sh)
-moniq auth login eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# Get token from [dash.moniq.sh](https://dash.moniq.sh) - go to "My Profile"
+moniq auth login 6893bbb3b008cb8d34acbfa9
 
 # Server automatically appears in dashboard
 ```
@@ -474,7 +479,7 @@ Moniq CLI automatically determines your operation mode based on configuration:
 - **Cloud Mode**: When both `auth_token` and `server_token` are present
 
 #### **Cloud Mode Activation Process**
-1. **Get Auth Token**: Visit [dash.moniq.sh](https://dash.moniq.sh) and copy your personal auth token
+1. **Get Auth Token**: Visit [dash.moniq.sh](https://dash.moniq.sh), go to "My Profile", and copy your user ID from "Profile Information"
 2. **Authenticate**: Run `moniq auth login your_auth_token`
 3. **Server Registration**: CLI automatically registers your server with the backend
 4. **Token Exchange**: Backend returns a unique `server_token` for your server
@@ -504,9 +509,36 @@ Cloud Mode sends data to these secure endpoints:
 ### How to Enable Cloud Mode
 1. **Visit [dash.moniq.sh](https://dash.moniq.sh)**
 2. **Create an account** or login
-3. **Copy your auth token** from the dashboard
-4. **Run**: `moniq auth login your_auth_token`
-5. **Your server will appear** in the dashboard automatically
+3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
+4. **Find your ID**: In the "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
+5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
+6. **Run**: `moniq auth login your_auth_token`
+7. **Your server will appear** in the dashboard automatically
+
+**Visual Reference:**
+![Dashboard Profile](docs/images/auth-token-location.png)
+
+### 📍 Where to Find Your Auth Token
+
+**Step-by-step guide to locate your auth token in the dashboard:**
+
+1. **Login to [dash.moniq.sh](https://dash.moniq.sh)**
+2. **Navigate to Profile**: Click on "My Profile" in the left sidebar
+3. **Locate Profile Information**: Look for the "Profile Information" section
+4. **Find Your User ID**: You'll see a long alphanumeric string (e.g., `6893bbb3b008cb8d34acbfa9`)
+5. **Copy the ID**: Click the copy icon (📋) next to your user ID
+6. **Use as Auth Token**: This user ID is your auth token for `moniq auth login`
+
+**Visual Guide:**
+- **Left Sidebar**: Look for "My Profile" link
+- **Profile Page**: Find "Profile Information" card
+- **User ID Field**: Locate the long string with copy icon
+- **Copy Button**: Click the copy icon to copy your auth token
+
+**📸 Screenshot Reference:**
+![Auth Token Location](docs/images/auth-token-location.png)
+
+*This screenshot shows the exact location of your auth token in the dashboard profile page. Look for the "My Profile" link in the left sidebar, then find your User ID in the "Profile Information" section with a copy icon next to it.*
 
 ### Local Mode vs Cloud Mode Comparison
 
@@ -621,6 +653,8 @@ moniq-cli/
 
 ## 🧪 Development
 
+**Note**: This project currently uses manual testing and development verification. Automated tests are planned for future releases.
+
 ### Building from Source
 ```bash
 # Quick build
@@ -631,22 +665,33 @@ git clone https://github.com/honley1/moniq.sh.git
 cd moniq.sh
 go build -o moniq ./cmd/moniq
 
-# Run tests
-go test ./...
+# Build completed successfully
 ```
 
 ### Development Requirements
 - Go 1.21+
 - Linux/macOS development environment
-- Telegram bot token for testing
+- Telegram bot token for development
 - Basic knowledge of system administration
 
-### Testing Cloud Mode
-- **Local Testing**: Use `moniq auth login <test_token>` to test Cloud Mode locally
-- **Backend Integration**: Test API endpoints and data transmission
+### Development Notes
+- **Local Development**: Use `moniq auth login <token>` to test Cloud Mode locally
+- **Backend Integration**: Monitor API endpoints and data transmission
 - **Token Validation**: Verify authentication and server registration flow
-- **Mode Switching**: Test automatic switching between Local and Cloud modes
+- **Mode Switching**: Check automatic switching between Local and Cloud modes
 - **Data Transmission**: Monitor metrics streaming to backend APIs
+
+**Note**: Automated tests are not yet implemented but planned for future releases. For now, manual testing and development verification is used.
+
+### Adding Screenshots to Documentation
+To add screenshots to the README:
+1. **Save screenshot** as PNG/JPG in `docs/images/` folder
+2. **Use markdown syntax**: `![Description](docs/images/filename.png)`
+3. **Commit and push** to GitHub
+4. **Screenshot will be displayed** in the README automatically
+
+**Current Screenshots:**
+- `auth-token-location.png` - Dashboard profile page showing auth token location
 
 ### Building Binaries
 ```bash
@@ -679,7 +724,9 @@ We welcome contributions! Please see our contributing guidelines for details on 
 - **Platform Support**: Extend support to additional operating systems
 - **Integration**: Add support for additional notification services
 - **Documentation**: Improve documentation and examples
-- **Testing**: Add tests and improve test coverage
+- **Code Quality**: Improve code structure and error handling
+- **Testing**: Add automated tests and improve test coverage (high priority)
+- **Screenshots**: Add visual guides and UI examples
 
 ### Cloud Mode Enhancements
 - **Additional APIs**: Extend backend integration capabilities
@@ -697,7 +744,7 @@ We welcome contributions! Please see our contributing guidelines for details on 
 - **GitHub Discussions**: [Community Forum](https://github.com/honley1/moniq.sh/discussions)
 
 ### Cloud Mode Support
-- **Dashboard Access**: [dash.moniq.sh](https://dash.moniq.sh) - Get your auth token
+- **Dashboard Access**: [dash.moniq.sh](https://dash.moniq.sh) - Go to "My Profile" to get your auth token (user ID)
 - **Authentication Issues**: Contact support for token problems
 - **Data Transmission**: Check logs for backend communication issues
 - **Mode Switching**: Verify token configuration for Local/Cloud mode
@@ -713,7 +760,7 @@ We welcome contributions! Please see our contributing guidelines for details on 
 - **Dashboard Features**: Contribute to [dash.moniq.sh](https://dash.moniq.sh) development
 - **Security Enhancements**: Improve token validation and encryption
 - **Performance Optimization**: Optimize metrics collection and transmission
-- **Testing & QA**: Test Cloud Mode functionality across different platforms
+- **Cross-platform Support**: Ensure Cloud Mode works on all supported platforms
 
 ---
 

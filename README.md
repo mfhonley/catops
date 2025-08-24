@@ -81,6 +81,10 @@ curl -sfL https://get.moniq.sh/install.sh | bash
 curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
+**🎯 Even Easier:** Get a ready-to-use command from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
+
+**🌐 Alternative:** Get command from [moniq.sh](https://moniq.sh) with BOT_TOKEN and GROUP_ID.
+
 **After installation:**
 - ✅ **Local Mode**: Working immediately with Telegram bot
 - ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
@@ -113,6 +117,10 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
    ```bash
    curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
    ```
+   
+   **💡 Pro Tip:** Get a ready-to-use command from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
+
+**🌐 Alternative:** Get command from [moniq.sh](https://moniq.sh) with BOT_TOKEN and GROUP_ID.
 
 4. **Verify Installation**
    ```bash
@@ -171,6 +179,12 @@ curl -sfL https://get.moniq.sh/install.sh | bash
 curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
+**🚀 Get Ready-to-Use Command from Dashboard:**
+Visit [dash.moniq.sh](https://dash.moniq.sh) and get a pre-configured installation command with your tokens automatically filled in!
+
+**🌐 Or from Main Website:**
+Visit [moniq.sh](https://moniq.sh) to get a ready-to-use command with BOT_TOKEN and GROUP_ID (without AUTH_TOKEN).
+
 **Option B: From GitHub**
 ```bash
 # Clone and build
@@ -204,6 +218,12 @@ moniq config show
 3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
 4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
 5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
+
+**🚀 Installation Command with Auth Token:**
+Get a complete installation command with all tokens from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
+
+**🌐 Basic Command from Website:**
+Get a command with BOT_TOKEN and GROUP_ID from [moniq.sh](https://moniq.sh) (without AUTH_TOKEN).
 
 **Authenticate with backend:**
 ```bash
@@ -472,6 +492,11 @@ Cloud Mode sends data to these secure endpoints:
 6. **Run**: `moniq auth login your_auth_token`
 7. **Your server will appear** in the dashboard automatically
 
+**💡 Pro Tip:** Get a complete installation command with all tokens from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
+
+**🌐 Basic Command from Website:**
+Get a command with BOT_TOKEN and GROUP_ID from [moniq.sh](https://moniq.sh) (without AUTH_TOKEN).
+
 **Visual Reference:**
 ![Dashboard Profile](docs/images/auth-token-location.png)
 
@@ -496,6 +521,20 @@ Cloud Mode sends data to these secure endpoints:
 ![Auth Token Location](docs/images/auth-token-location.png)
 
 *This screenshot shows the exact location of your auth token in the dashboard profile page. Look for the "My Profile" link in the left sidebar, then find your User ID in the "Profile Information" section with a copy icon next to it.*
+
+**🚀 Ready-to-Use Installation Commands:**
+
+**Complete Command (with AUTH_TOKEN):**
+```bash
+# Get this command from [dash.moniq.sh](https://dash.moniq.sh)
+curl -sfL https://get.moniq.sh/install.sh | AUTH_TOKEN="your_auth_token" BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+```
+
+**Basic Command (without AUTH_TOKEN):**
+```bash
+# Get this command from [moniq.sh](https://moniq.sh)
+curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+```
 
 ### Local Mode vs Cloud Mode Comparison
 

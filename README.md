@@ -29,7 +29,6 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 - **Telegram Integration**: Instant alerts via Telegram bot with remote commands
 - **Configurable Thresholds**: Customizable CPU, Memory, and Disk limits
 - **Alert System**: Configurable threshold-based notifications
-- **Web Dashboard**: Access metrics online at [dash.moniq.sh](https://dash.moniq.sh)
 
 
 
@@ -44,7 +43,6 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 ### Configuration & Updates
 - **Configuration Management**: YAML-based configuration system
 - **Update System**: Automatic version checking and updates
-- **Web Dashboard**: Access metrics online at [dash.moniq.sh](https://dash.moniq.sh)
 
 
 
@@ -81,21 +79,17 @@ curl -sfL https://get.moniq.sh/install.sh | bash
 curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
-**🎯 Even Easier:** Get a ready-to-use command from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
 
-**🌐 Alternative:** Get command from [moniq.sh](https://moniq.sh) with BOT_TOKEN and GROUP_ID.
 
 **After installation:**
 - ✅ **Local Mode**: Working immediately with Telegram bot
-- ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
-
+- ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard
 
 **That's it!** The script will automatically:
 - Download the correct binary for your platform
 - Make it executable
 - Configure Telegram bot integration
 - Start monitoring service in Local Mode
-- **Ready for Cloud Mode**: Just run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
 - Add it to your PATH
 - Create configuration directory
 
@@ -118,9 +112,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
    curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
    ```
    
-   **💡 Pro Tip:** Get a ready-to-use command from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
-
-**🌐 Alternative:** Get command from [moniq.sh](https://moniq.sh) with BOT_TOKEN and GROUP_ID.
+   
 
 4. **Verify Installation**
    ```bash
@@ -179,11 +171,7 @@ curl -sfL https://get.moniq.sh/install.sh | bash
 curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
-**🚀 Get Ready-to-Use Command from Dashboard:**
-Visit [dash.moniq.sh](https://dash.moniq.sh) and get a pre-configured installation command with your tokens automatically filled in!
-
-**🌐 Or from Main Website:**
-Visit [moniq.sh](https://moniq.sh) to get a ready-to-use command with BOT_TOKEN and GROUP_ID (without AUTH_TOKEN).
+**💡 Pro Tip:** Get ready-to-use commands from [dash.moniq.sh](https://dash.moniq.sh) or [moniq.sh](https://moniq.sh)
 
 **Option B: From GitHub**
 ```bash
@@ -219,11 +207,7 @@ moniq config show
 4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
 5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
 
-**🚀 Installation Command with Auth Token:**
-Get a complete installation command with all tokens from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
 
-**🌐 Basic Command from Website:**
-Get a command with BOT_TOKEN and GROUP_ID from [moniq.sh](https://moniq.sh) (without AUTH_TOKEN).
 
 **Authenticate with backend:**
 ```bash
@@ -237,12 +221,10 @@ moniq auth info
 **What happens next:**
 - ✅ Server automatically registered with backend
 - ✅ Cloud Mode activated
-- ✅ Metrics start streaming to [dash.moniq.sh](https://dash.moniq.sh)
-- ✅ Your server appears in the dashboard
+- ✅ Metrics start streaming to dashboard
 - ✅ Real-time monitoring available from anywhere
 
-**Dashboard Reference:**
-![Profile Settings](docs/images/auth-token-location.png)
+
 
 ### 4. Start Monitoring
 
@@ -447,6 +429,11 @@ When you enable Cloud Mode with `moniq auth login <token>`, your server metrics 
 - **Mobile Access**: Responsive design for mobile devices
 - **Team Sharing**: Share access with your team members
 
+**Dashboard Overview:**
+![Dashboard Overview](docs/images/dashboards-reference.png)
+
+*This screenshot shows the main dashboard interface with real-time metrics, server overview, and monitoring capabilities.*
+
 ### How Cloud Mode Works
 
 #### **Automatic Mode Detection**
@@ -492,49 +479,26 @@ Cloud Mode sends data to these secure endpoints:
 6. **Run**: `moniq auth login your_auth_token`
 7. **Your server will appear** in the dashboard automatically
 
-**💡 Pro Tip:** Get a complete installation command with all tokens from [dash.moniq.sh](https://dash.moniq.sh) - just copy and paste!
 
-**🌐 Basic Command from Website:**
-Get a command with BOT_TOKEN and GROUP_ID from [moniq.sh](https://moniq.sh) (without AUTH_TOKEN).
 
-**Visual Reference:**
-![Dashboard Profile](docs/images/auth-token-location.png)
+
+
+
 
 ### 📍 Where to Find Your Auth Token
 
-**Step-by-step guide to locate your auth token in the dashboard:**
-
+**Step-by-step guide:**
 1. **Login to [dash.moniq.sh](https://dash.moniq.sh)**
-2. **Navigate to Profile**: Click on "My Profile" in the left sidebar
-3. **Locate Profile Information**: Look for the "Profile Information" section
-4. **Find Your User ID**: You'll see a long alphanumeric string (e.g., `6893bbb3b008cb8d34acbfa9`)
-5. **Copy the ID**: Click the copy icon (📋) next to your user ID
-6. **Use as Auth Token**: This user ID is your auth token for `moniq auth login`
+2. **Go to Profile**: Click "My Profile" in the left sidebar  
+3. **Find User ID**: In "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
+4. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
 
-**Visual Guide:**
-- **Left Sidebar**: Look for "My Profile" link
-- **Profile Page**: Find "Profile Information" card
-- **User ID Field**: Locate the long string with copy icon
-- **Copy Button**: Click the copy icon to copy your auth token
+**Visual Reference:**
+![Auth Token Location](docs/images/auth-token-location.jpg)
 
-**📸 Screenshot Reference:**
-![Auth Token Location](docs/images/auth-token-location.png)
 
-*This screenshot shows the exact location of your auth token in the dashboard profile page. Look for the "My Profile" link in the left sidebar, then find your User ID in the "Profile Information" section with a copy icon next to it.*
 
-**🚀 Ready-to-Use Installation Commands:**
 
-**Complete Command (with AUTH_TOKEN):**
-```bash
-# Get this command from [dash.moniq.sh](https://dash.moniq.sh)
-curl -sfL https://get.moniq.sh/install.sh | AUTH_TOKEN="your_auth_token" BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
-```
-
-**Basic Command (without AUTH_TOKEN):**
-```bash
-# Get this command from [moniq.sh](https://moniq.sh)
-curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
-```
 
 ### Local Mode vs Cloud Mode Comparison
 
@@ -551,14 +515,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
 | **Internet Required** | No (except Telegram) | Yes (for dashboard) |
 | **Use Case** | Air-gapped servers, testing | Production monitoring, team access |
 
-### Cloud Mode Benefits
-- **Centralized Monitoring**: View all servers from one dashboard
-- **Historical Insights**: Track performance trends over time
-- **Team Collaboration**: Share monitoring access with colleagues
-- **Mobile Access**: Monitor servers from anywhere
-- **Professional Reporting**: Generate performance reports
-- **Alert Management**: Centralized alert configuration
-- **Resource Optimization**: Identify performance bottlenecks
+
 
 ## 🔒 Security Features
 
@@ -677,8 +634,6 @@ go build -o moniq ./cmd/moniq
 - **Mode Switching**: Check automatic switching between Local and Cloud modes
 - **Data Transmission**: Monitor metrics streaming to backend APIs
 
-**Note**: Automated tests are not yet implemented but planned for future releases. For now, manual testing and development verification is used.
-
 ### Adding Screenshots
 Save screenshots in `docs/images/` folder and use `![Description](docs/images/filename.png)` syntax.
 
@@ -722,13 +677,9 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 - **GitHub Issues**: [Report Issues](https://github.com/honley1/moniq.sh/issues)
 - **GitHub Discussions**: [Community Forum](https://github.com/honley1/moniq.sh/discussions)
 
-### Cloud Mode Support
-- **Dashboard Access**: [dash.moniq.sh](https://dash.moniq.sh) - Go to "My Profile" to get your auth token
-- **Issues**: Check logs and contact support for problems
 
-### Community
-- **GitHub**: [Issues](https://github.com/honley1/moniq.sh/issues) | [Pull Requests](https://github.com/honley1/moniq.sh/pulls)
-- **Contributions**: Help improve features, documentation, and testing
+
+
 
 ---
 
@@ -736,4 +687,4 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 
 Built with ❤️ by the open source community.
 
-**Need help?** Contact us at [honley@moniq.sh](mailto:honley@moniq.sh) or [@moniqsh](https://t.me/moniqsh) on Telegram.
+

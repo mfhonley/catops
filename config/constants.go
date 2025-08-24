@@ -13,7 +13,6 @@ const (
 
 	// Version and update endpoints
 	VERSIONS_URL = "https://api.moniq.sh/api/versions/check"
-	UPDATES_URL  = "https://api.moniq.sh/api/versions/new"
 
 	// Download endpoints
 	GET_MONIQ_URL = "https://get.moniq.sh"
@@ -24,6 +23,12 @@ const (
 	USER_AGENT = "Moniq-CLI/1.0.0"
 )
 
+// External services
+const (
+	TELEGRAM_API_URL = "https://api.telegram.org/bot%s/sendMessage"
+	MONIQ_WEBSITE    = "https://moniq.sh"
+)
+
 // Operation modes
 const (
 	MODE_LOCAL = "local" // No backend dependency
@@ -32,16 +37,14 @@ const (
 
 // Default thresholds
 const (
-	DEFAULT_CPU_THRESHOLD    = 70.0
-	DEFAULT_MEMORY_THRESHOLD = 80.0
-	DEFAULT_DISK_THRESHOLD   = 90.0
-	DEFAULT_CHECK_INTERVAL   = 30 // seconds
+	DEFAULT_CPU_THRESHOLD    = 50.0
+	DEFAULT_MEMORY_THRESHOLD = 50.0
+	DEFAULT_DISK_THRESHOLD   = 50.0
 )
 
 // File paths
 const (
-	CONFIG_DIR_NAME  = "/.moniq"
-	CONFIG_FILE_NAME = "config.yaml"
-	PID_FILE         = "/tmp/moniq.pid"
-	LOG_FILE         = "/tmp/moniq.log"
+	CONFIG_DIR_NAME = "/.moniq"
+	PID_FILE        = "/tmp/moniq.pid"
+	LOG_FILE        = "/tmp/moniq.log"
 )

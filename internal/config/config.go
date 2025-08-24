@@ -44,13 +44,13 @@ func (cfg *Config) IsLocalMode() bool {
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath("$HOME/.moniq")
+	viper.AddConfigPath("$HOME" + constants.CONFIG_DIR_NAME)
 	viper.AddConfigPath(".")
 
 	// Set defaults
-	viper.SetDefault("cpu_threshold", 50.0)
-	viper.SetDefault("mem_threshold", 50.0)
-	viper.SetDefault("disk_threshold", 50.0)
+	viper.SetDefault("cpu_threshold", constants.DEFAULT_CPU_THRESHOLD)
+	viper.SetDefault("mem_threshold", constants.DEFAULT_MEMORY_THRESHOLD)
+	viper.SetDefault("disk_threshold", constants.DEFAULT_DISK_THRESHOLD)
 
 	// Read config file
 	viper.ReadInConfig()

@@ -48,7 +48,7 @@ func SendToTelegram(token string, chatID int64, message string) error {
 		return fmt.Errorf("telegram not configured")
 	}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+	url := fmt.Sprintf(constants.TELEGRAM_API_URL, token)
 
 	data := map[string]interface{}{
 		"chat_id":                  chatID,
@@ -105,12 +105,12 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		// Send warning message for unauthorized chats
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 		msg.ParseMode = "HTML"
-		msg.Text = `🚫 <b>Unauthorized Group</b>
+		msg.Text = fmt.Sprintf(`🚫 <b>Unauthorized Group</b>
 
 🤖 <b>This bot is configured for a specific group only!</b>
 
 🌐 <b>This bot is created by moniq.sh</b>
-• Visit <a href="https://moniq.sh">moniq.sh</a> for your own monitoring solution`
+• Visit <a href="%s">moniq.sh</a> for your own monitoring solution`, constants.MONIQ_WEBSITE)
 
 		bot.Send(msg)
 		return
@@ -371,7 +371,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		msg.Text = "❌ <b>Update command removed from bot</b>\n\n💡 <b>Use CLI instead:</b>\n\n<code>moniq update</code>\n\nThis is more reliable and secure."
 
 	case "help":
-		msg.Text = `🤖 <b>Moniq Bot Commands</b>
+		msg.Text = fmt.Sprintf(`🤖 <b>Moniq Bot Commands</b>
 
 📋 <b>Available Commands:</b>
 /start - Start monitoring service
@@ -396,7 +396,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 🔧 <b>Note:</b> Changes made with /set require /restart to take effect immediately.
 
-🌐 <b>Official Website:</b> <a href="https://moniq.sh">moniq.sh</a>`
+🌐 <b>Official Website:</b> <a href="%s">moniq.sh</a>`, constants.MONIQ_WEBSITE)
 
 	default:
 		msg.Text = "❓ <b>Unknown command!</b>\n\nUse /help to see available commands."

@@ -502,7 +502,7 @@ func main() {
 	// create root command
 	rootCmd := &cobra.Command{
 		Use:                "moniq",
-		Short:              "Professional Moniq CLI Tool",
+		Short:              "Professional Moniq.sh Tool",
 		DisableSuggestions: true,
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -763,7 +763,7 @@ Examples:
 	updateCmd := &cobra.Command{
 		Use:   "update",
 		Short: "Download and install the latest version",
-		Long: `Check for and install the latest version of Moniq CLI.
+		Long: `Check for and install the latest version of Moniq.sh.
 This will check if updates are available and install them if found.
 The update process is handled by the official update script.
 
@@ -1120,8 +1120,8 @@ Examples:
 	// uninstall command
 	uninstallCmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Completely remove Moniq CLI from the system",
-		Long: `Completely remove Moniq CLI from the system.
+		Short: "Completely remove Moniq.sh from the system",
+		Long: `Completely remove Moniq.sh from the system.
 
 This command will:
 • Stop the monitoring service
@@ -1131,18 +1131,18 @@ This command will:
 • Clean up all Moniq-related files
 
 Examples:
-  moniq uninstall        # Remove Moniq CLI completely
+  	moniq uninstall        # Remove Moniq.sh completely
   moniq uninstall --yes  # Skip confirmation prompt`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
-			ui.PrintSection("Uninstall Moniq CLI")
+			ui.PrintSection("Uninstall Moniq.sh")
 
 			// check if --yes flag is set
 			skipConfirm := cmd.Flags().Lookup("yes").Changed
 
 			if !skipConfirm {
-				ui.PrintStatus("warning", "This will completely remove Moniq CLI from your system!")
-				ui.PrintStatus("warning", "This will completely remove Moniq CLI from your system!")
+				ui.PrintStatus("warning", "This will completely remove Moniq.sh from your system!")
+				ui.PrintStatus("warning", "This will completely remove Moniq.sh from your system!")
 				ui.PrintStatus("info", "All configuration and data will be lost.")
 
 				fmt.Print("\nAre you sure you want to continue? (y/N): ")
@@ -1246,7 +1246,7 @@ Examples:
 				ui.PrintStatus("warning", "Could not find any Moniq binaries in standard locations")
 			}
 
-			ui.PrintStatus("success", "Moniq CLI completely removed from the system")
+			ui.PrintStatus("success", "Moniq.sh completely removed from the system")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -1478,7 +1478,7 @@ Examples:
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Authentication commands",
-		Long: `Manage authentication for Moniq CLI.
+		Long: `Manage authentication for Moniq.sh.
 
 Commands:
   login    Login with authentication token
@@ -1490,7 +1490,7 @@ Commands:
 	loginCmd := &cobra.Command{
 		Use:   "login [token]",
 		Short: "Login with authentication token",
-		Long: `Login to Moniq CLI with your authentication token.
+		Long: `Login to Moniq.sh with your authentication token.
 
 Examples:
   moniq auth login your_token_here
@@ -1551,7 +1551,7 @@ Examples:
 	logoutCmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Logout and clear authentication",
-		Long:  `Logout from Moniq CLI and clear authentication token.`,
+		Long:  `Logout from Moniq.sh and clear authentication token.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Authentication")

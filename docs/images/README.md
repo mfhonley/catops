@@ -1,6 +1,6 @@
 # Documentation Images
 
-This folder contains images and screenshots for the Moniq CLI documentation.
+This folder contains images and screenshots for the Moniq.sh documentation.
 
 ## Adding Screenshots
 

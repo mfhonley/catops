@@ -1,15 +1,12 @@
-# Moniq CLI
+# Moniq.sh
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
 
-**Moniq CLI** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
+**Moniq.sh** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
 
-**Smart Dual-Mode Operation:**
-- **Local Mode**: Works completely offline for air-gapped servers and development
-- **Cloud Mode**: Automatic backend integration for centralized monitoring at [dash.moniq.sh](https://dash.moniq.sh)
-- **Zero Configuration**: Automatically switches between modes based on your setup
+**Simple and flexible** - works offline or with web dashboard at [dash.moniq.sh](https://dash.moniq.sh)
 
 ```bash
 # Install in seconds (from website)
@@ -32,18 +29,9 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 - **Telegram Integration**: Instant alerts via Telegram bot with remote commands
 - **Configurable Thresholds**: Customizable CPU, Memory, and Disk limits
 - **Alert System**: Configurable threshold-based notifications
-- **Dual Mode**: Local mode (offline) or Cloud mode (with backend integration)
-- **Web Dashboard**: Access metrics online at [dash.moniq.sh](https://dash.moniq.sh) in Cloud Mode
+- **Web Dashboard**: Access metrics online at [dash.moniq.sh](https://dash.moniq.sh)
 
-### Cloud Mode & Backend Integration
-- **Automatic Mode Detection**: CLI automatically switches between Local and Cloud modes
-- **Seamless Authentication**: Simple `moniq auth login <token>` enables Cloud Mode
-- **Real-time Metrics Streaming**: Live data automatically sent to [dash.moniq.sh](https://dash.moniq.sh)
-- **Server Registration**: Automatic backend registration with hardware specifications
-- **Multi-server Management**: Monitor multiple servers from centralized dashboard
-- **Historical Data**: Track performance trends and generate reports
-- **Team Collaboration**: Share monitoring access with team members
-- **Mobile Monitoring**: Full dashboard access from mobile devices
+
 
 ### System Management
 - **Background Service**: Daemon mode with auto-start capabilities
@@ -56,55 +44,24 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 ### Configuration & Updates
 - **Configuration Management**: YAML-based configuration system
 - **Update System**: Automatic version checking and updates
-- **Operation Modes**: Local (offline) or Cloud (with backend analytics)
-- **Web Dashboard**: Cloud Mode provides online access at [dash.moniq.sh](https://dash.moniq.sh)
+- **Web Dashboard**: Access metrics online at [dash.moniq.sh](https://dash.moniq.sh)
 
-### Smart Mode Management
-- **Automatic Detection**: CLI automatically determines operation mode based on tokens
-- **Zero Configuration**: Cloud Mode works out-of-the-box after authentication
-- **Seamless Switching**: Easy transition between Local and Cloud modes
-- **Token Management**: Secure storage and automatic token validation
-- **Backend Integration**: Automatic API endpoint configuration and data transmission
+
 
 ## 📋 Requirements
 
 - **Operating System**: Linux (systemd) or macOS (launchd)
 - **Architecture**: AMD64 or ARM64
 - **Permissions**: User-level installation (no root required)
-- **Network**: Internet access for Telegram bot and backend integration (optional)
+- **Network**: Internet access for Telegram bot and web dashboard (optional)
 
 ## 🔄 Operation Modes
 
-### Local Mode (Default)
-- **Offline Operation**: Works completely without internet
-- **Local Storage**: All data stored locally
-- **No Backend**: No external data transmission
-- **Use Case**: Air-gapped servers, development, testing
+**Local Mode** (default): Works offline, sends alerts to Telegram only.
 
-### Cloud Mode
-- **Backend Integration**: Sends metrics and analytics to backend
-- **Real-time Monitoring**: Centralized monitoring dashboard at [dash.moniq.sh](https://dash.moniq.sh)
-- **Data Analytics**: Historical data and insights
-- **Remote Access**: View server metrics from anywhere via web dashboard
-- **Use Case**: Production servers, team monitoring, centralized management
+**Cloud Mode**: Also sends metrics to web dashboard at [dash.moniq.sh](https://dash.moniq.sh) for online monitoring.
 
-### Smart Mode Detection
-Moniq CLI automatically determines your operation mode based on configuration tokens:
-
-- **Local Mode**: When `auth_token` or `server_token` is missing
-- **Cloud Mode**: When both `auth_token` and `server_token` are present
-
-**No manual configuration required** - the system automatically switches between modes!
-
-### Cloud Mode Features
-- **Web Dashboard**: Access your server metrics at [dash.moniq.sh](https://dash.moniq.sh)
-- **Real-time Updates**: Live metrics streaming to the dashboard
-- **Historical Data**: Track performance over time
-- **Team Access**: Share monitoring access with your team
-- **Mobile Friendly**: Monitor servers from anywhere
-- **Automatic Data Transmission**: Metrics sent automatically every 60 seconds
-- **Process Analytics**: Detailed process resource usage data
-- **Server Specifications**: Hardware specs automatically collected and sent
+*Switch between modes automatically by running `moniq auth login <token>`*
 
 ## 🛠️ Installation
 
@@ -127,7 +84,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
 **After installation:**
 - ✅ **Local Mode**: Working immediately with Telegram bot
 - ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard (get token from [dash.moniq.sh](https://dash.moniq.sh) → "My Profile")
-- ✅ **Automatic Mode Detection**: CLI automatically switches between modes
+
 
 **That's it!** The script will automatically:
 - Download the correct binary for your platform
@@ -152,7 +109,7 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
    - Add [@myidbot](https://t.me/myidbot) to the group
    - Send `/getid` in the group and copy the group ID
 
-3. **Install Moniq**
+3. **Install Moniq.sh**
    ```bash
    curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
    ```
@@ -369,7 +326,7 @@ moniq auth info
 | `moniq cleanup` | Clean up old backup files and duplicate processes | `moniq cleanup` |
 | `moniq force-cleanup` | Force cleanup of all processes and start fresh | `moniq force-cleanup` |
 | `moniq update` | Check and install updates | `moniq update` |
-| `moniq uninstall` | Completely remove Moniq CLI and all components | `moniq uninstall` |
+| `moniq uninstall` | Completely remove Moniq.sh and all components | `moniq uninstall` |
 
 ## 📊 Metrics & Monitoring
 
@@ -395,7 +352,7 @@ moniq auth info
 ### Cloud Mode Data Transmission
 
 #### **What Data is Sent to Backend**
-When Cloud Mode is enabled, Moniq automatically sends comprehensive data to [dash.moniq.sh](https://dash.moniq.sh):
+When Cloud Mode is enabled, Moniq.sh automatically sends comprehensive data to [dash.moniq.sh](https://dash.moniq.sh):
 
 **Service Lifecycle Events** (via Events API):
 - `service_start`: Server startup with system specifications
@@ -448,7 +405,7 @@ When Cloud Mode is enabled, Moniq automatically sends comprehensive data to [das
 - `/processes` - Display top processes
 - `/restart` - Restart monitoring service
 - `/set` - Set alert thresholds (e.g., `/set cpu=90`)
-- `/version` - Show Moniq CLI version
+- `/version` - Show Moniq.sh version
 - `/help` - Show available commands
 
 ### Setup Instructions
@@ -473,7 +430,7 @@ When you enable Cloud Mode with `moniq auth login <token>`, your server metrics 
 ### How Cloud Mode Works
 
 #### **Automatic Mode Detection**
-Moniq CLI automatically determines your operation mode based on configuration:
+Moniq.sh automatically determines your operation mode based on configuration:
 
 - **Local Mode (Default)**: When `auth_token` or `server_token` is missing
 - **Cloud Mode**: When both `auth_token` and `server_token` are present
@@ -615,7 +572,7 @@ moniq cleanup
 
 ### Uninstall Management
 ```bash
-# Completely remove Moniq CLI
+# Completely remove Moniq.sh
 moniq uninstall
 ```
 
@@ -683,15 +640,8 @@ go build -o moniq ./cmd/moniq
 
 **Note**: Automated tests are not yet implemented but planned for future releases. For now, manual testing and development verification is used.
 
-### Adding Screenshots to Documentation
-To add screenshots to the README:
-1. **Save screenshot** as PNG/JPG in `docs/images/` folder
-2. **Use markdown syntax**: `![Description](docs/images/filename.png)`
-3. **Commit and push** to GitHub
-4. **Screenshot will be displayed** in the README automatically
-
-**Current Screenshots:**
-- `auth-token-location.png` - Dashboard profile page showing auth token location
+### Adding Screenshots
+Save screenshots in `docs/images/` folder and use `![Description](docs/images/filename.png)` syntax.
 
 ### Building Binaries
 ```bash
@@ -710,30 +660,20 @@ GOOS=darwin GOARCH=arm64 go build -o moniq-darwin-arm64 ./cmd/moniq
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 **Project Components:**
-- **Moniq CLI**: Open source monitoring tool (MIT License)
+- **Moniq.sh**: Open source monitoring tool (MIT License)
 - **Backend APIs**: Cloud infrastructure for metrics storage
 - **Web Dashboard**: [dash.moniq.sh](https://dash.moniq.sh) - Centralized monitoring interface
 - **Telegram Bot**: Open source bot integration code
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our contributing guidelines for details on how to submit pull requests, report issues, and contribute to the project.
+We welcome contributions! Please see our [contributing guidelines](https://github.com/honley1/moniq.sh/blob/main/CONTRIBUTING.md) for details.
 
-### Contribution Areas
-- **New Metrics**: Add additional system monitoring capabilities
-- **Platform Support**: Extend support to additional operating systems
-- **Integration**: Add support for additional notification services
-- **Documentation**: Improve documentation and examples
-- **Code Quality**: Improve code structure and error handling
-- **Testing**: Add automated tests and improve test coverage (high priority)
-- **Screenshots**: Add visual guides and UI examples
-
-### Cloud Mode Enhancements
-- **Additional APIs**: Extend backend integration capabilities
-- **Data Formats**: Improve metrics data structure and transmission
-- **Security Features**: Enhance token validation and encryption
-- **Dashboard Integration**: Add new dashboard features and widgets
-- **Performance Optimization**: Optimize data transmission and storage
+**Main Areas:**
+- **New Features**: Additional monitoring capabilities and platform support
+- **Documentation**: Improve guides and examples
+- **Testing**: Add automated tests (high priority)
+- **Bug Fixes**: Report and fix issues
 
 ## 📞 Support & Contact
 
@@ -744,27 +684,16 @@ We welcome contributions! Please see our contributing guidelines for details on 
 - **GitHub Discussions**: [Community Forum](https://github.com/honley1/moniq.sh/discussions)
 
 ### Cloud Mode Support
-- **Dashboard Access**: [dash.moniq.sh](https://dash.moniq.sh) - Go to "My Profile" to get your auth token (user ID)
-- **Authentication Issues**: Contact support for token problems
-- **Data Transmission**: Check logs for backend communication issues
-- **Mode Switching**: Verify token configuration for Local/Cloud mode
-- **API Integration**: Report backend API issues or improvements
+- **Dashboard Access**: [dash.moniq.sh](https://dash.moniq.sh) - Go to "My Profile" to get your auth token
+- **Issues**: Check logs and contact support for problems
 
 ### Community
-- **Contributions**: [Pull Requests](https://github.com/honley1/moniq.sh/pulls)
-- **Feature Requests**: [GitHub Issues](https://github.com/honley1/moniq.sh/issues)
-- **Bug Reports**: [GitHub Issues](https://github.com/honley1/moniq.sh/issues)
-
-### Cloud Mode Development
-- **Backend Integration**: Help improve API endpoints and data transmission
-- **Dashboard Features**: Contribute to [dash.moniq.sh](https://dash.moniq.sh) development
-- **Security Enhancements**: Improve token validation and encryption
-- **Performance Optimization**: Optimize metrics collection and transmission
-- **Cross-platform Support**: Ensure Cloud Mode works on all supported platforms
+- **GitHub**: [Issues](https://github.com/honley1/moniq.sh/issues) | [Pull Requests](https://github.com/honley1/moniq.sh/pulls)
+- **Contributions**: Help improve features, documentation, and testing
 
 ---
 
-**Moniq CLI** - Ultra-lightweight server monitoring. 🚀
+**Moniq.sh** - Ultra-lightweight server monitoring. 🚀
 
 Built with ❤️ by the open source community.
 

@@ -90,7 +90,7 @@ func SetupBotCommands(bot *tgbotapi.BotAPI) error {
 		{Command: "processes", Description: "Show top processes by resource usage"},
 		{Command: "restart", Description: "Restart monitoring service"},
 		{Command: "set", Description: "Set alert thresholds (e.g., /set cpu=90)"},
-		{Command: "version", Description: "Show Moniq CLI version"},
+		{Command: "version", Description: "Show Moniq.sh version"},
 		{Command: "help", Description: "Show available commands"},
 	}
 
@@ -121,7 +121,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 	switch update.Message.Command() {
 	case "start":
-		// Show Moniq welcome message and features
+		// Show Moniq.sh welcome message and features
 		msg.Text = `🚀 <b>Moniq System Monitor</b>
 
 📊 <b>Features:</b>
@@ -329,7 +329,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		}
 
 	case "version":
-		// Get Moniq CLI version
+		// Get Moniq.sh version
 		cmd := exec.Command("moniq", "--version")
 		output, err := cmd.Output()
 		if err != nil {
@@ -363,7 +363,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 				}
 			}
 
-			msg.Text = fmt.Sprintf("📦 <b>Moniq CLI Version</b>\n\n<code>%s</code>%s", version, updateInfo)
+			msg.Text = fmt.Sprintf("📦 <b>Moniq Version</b>\n\n<code>%s</code>%s", version, updateInfo)
 		}
 
 	case "update":
@@ -379,7 +379,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 /processes - Show top processes by resource usage
 /restart - Restart monitoring service
 /set - Set alert thresholds and bot config
-/version - Show Moniq CLI version
+/version - Show Moniq.sh version
 /help - Show this help message
 
 💡 <b>Examples:</b>

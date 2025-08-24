@@ -442,13 +442,13 @@ func StartTelegramBot(cfg *config.Config) {
 		if update.Message.IsCommand() && update.Message.Chat.ID != cfg.ChatID {
 			// Log security attempt
 			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-				defer f.Close()
 				f.WriteString(fmt.Sprintf("[%s] SECURITY: Bot command attempted in unauthorized group %d from user %d (%s %s)\n",
 					time.Now().Format("2006-01-02 15:04:05"),
 					update.Message.Chat.ID,
 					update.Message.From.ID,
 					update.Message.From.FirstName,
 					update.Message.From.LastName))
+				f.Close()
 			}
 		}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -96,7 +97,7 @@ func KillDuplicateProcesses() {
 		if err != nil {
 			continue
 		}
-		
+
 		// Kill the duplicate process
 		process, err := os.FindProcess(pid)
 		if err == nil {
@@ -107,20 +108,32 @@ func KillDuplicateProcesses() {
 
 // CleanupZombieProcesses cleans up any zombie moniq processes
 func CleanupZombieProcesses() {
-	// Find zombie processes
-	cmd := exec.Command("ps", "aux")
+	// Find zombie processes more efficiently
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		// macOS doesn't support --no-headers
+		cmd = exec.Command("ps", "-eo", "pid,state,comm")
+	} else {
+		cmd = exec.Command("ps", "-eo", "pid,state,comm", "--no-headers")
+	}
+
 	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
 
 	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "[moniq]") && strings.Contains(line, "<defunct>") {
-			// Extract PID from zombie process line
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				pid, err := strconv.Atoi(fields[1])
+	for i, line := range lines {
+		// Skip header on macOS
+		if runtime.GOOS == "darwin" && i == 0 {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) >= 3 {
+			// Check if it's a zombie process and moniq-related
+			if fields[1] == "Z" && (strings.Contains(fields[2], "moniq") || strings.Contains(fields[2], "[moniq]")) {
+				pid, err := strconv.Atoi(fields[0])
 				if err == nil {
 					// Try to kill zombie process
 					process, err := os.FindProcess(pid)
@@ -138,10 +151,10 @@ func KillAllMoniqProcesses() {
 	// Kill all moniq daemon processes
 	killCmd := exec.Command("pkill", "-f", "moniq daemon")
 	killCmd.Run() // Ignore errors
-	
+
 	// Clean up zombie processes
 	CleanupZombieProcesses()
-	
+
 	// Remove PID file
 	os.Remove(constants.PID_FILE)
 }
@@ -151,7 +164,7 @@ func StartProcess() error {
 	// Clean up any existing issues first
 	KillDuplicateProcesses()
 	CleanupZombieProcesses()
-	
+
 	if IsRunning() {
 		return fmt.Errorf("moniq is already running")
 	}
@@ -170,7 +183,7 @@ func StartProcess() error {
 func RestartProcess() error {
 	// Kill any duplicate processes before stopping
 	KillDuplicateProcesses()
-	
+
 	// Stop if running
 	if IsRunning() {
 		err := StopProcess()

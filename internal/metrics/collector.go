@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -841,8 +842,8 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 
 	switch runtime.GOOS {
 	case "linux":
-		// Use ps command to get process information
-		cmd := exec.Command("ps", "aux", "--sort=-%cpu", "--no-headers")
+		// Use optimized ps command to get only needed processes
+		cmd := exec.Command("ps", "-eo", "pid,user,%cpu,%mem,vsz,rss,state,tt,comm,args", "--sort=-%cpu", "--no-headers")
 		output, err := cmd.Output()
 		if err != nil {
 			return processes, err
@@ -857,29 +858,32 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 			}
 
 			parts := strings.Fields(line)
-			if len(parts) < 11 {
+			if len(parts) < 10 {
 				continue
 			}
 
-			user := parts[0]
-			pid, _ := strconv.Atoi(parts[1])
+			user := parts[1]
+			pid, _ := strconv.Atoi(parts[0])
 			cpuPercent, _ := strconv.ParseFloat(parts[2], 64)
 			memPercent, _ := strconv.ParseFloat(parts[3], 64)
+			vsz, _ := strconv.ParseInt(parts[4], 10, 64)
 			memKB, _ := strconv.ParseInt(parts[5], 10, 64)
+			status := parts[6]
+			ttt := parts[7]
+			comm := parts[8]
+			args := parts[9]
 
 			// Normalize CPU percentage to total system capacity
 			normalizedCPU := cpuPercent / float64(totalCores)
 
-			// Get command (everything after column 10)
-			command := strings.Join(parts[10:], " ")
+			// Get command (combine comm and args)
+			command := comm
+			if args != comm {
+				command = args
+			}
 			if len(command) > 50 {
 				command = command[:47] + "..."
 			}
-
-			// Parse additional process information for Linux
-			status := parts[7]                           // Process status (R, S, Z, D)
-			ttt := parts[6]                              // TTY
-			vsz, _ := strconv.ParseInt(parts[4], 10, 64) // Virtual memory
 
 			// Get start time (simplified - just use current time for now)
 			startTime := time.Now().Unix()
@@ -896,7 +900,7 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 
 			process := ProcessInfo{
 				PID:         pid,
-				Name:        parts[10],
+				Name:        comm,
 				CPUUsage:    normalizedCPU,
 				MemoryUsage: memPercent,
 				MemoryKB:    memKB,
@@ -920,8 +924,8 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		}
 
 	case "darwin":
-		// Use ps command for macOS
-		cmd := exec.Command("ps", "aux")
+		// Use optimized ps command for macOS (no --sort support)
+		cmd := exec.Command("ps", "-eo", "pid,user,%cpu,%mem,vsz,rss,state,tt,comm,args", "-r")
 		output, err := cmd.Output()
 		if err != nil {
 			return processes, err
@@ -930,40 +934,41 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		lines := strings.Split(string(output), "\n")
 		count := 0
 
+		// Parse all processes and sort by CPU usage
+		var allProcesses []ProcessInfo
 		for _, line := range lines {
 			if count == 0 { // Skip header
 				count++
 				continue
 			}
 
-			if count > limit {
-				break
-			}
-
 			parts := strings.Fields(line)
-			if len(parts) < 11 {
+			if len(parts) < 10 {
 				continue
 			}
 
-			user := parts[0]
-			pid, _ := strconv.Atoi(parts[1])
+			user := parts[1]
+			pid, _ := strconv.Atoi(parts[0])
 			cpuPercent, _ := strconv.ParseFloat(parts[2], 64)
 			memPercent, _ := strconv.ParseFloat(parts[3], 64)
+			vsz, _ := strconv.ParseInt(parts[4], 10, 64)
 			memKB, _ := strconv.ParseInt(parts[5], 10, 64)
+			status := parts[6]
+			ttt := parts[7]
+			comm := parts[8]
+			args := parts[9]
 
 			// Normalize CPU percentage to total system capacity
 			normalizedCPU := cpuPercent / float64(totalCores)
 
-			// Get command (everything after column 10)
-			command := strings.Join(parts[10:], " ")
+			// Get command (combine comm and args)
+			command := comm
+			if args != comm {
+				command = args
+			}
 			if len(command) > 50 {
 				command = command[:47] + "..."
 			}
-
-			// Parse additional process information for macOS
-			status := parts[7]                           // Process status (R, S, Z, D)
-			ttt := parts[6]                              // TTY
-			vsz, _ := strconv.ParseInt(parts[4], 10, 64) // Virtual memory
 
 			// Get start time (simplified - just use current time for now)
 			startTime := time.Now().Unix()
@@ -980,7 +985,7 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 
 			process := ProcessInfo{
 				PID:         pid,
-				Name:        parts[10],
+				Name:        comm,
 				CPUUsage:    normalizedCPU,
 				MemoryUsage: memPercent,
 				MemoryKB:    memKB,
@@ -999,9 +1004,19 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 				Threads:     threadCount,
 			}
 
-			processes = append(processes, process)
-			count++
+			allProcesses = append(allProcesses, process)
 		}
+
+		// Sort by CPU usage and return top processes
+		sort.Slice(allProcesses, func(i, j int) bool {
+			return allProcesses[i].CPUUsage > allProcesses[j].CPUUsage
+		})
+
+		// Return only the requested limit
+		if len(allProcesses) > limit {
+			return allProcesses[:limit], nil
+		}
+		return allProcesses, nil
 	}
 
 	return processes, nil

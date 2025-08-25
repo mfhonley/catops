@@ -917,14 +917,13 @@ Examples:
 				}
 			}
 
-			// send startup notification
-			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-				hostname, _ := os.Hostname()
-				ipAddress, _ := metrics.GetIPAddress()
-				osName, _ := metrics.GetOSName()
-				uptime, _ := metrics.GetUptime()
+			// Prepare startup message (always prepare, Telegram is optional)
+			hostname, _ := os.Hostname()
+			ipAddress, _ := metrics.GetIPAddress()
+			osName, _ := metrics.GetOSName()
+			uptime, _ := metrics.GetUptime()
 
-				startupMessage := fmt.Sprintf(`🚀 <b>Moniq Monitoring Started</b>
+			startupMessage := fmt.Sprintf(`🚀 <b>Moniq Monitoring Started</b>
 
 📊 <b>Server Information:</b>
 • Hostname: %s
@@ -946,15 +945,14 @@ Examples:
 • Memory: %.1f%% (will trigger alert if exceeded)
 • Disk: %.1f%% (will trigger alert if exceeded)`, hostname, osName, ipAddress, uptime, time.Now().Format("2006-01-02 15:04:05"), cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
 
-				// Send Telegram notification if configured
-				if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-					telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, startupMessage)
-				}
+			// Send Telegram notification if configured
+			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
+				telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, startupMessage)
+			}
 
-				// send service start analytics (always if in cloud mode)
-				if currentMetrics, err := metrics.GetMetrics(); err == nil {
-					sendServiceAnalytics(cfg, "service_start", currentMetrics)
-				}
+			// send service start analytics (always if in cloud mode)
+			if currentMetrics, err := metrics.GetMetrics(); err == nil {
+				sendServiceAnalytics(cfg, "service_start", currentMetrics)
 			}
 
 			// start Telegram bot in background if configured

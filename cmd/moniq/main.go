@@ -946,9 +946,12 @@ Examples:
 • Memory: %.1f%% (will trigger alert if exceeded)
 • Disk: %.1f%% (will trigger alert if exceeded)`, hostname, osName, ipAddress, uptime, time.Now().Format("2006-01-02 15:04:05"), cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
 
-				telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, startupMessage)
+				// Send Telegram notification if configured
+				if cfg.TelegramToken != "" && cfg.ChatID != 0 {
+					telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, startupMessage)
+				}
 
-				// send service start analytics
+				// send service start analytics (always if in cloud mode)
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
 					sendServiceAnalytics(cfg, "service_start", currentMetrics)
 				}
@@ -998,7 +1001,7 @@ Examples:
 					}
 
 					// send alert if any thresholds exceeded
-					if len(alerts) > 0 && currentCfg.TelegramToken != "" && currentCfg.ChatID != 0 {
+					if len(alerts) > 0 {
 						hostname, _ := os.Hostname()
 
 						// log alert
@@ -1008,7 +1011,9 @@ Examples:
 								time.Now().Format("2006-01-02 15:04:05"), strings.Join(alerts, ", ")))
 						}
 
-						alertMessage := fmt.Sprintf(`⚠️ <b>ALERT: System Thresholds Exceeded</b>
+						// Send Telegram notification if configured
+						if currentCfg.TelegramToken != "" && currentCfg.ChatID != 0 {
+							alertMessage := fmt.Sprintf(`⚠️ <b>ALERT: System Thresholds Exceeded</b>
 
 📊 <b>Server:</b> %s
 ⏰ <b>Time:</b> %s
@@ -1016,7 +1021,8 @@ Examples:
 🚨 <b>Alerts:</b>
 %s`, hostname, time.Now().Format("2006-01-02 15:04:05"), strings.Join(alerts, "\n"))
 
-						telegram.SendToTelegram(currentCfg.TelegramToken, currentCfg.ChatID, alertMessage)
+							telegram.SendToTelegram(currentCfg.TelegramToken, currentCfg.ChatID, alertMessage)
+						}
 
 						// send analytics to backend only if in cloud mode
 						if currentCfg.IsCloudMode() {
@@ -1030,32 +1036,31 @@ Examples:
 					}
 
 				case <-updateTicker.C:
-					// check for updates once per day
-					if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-						// get current version
-						cmd := exec.Command("moniq", "--version")
-						output, err := cmd.Output()
+					// check for updates once per day (always check, Telegram is optional)
+					// get current version
+					cmd := exec.Command("moniq", "--version")
+					output, err := cmd.Output()
+					if err == nil {
+						currentVersion := strings.TrimSpace(string(output))
+						currentVersion = strings.TrimPrefix(currentVersion, "v")
+
+						// check API for latest version
+						// log version check request start
+						if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+							defer logFile.Close()
+							logFile.WriteString(fmt.Sprintf("[%s] INFO: Version check request started - URL: %s\n",
+								time.Now().Format("2006-01-02 15:04:05"), constants.VERSIONS_URL))
+						}
+
+						resp, err := http.Get(constants.VERSIONS_URL)
 						if err == nil {
-							currentVersion := strings.TrimSpace(string(output))
-							currentVersion = strings.TrimPrefix(currentVersion, "v")
-
-							// check API for latest version
-							// log version check request start
-							if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-								defer logFile.Close()
-								logFile.WriteString(fmt.Sprintf("[%s] INFO: Version check request started - URL: %s\n",
-									time.Now().Format("2006-01-02 15:04:05"), constants.VERSIONS_URL))
-							}
-
-							resp, err := http.Get(constants.VERSIONS_URL)
-							if err == nil {
-								defer resp.Body.Close()
-								var result map[string]interface{}
-								if json.NewDecoder(resp.Body).Decode(&result) == nil {
-									if latestVersion, ok := result["latest_version"].(string); ok {
-										if latestVersion != currentVersion {
-											hostname, _ := os.Hostname()
-											updateMessage := fmt.Sprintf(`🔄 <b>New Update Available!</b>
+							defer resp.Body.Close()
+							var result map[string]interface{}
+							if json.NewDecoder(resp.Body).Decode(&result) == nil {
+								if latestVersion, ok := result["latest_version"].(string); ok {
+									if latestVersion != currentVersion {
+										hostname, _ := os.Hostname()
+										updateMessage := fmt.Sprintf(`🔄 <b>New Update Available!</b>
 
 📦 <b>Current:</b> v%s
 🆕 <b>Latest:</b> v%s
@@ -1066,6 +1071,8 @@ Examples:
 📊 <b>Server:</b> %s
 ⏰ <b>Check Time:</b> %s`, currentVersion, latestVersion, hostname, time.Now().Format("2006-01-02 15:04:05"))
 
+										// Send Telegram notification if configured
+										if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 											telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, updateMessage)
 										}
 									}
@@ -1076,12 +1083,13 @@ Examples:
 
 				case <-sigChan:
 					// Graceful shutdown
-					if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-						hostname, _ := os.Hostname()
-						ipAddress, _ := metrics.GetIPAddress()
-						osName, _ := metrics.GetOSName()
-						uptime, _ := metrics.GetUptime()
+					hostname, _ := os.Hostname()
+					ipAddress, _ := metrics.GetIPAddress()
+					osName, _ := metrics.GetOSName()
+					uptime, _ := metrics.GetUptime()
 
+					// Send Telegram notification if configured
+					if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 						shutdownMessage := fmt.Sprintf(`🛑 <b>Moniq Monitoring Stopped</b>
 
 📊 <b>Server Information:</b>
@@ -1095,11 +1103,11 @@ Examples:
 🔧 <b>Status:</b> Monitoring service stopped gracefully`, hostname, osName, ipAddress, uptime, time.Now().Format("2006-01-02 15:04:05"))
 
 						telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, shutdownMessage)
+					}
 
-						// send service stop analytics
-						if currentMetrics, err := metrics.GetMetrics(); err == nil {
-							sendServiceAnalytics(cfg, "service_stop", currentMetrics)
-						}
+					// send service stop analytics (always if in cloud mode)
+					if currentMetrics, err := metrics.GetMetrics(); err == nil {
+						sendServiceAnalytics(cfg, "service_stop", currentMetrics)
 					}
 
 					// log service stop

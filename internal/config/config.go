@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	constants "moniq/config"
+	constants "catops/config"
 
 	"github.com/spf13/viper"
 )
@@ -68,7 +68,7 @@ func LoadConfig() (*Config, error) {
 
 // SaveConfig saves configuration to file
 func SaveConfig(cfg *Config) error {
-	configDir := os.Getenv("HOME") + "/.moniq"
+	configDir := os.Getenv("HOME") + "/.catops"
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return err
 	}

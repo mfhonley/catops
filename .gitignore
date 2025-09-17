@@ -1,14 +1,14 @@
-# Moniq.sh - .gitignore
+# CatOps - .gitignore
 
 # =============================================================================
 # COMMERCIAL FILES (not for open source)
 # =============================================================================
 
 # Commercial binaries and executables
-/moniq
-/moniq-*
-/moniq-darwin-*
-/moniq-linux-*
+/catops
+/catops-*
+/catops-darwin-*
+/catops-linux-*
 *.exe
 *.dmg
 *.deb
@@ -67,7 +67,7 @@ Thumbs.db
 
 # Log files
 *.log
-/tmp/moniq.log
+/tmp/catops.log
 
 # Temporary files
 *.tmp
@@ -89,7 +89,7 @@ Thumbs.db
 
 # Configuration files with sensitive data
 config.yaml
-.moniq/
+.catops/
 
 # =============================================================================
 # OS SPECIFIC

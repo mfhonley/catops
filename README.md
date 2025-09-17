@@ -1,19 +1,19 @@
-# Moniq.sh
+# CatOps
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
 
-**Moniq.sh** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
+**CatOps** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
 
-**Simple and flexible** - works offline or with web dashboard at [dash.moniq.sh](https://dash.moniq.sh)
+**Simple and flexible** - works offline or with web dashboard at [dash.catops.io](https://dash.catops.io)
 
 ```bash
 # Install in seconds (from website)
-curl -sfL https://get.moniq.sh/install.sh | bash
+curl -sfL https://get.catops.io/install.sh | bash
 
 # Or from GitHub
-git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
 ```
 
 ## 🚀 Features
@@ -57,9 +57,9 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 
 **Local Mode** (default): Works offline, sends alerts to Telegram only.
 
-**Cloud Mode**: Also sends metrics to web dashboard at [dash.moniq.sh](https://dash.moniq.sh) for online monitoring.
+**Cloud Mode**: Also sends metrics to web dashboard at [dash.catops.io](https://dash.catops.io) for online monitoring.
 
-*Switch between modes automatically by running `moniq auth login <token>`*
+*Switch between modes automatically by running `catops auth login <token>`*
 
 ## 🛠️ Installation
 
@@ -69,21 +69,21 @@ git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o 
 
 ```bash
 # Install in one command
-curl -sfL https://get.moniq.sh/install.sh | bash
+curl -sfL https://get.catops.io/install.sh | bash
 ```
 
 **Quick installation with Telegram setup:**
 
 ```bash
 # Install with bot token and group ID
-curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
 
 
 **After installation:**
 - ✅ **Local Mode**: Working immediately with Telegram bot
-- ✅ **Cloud Mode Ready**: Run `moniq auth login <token>` to enable web dashboard
+- ✅ **Cloud Mode Ready**: Run `catops auth login <token>` to enable web dashboard
 
 **That's it!** The script will automatically:
 - Download the correct binary for your platform
@@ -107,16 +107,16 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
    - Add [@myidbot](https://t.me/myidbot) to the group
    - Send `/getid` in the group and copy the group ID
 
-3. **Install Moniq.sh**
+3. **Install CatOps**
    ```bash
-   curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+   curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
    ```
    
    
 
 4. **Verify Installation**
    ```bash
-   moniq status
+   catops status
    ```
 
 ### Method 2: From Source (For Developers & Advanced Users)
@@ -125,33 +125,33 @@ curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID=
 
 ```bash
 # Clone and build in one command
-git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Make executable and test
-chmod +x moniq
-./moniq --version
+chmod +x catops
+./catops --version
 
 # Install system-wide (optional)
-sudo cp moniq /usr/local/bin/
-sudo chmod +x /usr/local/bin/moniq
+sudo cp catops /usr/local/bin/
+sudo chmod +x /usr/local/bin/catops
 ```
 
 **Or step by step:**
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/honley1/moniq.sh.git
-cd moniq.sh
+git clone https://github.com/honley1/catops.git
+cd catops
 
 # 2. Build binary
-go build -o moniq ./cmd/moniq
+go build -o catops ./cmd/catops
 
 # 3. Test locally
-./moniq --version
+./catops --version
 
 # 4. Install system-wide (optional)
-sudo cp moniq /usr/local/bin/
-sudo chmod +x /usr/local/bin/moniq
+sudo cp catops /usr/local/bin/
+sudo chmod +x /usr/local/bin/catops
 ```
 
 **Configuration will be created automatically on first run.**
@@ -165,43 +165,43 @@ sudo chmod +x /usr/local/bin/moniq
 **Option A: From Website (Recommended)**
 ```bash
 # Basic installation
-curl -sfL https://get.moniq.sh/install.sh | bash
+curl -sfL https://get.catops.io/install.sh | bash
 
 # Or with Telegram setup
-curl -sfL https://get.moniq.sh/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
+curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
-**💡 Pro Tip:** Get ready-to-use commands from [dash.moniq.sh](https://dash.moniq.sh) or [moniq.sh](https://moniq.sh)
+**💡 Pro Tip:** Get ready-to-use commands from [dash.catops.io](https://dash.catops.io) or [catops.io](https://catops.io)
 
 **Option B: From GitHub**
 ```bash
 # Clone and build
-git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Make executable
-chmod +x moniq
+chmod +x catops
 
 # Test installation
-./moniq --version
+./catops --version
 ```
 
 ### 2. Configure Telegram Bot
 
 ```bash
 # Set bot token
-moniq config token=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
+catops config token=1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
 
 # Set group ID
-moniq config group=-1001234567890
+catops config group=-1001234567890
 
 # Show current configuration
-moniq config show
+catops config show
 ```
 
 ### 3. Enable Cloud Mode (Optional but Recommended)
 
-**Get your auth token from [dash.moniq.sh](https://dash.moniq.sh):**
-1. Visit [dash.moniq.sh](https://dash.moniq.sh)
+**Get your auth token from [dash.catops.io](https://dash.catops.io):**
+1. Visit [dash.catops.io](https://dash.catops.io)
 2. Create account or login
 3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
 4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
@@ -211,11 +211,11 @@ moniq config show
 
 **Authenticate with backend:**
 ```bash
-# This enables Cloud Mode - your metrics will be available at [dash.moniq.sh](https://dash.moniq.sh)
-moniq auth login your_auth_token
+# This enables Cloud Mode - your metrics will be available at [dash.catops.io](https://dash.catops.io)
+catops auth login your_auth_token
 
 # Verify Cloud Mode is enabled
-moniq auth info
+catops auth info
 ```
 
 **What happens next:**
@@ -230,26 +230,26 @@ moniq auth info
 
 ```bash
 # Start monitoring service
-moniq start
+catops start
 
 # Check status
-moniq status
+catops status
 
 # View processes
-moniq processes
+catops processes
 
 # Set alert thresholds
-moniq set cpu=70 mem=75 disk=85
+catops set cpu=70 mem=75 disk=85
 ```
 
 ### 5. Enable Autostart (Optional)
 
 ```bash
 # Enable autostart on boot
-moniq autostart enable
+catops autostart enable
 
 # Check autostart status
-moniq autostart status
+catops autostart status
 ```
 
 ## 📋 Available Commands
@@ -258,25 +258,25 @@ moniq autostart status
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `moniq status` | Display current system metrics and alert thresholds | `moniq status` |
-| `moniq processes` | Show detailed information about running processes | `moniq processes` |
-| `moniq start` | Start background monitoring service | `moniq start` |
-| `moniq restart` | Stop and restart the monitoring service | `moniq restart` |
+| `catops status` | Display current system metrics and alert thresholds | `catops status` |
+| `catops processes` | Show detailed information about running processes | `catops processes` |
+| `catops start` | Start background monitoring service | `catops start` |
+| `catops restart` | Stop and restart the monitoring service | `catops restart` |
 
 ### Configuration Commands
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `moniq auth login <token>` | Authenticate with backend for web dashboard access | `moniq auth login your_token` |
-| `moniq auth logout` | Logout and clear authentication | `moniq auth logout` |
-| `moniq auth info` | Show authentication status | `moniq auth info` |
-| `moniq config group=` | Set Telegram chat ID | `moniq config group=-100123` |
-| `moniq config show` | Display current configuration | `moniq config show` |
-| `moniq set` | Configure alert thresholds | `moniq set cpu=90 mem=80` |
+| `catops auth login <token>` | Authenticate with backend for web dashboard access | `catops auth login your_token` |
+| `catops auth logout` | Logout and clear authentication | `catops auth logout` |
+| `catops auth info` | Show authentication status | `catops auth info` |
+| `catops config group=` | Set Telegram chat ID | `catops config group=-100123` |
+| `catops config show` | Display current configuration | `catops config show` |
+| `catops set` | Configure alert thresholds | `catops set cpu=90 mem=80` |
 
 ### Authentication & Cloud Mode Commands
 
-#### **`moniq auth login <token>`**
+#### **`catops auth login <token>`**
 **Purpose**: Enables Cloud Mode by authenticating with the backend
 **Process**:
 1. **First Time**: Registers your server with the backend and gets a `server_token`
@@ -285,13 +285,13 @@ moniq autostart status
 
 **Example**:
 ```bash
-# Get token from [dash.moniq.sh](https://dash.moniq.sh) - go to "My Profile"
-moniq auth login 6893bbb3b008cb8d34acbfa9
+# Get token from [dash.catops.io](https://dash.catops.io) - go to "My Profile"
+catops auth login 6893bbb3b008cb8d34acbfa9
 
 # Server automatically appears in dashboard
 ```
 
-#### **`moniq auth logout`**
+#### **`catops auth logout`**
 **Purpose**: Disables Cloud Mode by clearing authentication
 **Process**:
 1. Clears `auth_token` from configuration
@@ -300,11 +300,11 @@ moniq auth login 6893bbb3b008cb8d34acbfa9
 
 **Example**:
 ```bash
-moniq auth logout
+catops auth logout
 # Cloud Mode disabled - metrics only available locally
 ```
 
-#### **`moniq auth info`**
+#### **`catops auth info`**
 **Purpose**: Shows current authentication and Cloud Mode status
 **Displays**:
 - Authentication status (logged in/logged out)
@@ -314,7 +314,7 @@ moniq auth logout
 
 **Example**:
 ```bash
-moniq auth info
+catops auth info
 # Shows: ✅ Cloud Mode: ENABLED | 🔐 Authenticated | 🌐 Dashboard: Available
 ```
 
@@ -322,13 +322,13 @@ moniq auth info
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `moniq autostart enable` | Enable autostart on boot | `moniq autostart enable` |
-| `moniq autostart disable` | Disable autostart on boot | `moniq autostart disable` |
-| `moniq autostart status` | Check autostart status | `moniq autostart status` |
-| `moniq cleanup` | Clean up old backup files and duplicate processes | `moniq cleanup` |
-| `moniq force-cleanup` | Force cleanup of all processes and start fresh | `moniq force-cleanup` |
-| `moniq update` | Check and install updates | `moniq update` |
-| `moniq uninstall` | Completely remove Moniq.sh and all components | `moniq uninstall` |
+| `catops autostart enable` | Enable autostart on boot | `catops autostart enable` |
+| `catops autostart disable` | Disable autostart on boot | `catops autostart disable` |
+| `catops autostart status` | Check autostart status | `catops autostart status` |
+| `catops cleanup` | Clean up old backup files and duplicate processes | `catops cleanup` |
+| `catops force-cleanup` | Force cleanup of all processes and start fresh | `catops force-cleanup` |
+| `catops update` | Check and install updates | `catops update` |
+| `catops uninstall` | Completely remove CatOps and all components | `catops uninstall` |
 
 ## 📊 Metrics & Monitoring
 
@@ -354,7 +354,7 @@ moniq auth info
 ### Cloud Mode Data Transmission
 
 #### **What Data is Sent to Backend**
-When Cloud Mode is enabled, Moniq.sh automatically sends comprehensive data to [dash.moniq.sh](https://dash.moniq.sh):
+When Cloud Mode is enabled, CatOps automatically sends comprehensive data to [dash.catops.io](https://dash.catops.io):
 
 **Service Lifecycle Events** (via Events API):
 - `service_start`: Server startup with system specifications
@@ -371,7 +371,7 @@ When Cloud Mode is enabled, Moniq.sh automatically sends comprehensive data to [
 - Total memory capacity
 - Total storage capacity
 - Operating system information
-- Moniq version
+- CatOps version
 
 **Real-time Metrics**:
 - CPU usage percentage
@@ -407,7 +407,7 @@ When Cloud Mode is enabled, Moniq.sh automatically sends comprehensive data to [
 - `/processes` - Display top processes
 - `/restart` - Restart monitoring service
 - `/set` - Set alert thresholds (e.g., `/set cpu=90`)
-- `/version` - Show Moniq.sh version
+- `/version` - Show CatOps version
 - `/help` - Show available commands
 
 ### Setup Instructions
@@ -415,12 +415,12 @@ When Cloud Mode is enabled, Moniq.sh automatically sends comprehensive data to [
 2. Get your bot token
 3. Add bot to your group/channel
 4. Get your chat ID
-5. Configure CLI: `moniq config token=<token> group=<chat_id>`
+5. Configure CLI: `catops config token=<token> group=<chat_id>`
 
 ## 🌐 Web Dashboard (Cloud Mode)
 
 ### Access Your Server Metrics Online
-When you enable Cloud Mode with `moniq auth login <token>`, your server metrics become available at [dash.moniq.sh](https://dash.moniq.sh).
+When you enable Cloud Mode with `catops auth login <token>`, your server metrics become available at [dash.catops.io](https://dash.catops.io).
 
 ### Dashboard Features
 - **Real-time Monitoring**: Live metrics streaming from your servers
@@ -437,18 +437,18 @@ When you enable Cloud Mode with `moniq auth login <token>`, your server metrics 
 ### How Cloud Mode Works
 
 #### **Automatic Mode Detection**
-Moniq.sh automatically determines your operation mode based on configuration:
+CatOps automatically determines your operation mode based on configuration:
 
 - **Local Mode (Default)**: When `auth_token` or `server_token` is missing
 - **Cloud Mode**: When both `auth_token` and `server_token` are present
 
 #### **Cloud Mode Activation Process**
-1. **Get Auth Token**: Visit [dash.moniq.sh](https://dash.moniq.sh), go to "My Profile", and copy your user ID from "Profile Information"
-2. **Authenticate**: Run `moniq auth login your_auth_token`
+1. **Get Auth Token**: Visit [dash.catops.io](https://dash.catops.io), go to "My Profile", and copy your user ID from "Profile Information"
+2. **Authenticate**: Run `catops auth login your_auth_token`
 3. **Server Registration**: CLI automatically registers your server with the backend
 4. **Token Exchange**: Backend returns a unique `server_token` for your server
 5. **Mode Switch**: Both tokens are now present → Cloud Mode activated
-6. **Metrics Streaming**: All metrics automatically start streaming to [dash.moniq.sh](https://dash.moniq.sh)
+6. **Metrics Streaming**: All metrics automatically start streaming to [dash.catops.io](https://dash.catops.io)
 
 #### **What Happens in Cloud Mode**
 - **Service Analytics**: Automatically sent to backend API endpoints
@@ -459,9 +459,9 @@ Moniq.sh automatically determines your operation mode based on configuration:
 
 #### **Backend API Integration**
 Cloud Mode sends data to these secure endpoints:
-- **Events API**: `https://api.moniq.sh/api/data/events` - Service lifecycle events
-- **Alerts API**: `https://api.moniq.sh/api/data/alerts` - Threshold violations
-- **Server Management**: `https://api.moniq.sh/api/downloads/install` - Server registration
+- **Events API**: `https://api.catops.io/api/data/events` - Service lifecycle events
+- **Alerts API**: `https://api.catops.io/api/data/alerts` - Threshold violations
+- **Server Management**: `https://api.catops.io/api/downloads/install` - Server registration
 
 #### **Data Security & Privacy**
 - **Authentication Required**: All requests include `user_token` and `server_token`
@@ -471,12 +471,12 @@ Cloud Mode sends data to these secure endpoints:
 - **No Data Sharing**: Your data never shared with other users
 
 ### How to Enable Cloud Mode
-1. **Visit [dash.moniq.sh](https://dash.moniq.sh)**
+1. **Visit [dash.catops.io](https://dash.catops.io)**
 2. **Create an account** or login
 3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
 4. **Find your ID**: In the "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
 5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
-6. **Run**: `moniq auth login your_auth_token`
+6. **Run**: `catops auth login your_auth_token`
 7. **Your server will appear** in the dashboard automatically
 
 
@@ -488,7 +488,7 @@ Cloud Mode sends data to these secure endpoints:
 ### 📍 Where to Find Your Auth Token
 
 **Step-by-step guide:**
-1. **Login to [dash.moniq.sh](https://dash.moniq.sh)**
+1. **Login to [dash.catops.io](https://dash.catops.io)**
 2. **Go to Profile**: Click "My Profile" in the left sidebar  
 3. **Find User ID**: In "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
 4. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
@@ -536,48 +536,48 @@ Cloud Mode sends data to these secure endpoints:
 ### Auto-start Management
 ```bash
 # Enable autostart (creates systemd/launchd service)
-moniq autostart enable
+catops autostart enable
 
 # Check autostart status
-moniq autostart status
+catops autostart status
 
 # Disable autostart
-moniq autostart disable
+catops autostart disable
 ```
 
 ### Process Management
 ```bash
 # View top 10 processes
-moniq processes
+catops processes
 
 # View top 20 processes
-moniq processes -n 20
+catops processes -n 20
 
 # View top processes by CPU usage
-moniq processes | grep -A 20 "CPU Usage"
+catops processes | grep -A 20 "CPU Usage"
 ```
 
 ### Update Management
 ```bash
 # Check for updates
-moniq update
+catops update
 
 # Clean up old backups
-moniq cleanup
+catops cleanup
 ```
 
 ### Uninstall Management
 ```bash
-# Completely remove Moniq.sh
-moniq uninstall
+# Completely remove CatOps
+catops uninstall
 ```
 
 ## 🏗️ Architecture
 
 ### Project Structure
 ```
-moniq-cli/
-├── cmd/moniq/          # Main CLI application
+catops-cli/
+├── cmd/catops/          # Main CLI application
 ├── internal/           # Internal packages
 │   ├── config/        # Configuration management
 │   ├── metrics/       # Metrics collection
@@ -599,7 +599,7 @@ moniq-cli/
 ### Backend Integration Architecture
 - **API Client**: Automatic HTTP requests to backend endpoints
 - **Token Management**: Secure storage and validation of auth/server tokens
-- **Data Transmission**: Asynchronous metrics streaming to [dash.moniq.sh](https://dash.moniq.sh)
+- **Data Transmission**: Asynchronous metrics streaming to [dash.catops.io](https://dash.catops.io)
 - **Mode Detection**: Automatic switching between Local and Cloud modes
 - **Server Registration**: Backend API integration for server management
 - **Real-time Streaming**: Continuous data transmission during monitoring
@@ -611,12 +611,12 @@ moniq-cli/
 ### Building from Source
 ```bash
 # Quick build
-git clone https://github.com/honley1/moniq.sh.git && cd moniq.sh && go build -o moniq ./cmd/moniq
+git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Or step by step
-git clone https://github.com/honley1/moniq.sh.git
-cd moniq.sh
-go build -o moniq ./cmd/moniq
+git clone https://github.com/honley1/catops.git
+cd catops
+go build -o catops ./cmd/catops
 
 # Build completed successfully
 ```
@@ -628,7 +628,7 @@ go build -o moniq ./cmd/moniq
 - Basic knowledge of system administration
 
 ### Development Notes
-- **Local Development**: Use `moniq auth login <token>` to test Cloud Mode locally
+- **Local Development**: Use `catops auth login <token>` to test Cloud Mode locally
 - **Backend Integration**: Monitor API endpoints and data transmission
 - **Token Validation**: Verify authentication and server registration flow
 - **Mode Switching**: Check automatic switching between Local and Cloud modes
@@ -640,13 +640,13 @@ Save screenshots in `docs/images/` folder and use `![Description](docs/images/fi
 ### Building Binaries
 ```bash
 # Build manually for your platform
-go build -o moniq ./cmd/moniq
+go build -o catops ./cmd/catops
 
 # Or build for specific platforms
-GOOS=linux GOARCH=amd64 go build -o moniq-linux-amd64 ./cmd/moniq
-GOOS=darwin GOARCH=amd64 go build -o moniq-darwin-amd64 ./cmd/moniq
-GOOS=linux GOARCH=arm64 go build -o moniq-linux-arm64 ./cmd/moniq
-GOOS=darwin GOARCH=arm64 go build -o moniq-darwin-arm64 ./cmd/moniq
+GOOS=linux GOARCH=amd64 go build -o catops-linux-amd64 ./cmd/catops
+GOOS=darwin GOARCH=amd64 go build -o catops-darwin-amd64 ./cmd/catops
+GOOS=linux GOARCH=arm64 go build -o catops-linux-arm64 ./cmd/catops
+GOOS=darwin GOARCH=arm64 go build -o catops-darwin-arm64 ./cmd/catops
 ```
 
 ## 📄 License
@@ -654,14 +654,14 @@ GOOS=darwin GOARCH=arm64 go build -o moniq-darwin-arm64 ./cmd/moniq
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 **Project Components:**
-- **Moniq.sh**: Open source monitoring tool (MIT License)
+- **CatOps**: Open source monitoring tool (MIT License)
 - **Backend APIs**: Cloud infrastructure for metrics storage
-- **Web Dashboard**: [dash.moniq.sh](https://dash.moniq.sh) - Centralized monitoring interface
+- **Web Dashboard**: [dash.catops.io](https://dash.catops.io) - Centralized monitoring interface
 - **Telegram Bot**: Open source bot integration code
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [contributing guidelines](https://github.com/honley1/moniq.sh/blob/main/CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [contributing guidelines](https://github.com/honley1/catops/blob/main/CONTRIBUTING.md) for details.
 
 **Main Areas:**
 - **New Features**: Additional monitoring capabilities and platform support
@@ -672,10 +672,10 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 ## 📞 Support & Contact
 
 ### Get Help
-- **Email**: honley@moniq.sh
-- **Telegram**: [@moniqsh](https://t.me/moniqsh)
-- **GitHub Issues**: [Report Issues](https://github.com/honley1/moniq.sh/issues)
-- **GitHub Discussions**: [Community Forum](https://github.com/honley1/moniq.sh/discussions)
+- **Email**: honley@catop.io
+- **Telegram**: [@catopsio](https://t.me/catopsio)
+- **GitHub Issues**: [Report Issues](https://github.com/honley1/catops/issues)
+- **GitHub Discussions**: [Community Forum](https://github.com/honley1/catops/discussions)
 
 
 
@@ -683,7 +683,7 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 
 ---
 
-**Moniq.sh** - Ultra-lightweight server monitoring. 🚀
+**CatOps** - Ultra-lightweight server monitoring. 🚀
 
 Built with ❤️ by the open source community.
 

@@ -3,30 +3,30 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ANALYTICS_URL = "https://api.moniq.sh/api/data/alerts"
-	EVENTS_URL    = "https://api.moniq.sh/api/data/events"
+	ANALYTICS_URL = "https://api.catops.io/api/data/alerts"
+	EVENTS_URL    = "https://api.catops.io/api/data/events"
 
 	// Server management endpoints
-	SERVERS_URL   = "https://api.moniq.sh/api/servers/change-owner"
-	INSTALL_URL   = "https://api.moniq.sh/api/downloads/install"
-	UNINSTALL_URL = "https://api.moniq.sh/api/servers/uninstall"
+	SERVERS_URL   = "https://api.catops.io/api/servers/change-owner"
+	INSTALL_URL   = "https://api.catops.io/api/downloads/install"
+	UNINSTALL_URL = "https://api.catops.io/api/servers/uninstall"
 
 	// Version and update endpoints
-	VERSIONS_URL = "https://api.moniq.sh/api/versions/check"
+	VERSIONS_URL = "https://api.catops.io/api/versions/check"
 
 	// Download endpoints
-	GET_MONIQ_URL = "https://get.moniq.sh"
+	GET_CATOPS_URL = "https://get.catops.io"
 )
 
 // Application constants
 const (
-	USER_AGENT = "Moniq-CLI/1.0.0"
+	USER_AGENT = "CatOps-CLI/1.0.0"
 )
 
 // External services
 const (
 	TELEGRAM_API_URL = "https://api.telegram.org/bot%s/sendMessage"
-	MONIQ_WEBSITE    = "https://moniq.sh"
+	CATOPS_WEBSITE    = "https://catops.io"
 )
 
 // Operation modes
@@ -44,7 +44,7 @@ const (
 
 // File paths
 const (
-	CONFIG_DIR_NAME = "/.moniq"
-	PID_FILE        = "/tmp/moniq.pid"
-	LOG_FILE        = "/tmp/moniq.log"
+	CONFIG_DIR_NAME = "/.catops"
+	PID_FILE        = "/tmp/catops.pid"
+	LOG_FILE        = "/tmp/catops.log"
 )

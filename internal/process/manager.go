@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	constants "moniq/config"
+	constants "catops/config"
 )
 
 // ReadPID reads the PID from the PID file
@@ -49,7 +49,7 @@ func IsRunning() bool {
 // StopProcess stops the monitoring process
 func StopProcess() error {
 	if !IsRunning() {
-		return fmt.Errorf("moniq is not running")
+		return fmt.Errorf("catops is not running")
 	}
 
 	pid, err := ReadPID()
@@ -74,10 +74,10 @@ func StopProcess() error {
 	return nil
 }
 
-// KillDuplicateProcesses kills any duplicate moniq daemon processes
+// KillDuplicateProcesses kills any duplicate catops daemon processes
 func KillDuplicateProcesses() {
-	// Find all moniq daemon processes
-	cmd := exec.Command("pgrep", "-f", "moniq daemon")
+	// Find all catops daemon processes
+	cmd := exec.Command("pgrep", "-f", "catops daemon")
 	output, err := cmd.Output()
 	if err != nil {
 		// No processes found, which is fine
@@ -106,7 +106,7 @@ func KillDuplicateProcesses() {
 	}
 }
 
-// CleanupZombieProcesses cleans up any zombie moniq processes
+// CleanupZombieProcesses cleans up any zombie catops processes
 func CleanupZombieProcesses() {
 	// Find zombie processes more efficiently
 	var cmd *exec.Cmd
@@ -131,8 +131,8 @@ func CleanupZombieProcesses() {
 
 		fields := strings.Fields(line)
 		if len(fields) >= 3 {
-			// Check if it's a zombie process and moniq-related
-			if fields[1] == "Z" && (strings.Contains(fields[2], "moniq") || strings.Contains(fields[2], "[moniq]")) {
+			// Check if it's a zombie process and catops-related
+			if fields[1] == "Z" && (strings.Contains(fields[2], "catops") || strings.Contains(fields[2], "[catops]")) {
 				pid, err := strconv.Atoi(fields[0])
 				if err == nil {
 					// Try to kill zombie process
@@ -146,10 +146,10 @@ func CleanupZombieProcesses() {
 	}
 }
 
-// KillAllMoniqProcesses kills ALL moniq daemon processes for complete cleanup
-func KillAllMoniqProcesses() {
-	// Kill all moniq daemon processes
-	killCmd := exec.Command("pkill", "-f", "moniq daemon")
+// KillAllCatOpsProcesses kills ALL catops daemon processes for complete cleanup
+func KillAllCatOpsProcesses() {
+	// Kill all catops daemon processes
+	killCmd := exec.Command("pkill", "-f", "catops daemon")
 	killCmd.Run() // Ignore errors
 
 	// Clean up zombie processes
@@ -166,11 +166,11 @@ func StartProcess() error {
 	CleanupZombieProcesses()
 
 	if IsRunning() {
-		return fmt.Errorf("moniq is already running")
+		return fmt.Errorf("catops is already running")
 	}
 
 	// Start the process in background using shell
-	cmd := exec.Command("bash", "-c", "nohup moniq daemon > /dev/null 2>&1 &")
+	cmd := exec.Command("bash", "-c", "nohup catops daemon > /dev/null 2>&1 &")
 	err := cmd.Start()
 	if err != nil {
 		return err

@@ -13,11 +13,11 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	constants "moniq/config"
-	"moniq/internal/config"
-	"moniq/internal/metrics"
-	"moniq/internal/process"
-	"moniq/pkg/utils"
+	constants "catops/config"
+	"catops/internal/config"
+	"catops/internal/metrics"
+	"catops/internal/process"
+	"catops/pkg/utils"
 )
 
 // formatBytes converts bytes to human-readable format (KB, MB, GB, etc.)
@@ -90,7 +90,7 @@ func SetupBotCommands(bot *tgbotapi.BotAPI) error {
 		{Command: "processes", Description: "Show top processes by resource usage"},
 		{Command: "restart", Description: "Restart monitoring service"},
 		{Command: "set", Description: "Set alert thresholds (e.g., /set cpu=90)"},
-		{Command: "version", Description: "Show Moniq.sh version"},
+		{Command: "version", Description: "Show CatOps version"},
 		{Command: "help", Description: "Show available commands"},
 	}
 
@@ -109,8 +109,8 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 🤖 <b>This bot is configured for a specific group only!</b>
 
-🌐 <b>This bot is created by moniq.sh</b>
-• Visit <a href="%s">moniq.sh</a> for your own monitoring solution`, constants.MONIQ_WEBSITE)
+🌐 <b>This bot is created by catops.io</b>
+• Visit <a href="%s">catops.io</a> for your own monitoring solution`, constants.CATOPS_WEBSITE)
 
 		bot.Send(msg)
 		return
@@ -121,8 +121,8 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 	switch update.Message.Command() {
 	case "start":
-		// Show Moniq.sh welcome message and features
-		msg.Text = `🚀 <b>Moniq System Monitor</b>
+		// Show CatOps welcome message and features
+		msg.Text = `🚀 <b>CatOps System Monitor</b>
 
 📊 <b>Features:</b>
 • Real-time Metrics - CPU, Memory, Disk monitoring
@@ -132,10 +132,10 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 • Fast & Lightweight - Minimal resource usage
 
 📋 <b>Quick Start Guide:</b>
-1. Start Service - moniq start
-2. Set Thresholds - moniq set cpu=90
-3. Apply Changes - moniq restart
-4. Check Status - moniq status
+1. Start Service - catops start
+2. Set Thresholds - catops set cpu=90
+3. Apply Changes - catops restart
+4. Check Status - catops status
 5. Telegram Bot - Automatically available
 
 📝 <b>Available Commands:</b>
@@ -254,8 +254,8 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 	case "restart":
 		// Restart monitoring service by running CLI command in background
 
-		// Run moniq restart in background
-		cmd := exec.Command("moniq", "restart")
+		// Run catops restart in background
+		cmd := exec.Command("catops", "restart")
 		cmd.Dir = "/tmp"
 		cmd.Stdout = nil
 		cmd.Stderr = nil
@@ -269,7 +269,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 			msg.Text = "❌ <b>Failed to restart:</b> " + err.Error()
 		} else {
 
-			msg.Text = "🔄 <b>Restarting Moniq...</b>\n\nMonitoring service is being restarted in the background.\n\n✅ <b>Status:</b> Restart process initiated"
+			msg.Text = "🔄 <b>Restarting CatOps...</b>\n\nMonitoring service is being restarted in the background.\n\n✅ <b>Status:</b> Restart process initiated"
 		}
 
 	case "set":
@@ -329,8 +329,8 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		}
 
 	case "version":
-		// Get Moniq.sh version
-		cmd := exec.Command("moniq", "--version")
+		// Get CatOps version
+		cmd := exec.Command("catops", "--version")
 		output, err := cmd.Output()
 		if err != nil {
 			msg.Text = "❌ <b>Error getting version:</b>\n" + err.Error()
@@ -355,7 +355,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 						// Extract version number from "v0.0.3" format
 						currentVersion := strings.TrimPrefix(version, "v")
 						if latestVersion != currentVersion {
-							updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>moniq update</code>", latestVersion)
+							updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", latestVersion)
 						} else {
 							updateInfo = "\n\n✅ <b>You have the latest version!</b>"
 						}
@@ -363,15 +363,15 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 				}
 			}
 
-			msg.Text = fmt.Sprintf("📦 <b>Moniq Version</b>\n\n<code>%s</code>%s", version, updateInfo)
+			msg.Text = fmt.Sprintf("📦 <b>CatOps Version</b>\n\n<code>%s</code>%s", version, updateInfo)
 		}
 
 	case "update":
 		// Update command removed from bot - use CLI instead
-		msg.Text = "❌ <b>Update command removed from bot</b>\n\n💡 <b>Use CLI instead:</b>\n\n<code>moniq update</code>\n\nThis is more reliable and secure."
+		msg.Text = "❌ <b>Update command removed from bot</b>\n\n💡 <b>Use CLI instead:</b>\n\n<code>catops update</code>\n\nThis is more reliable and secure."
 
 	case "help":
-		msg.Text = fmt.Sprintf(`🤖 <b>Moniq Bot Commands</b>
+		msg.Text = fmt.Sprintf(`🤖 <b>CatOps Bot Commands</b>
 
 📋 <b>Available Commands:</b>
 /start - Start monitoring service
@@ -379,7 +379,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 /processes - Show top processes by resource usage
 /restart - Restart monitoring service
 /set - Set alert thresholds and bot config
-/version - Show Moniq.sh version
+/version - Show CatOps version
 /help - Show this help message
 
 💡 <b>Examples:</b>
@@ -396,7 +396,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 
 🔧 <b>Note:</b> Changes made with /set require /restart to take effect immediately.
 
-🌐 <b>Official Website:</b> <a href="%s">moniq.sh</a>`, constants.MONIQ_WEBSITE)
+🌐 <b>Official Website:</b> <a href="%s">catops.io</a>`, constants.CATOPS_WEBSITE)
 
 	default:
 		msg.Text = "❓ <b>Unknown command!</b>\n\nUse /help to see available commands."
@@ -409,7 +409,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 func StartTelegramBot(cfg *config.Config) {
 	if cfg.TelegramToken == "" {
 		fmt.Println("❌ Error: Telegram token not configured!")
-		fmt.Println("Please set telegram_token and group_id in ~/.moniq/config.yaml")
+		fmt.Println("Please set telegram_token and group_id in ~/.catops/config.yaml")
 		return
 	}
 

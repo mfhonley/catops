@@ -2,7 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"moniq/internal/metrics"
+	"catops/internal/metrics"
 	"sort"
 	"strings"
 )

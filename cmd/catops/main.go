@@ -18,13 +18,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	constants "moniq/config"
-	"moniq/internal/config"
-	"moniq/internal/metrics"
-	"moniq/internal/process"
-	"moniq/internal/telegram"
-	"moniq/internal/ui"
-	"moniq/pkg/utils"
+	constants "catops/config"
+	"catops/internal/config"
+	"catops/internal/metrics"
+	"catops/internal/process"
+	"catops/internal/telegram"
+	"catops/internal/ui"
+	"catops/pkg/utils"
 )
 
 // VERSION is set during build via ldflags
@@ -64,7 +64,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		"server_info": map[string]interface{}{
 			"hostname":      hostname,
 			"os_type":       metrics.OSName,
-			"moniq_version": getCurrentVersion(),
+			"catops_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
 			"cpu_usage":      metrics.CPUUsage,
@@ -160,7 +160,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		"server_info": map[string]interface{}{
 			"hostname":      hostname,
 			"os_type":       metrics.OSName,
-			"moniq_version": getCurrentVersion(),
+			"catops_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
 			"cpu_usage":      metrics.CPUUsage,
@@ -170,7 +170,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 			"iops":           metrics.IOPS,
 			"io_wait":        metrics.IOWait,
 		},
-		"service_name": "moniq",
+		"service_name": "catops",
 		"service_status": func() string {
 			if eventType == "service_start" || eventType == "system_monitoring" {
 				return "running"
@@ -296,7 +296,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		"server_info": map[string]string{
 			"hostname":      hostname,
 			"os_type":       osName,
-			"moniq_version": getCurrentVersion(),
+			"catops_version": getCurrentVersion(),
 		},
 		// Add server specifications
 		"cpu_cores":     serverSpecs["cpu_cores"],
@@ -501,8 +501,8 @@ func main() {
 
 	// create root command
 	rootCmd := &cobra.Command{
-		Use:                "moniq",
-		Short:              "Professional Moniq.sh Tool",
+		Use:                "catops",
+		Short:              "Professional CatOps Tool",
 		DisableSuggestions: true,
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -537,12 +537,12 @@ func main() {
 			// quick start section
 			ui.PrintSection("Quick Start")
 			quickStartData := map[string]string{
-				"Start Service":  "moniq start",
-				"Set Thresholds": "moniq set cpu=90",
-				"Apply Changes":  "moniq restart",
-				"Check Status":   "moniq status",
+				"Start Service":  "catops start",
+				"Set Thresholds": "catops set cpu=90",
+				"Apply Changes":  "catops restart",
+				"Check Status":   "catops status",
 				"Telegram Bot":   "Auto-configured",
-				"Cloud Mode":     "moniq auth login <token>",
+				"Cloud Mode":     "catops auth login <token>",
 			}
 			fmt.Print(ui.CreateBeautifulList(quickStartData))
 			ui.PrintSectionEnd()
@@ -560,7 +560,7 @@ func main() {
 			fmt.Print(ui.CreateBeautifulList(commandsData))
 			ui.PrintSectionEnd()
 
-			ui.PrintStatus("info", "Use 'moniq [command] --help' for detailed help")
+			ui.PrintStatus("info", "Use 'catops [command] --help' for detailed help")
 			return nil
 		},
 	}
@@ -578,7 +578,7 @@ func main() {
   • Alert Thresholds (configured limits for alerts)
 
 Examples:
-  moniq status          # Show all system information`,
+  catops status          # Show all system information`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 
@@ -653,8 +653,8 @@ Examples:
   • Process details (PID, user, command, resource usage)
 
 Examples:
-  moniq processes        # Show all process information
-  moniq processes -n 20 # Show top 20 processes`,
+  catops processes        # Show all process information
+  catops processes -n 20 # Show top 20 processes`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Process Information")
@@ -724,7 +724,7 @@ This ensures the monitoring service uses the latest configuration.
 The Telegram bot will also be restarted if configured.
 
 Examples:
-  moniq restart         # Restart monitoring with current config`,
+  catops restart         # Restart monitoring with current config`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Restarting Monitoring Service")
@@ -763,15 +763,15 @@ Examples:
 	updateCmd := &cobra.Command{
 		Use:   "update",
 		Short: "Download and install the latest version",
-		Long: `Check for and install the latest version of Moniq.sh.
+		Long: `Check for and install the latest version of CatOps.
 This will check if updates are available and install them if found.
 The update process is handled by the official update script.
 
 Examples:
-  moniq update          # Check and install updates`,
+  catops update          # Check and install updates`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// execute the update script directly
-			updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_MONIQ_URL+"/update.sh | bash")
+			updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
 			updateCmd.Stdout = os.Stdout
 			updateCmd.Stderr = os.Stderr
 
@@ -791,14 +791,14 @@ The service will continuously check system metrics and send Telegram alerts
 when thresholds are exceeded.
 
 To run in background (recommended):
-  nohup moniq start > /dev/null 2>&1 &
+  nohup catops start > /dev/null 2>&1 &
 
 To run in foreground (for testing):
-  moniq start
+  catops start
 
 Examples:
-  moniq start           # Start monitoring service (foreground)
-  nohup moniq start &   # Start monitoring service (background)`,
+  catops start           # Start monitoring service (foreground)
+  nohup catops start &   # Start monitoring service (background)`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Starting Monitoring Service")
@@ -826,7 +826,7 @@ Examples:
 		Use:   "set",
 		Short: "Configure alert thresholds for CPU, Memory, and Disk",
 		Long: `Set individual alert thresholds for system metrics.
-After changing thresholds, run 'moniq restart' to apply changes to the running service.
+After changing thresholds, run 'catops restart' to apply changes to the running service.
 
 Supported metrics:
   • cpu    - CPU usage percentage (0-100)
@@ -834,15 +834,15 @@ Supported metrics:
   • disk   - Disk usage percentage (0-100)
 
 Examples:
-  moniq set cpu=90              # Set CPU threshold to 90%
-  moniq set mem=80 disk=85      # Set Memory to 80%, Disk to 85%
-  moniq set cpu=70 mem=75 disk=90  # Set all thresholds at once`,
+  catops set cpu=90              # Set CPU threshold to 90%
+  catops set mem=80 disk=85      # Set Memory to 80%, Disk to 85%
+  catops set cpu=70 mem=75 disk=90  # Set all thresholds at once`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Configuring Alert Thresholds")
 
 			if len(args) == 0 {
-				ui.PrintStatus("error", "Usage: moniq set cpu=90 mem=90 disk=90")
+				ui.PrintStatus("error", "Usage: catops set cpu=90 mem=90 disk=90")
 				ui.PrintStatus("info", "Supported: cpu, mem, disk")
 				ui.PrintSectionEnd()
 				return
@@ -892,7 +892,7 @@ Examples:
 			}
 
 			ui.PrintStatus("success", "Configuration saved successfully")
-			ui.PrintStatus("info", "Run 'moniq restart' to apply changes")
+			ui.PrintStatus("info", "Run 'catops restart' to apply changes")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -923,7 +923,7 @@ Examples:
 			osName, _ := metrics.GetOSName()
 			uptime, _ := metrics.GetUptime()
 
-			startupMessage := fmt.Sprintf(`🚀 <b>Moniq Monitoring Started</b>
+			startupMessage := fmt.Sprintf(`🚀 <b>CatOps Monitoring Started</b>
 
 📊 <b>Server Information:</b>
 • Hostname: %s
@@ -1036,7 +1036,7 @@ Examples:
 				case <-updateTicker.C:
 					// check for updates once per day (always check, Telegram is optional)
 					// get current version
-					cmd := exec.Command("moniq", "--version")
+					cmd := exec.Command("catops", "--version")
 					output, err := cmd.Output()
 					if err == nil {
 						currentVersion := strings.TrimSpace(string(output))
@@ -1064,7 +1064,7 @@ Examples:
 🆕 <b>Latest:</b> v%s
 
 💡 <b>To update, run this command on your server:</b>
-<code>moniq update</code>
+<code>catops update</code>
 
 📊 <b>Server:</b> %s
 ⏰ <b>Check Time:</b> %s`, currentVersion, latestVersion, hostname, time.Now().Format("2006-01-02 15:04:05"))
@@ -1088,7 +1088,7 @@ Examples:
 
 					// Send Telegram notification if configured
 					if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-						shutdownMessage := fmt.Sprintf(`🛑 <b>Moniq Monitoring Stopped</b>
+						shutdownMessage := fmt.Sprintf(`🛑 <b>CatOps Monitoring Stopped</b>
 
 📊 <b>Server Information:</b>
 • Hostname: %s
@@ -1126,29 +1126,29 @@ Examples:
 	// uninstall command
 	uninstallCmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Completely remove Moniq.sh from the system",
-		Long: `Completely remove Moniq.sh from the system.
+		Short: "Completely remove CatOps from the system",
+		Long: `Completely remove CatOps from the system.
 
 This command will:
 • Stop the monitoring service
 • Remove the binary from PATH
 • Delete configuration files
 • Remove autostart services
-• Clean up all Moniq-related files
+• Clean up all CatOps-related files
 
 Examples:
-  	moniq uninstall        # Remove Moniq.sh completely
-  moniq uninstall --yes  # Skip confirmation prompt`,
+  	catops uninstall        # Remove CatOps completely
+  catops uninstall --yes  # Skip confirmation prompt`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
-			ui.PrintSection("Uninstall Moniq.sh")
+			ui.PrintSection("Uninstall CatOps")
 
 			// check if --yes flag is set
 			skipConfirm := cmd.Flags().Lookup("yes").Changed
 
 			if !skipConfirm {
-				ui.PrintStatus("warning", "This will completely remove Moniq.sh from your system!")
-				ui.PrintStatus("warning", "This will completely remove Moniq.sh from your system!")
+				ui.PrintStatus("warning", "This will completely remove CatOps from your system!")
+				ui.PrintStatus("warning", "This will completely remove CatOps from your system!")
 				ui.PrintStatus("info", "All configuration and data will be lost.")
 
 				fmt.Print("\nAre you sure you want to continue? (y/N): ")
@@ -1176,15 +1176,15 @@ Examples:
 			switch runtime.GOOS {
 			case "linux":
 				homeDir, _ := os.UserHomeDir()
-				systemdService := homeDir + "/.config/systemd/user/moniq.service"
+				systemdService := homeDir + "/.config/systemd/user/catops.service"
 				if _, err := os.Stat(systemdService); err == nil {
-					exec.Command("systemctl", "--user", "disable", "moniq.service").Run()
-					exec.Command("systemctl", "--user", "stop", "moniq.service").Run()
+					exec.Command("systemctl", "--user", "disable", "catops.service").Run()
+					exec.Command("systemctl", "--user", "stop", "catops.service").Run()
 					os.Remove(systemdService)
 				}
 			case "darwin":
 				homeDir, _ := os.UserHomeDir()
-				launchAgent := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
+				launchAgent := homeDir + "/Library/LaunchAgents/com.catops.monitor.plist"
 				if _, err := os.Stat(launchAgent); err == nil {
 					exec.Command("launchctl", "unload", launchAgent).Run()
 					os.Remove(launchAgent)
@@ -1192,7 +1192,7 @@ Examples:
 			}
 
 			// remove configuration directory
-			configDir := os.Getenv("HOME") + "/.moniq"
+			configDir := os.Getenv("HOME") + "/.catops"
 			if err := os.RemoveAll(configDir); err == nil {
 				ui.PrintStatus("success", "Configuration directory removed: "+configDir)
 			} else {
@@ -1201,8 +1201,8 @@ Examples:
 
 			// remove log files
 			logFiles := []string{
-				"/tmp/moniq.log",
-				"/tmp/moniq.pid",
+				"/tmp/catops.log",
+				"/tmp/catops.pid",
 			}
 
 			for _, logFile := range logFiles {
@@ -1213,22 +1213,22 @@ Examples:
 				}
 			}
 
-			// stop ALL moniq processes (after removing config)
-			process.KillAllMoniqProcesses()
+			// stop ALL catops processes (after removing config)
+			process.KillAllCatOpsProcesses()
 			ui.PrintStatus("success", "All processes stopped")
 
-			// remove ALL Moniq binaries from PATH LAST
+			// remove ALL CatOps binaries from PATH LAST
 			binaryPaths := []string{
-				"/usr/local/bin/moniq",
-				"/usr/bin/moniq",
-				os.Getenv("HOME") + "/.local/bin/moniq",
+				"/usr/local/bin/catops",
+				"/usr/bin/catops",
+				os.Getenv("HOME") + "/.local/bin/catops",
 			}
 
-			// also search for any other moniq binaries in PATH
+			// also search for any other catops binaries in PATH
 			pathDirs := strings.Split(os.Getenv("PATH"), ":")
 			for _, dir := range pathDirs {
-				if strings.Contains(dir, "moniq") || strings.Contains(dir, ".local") || strings.Contains(dir, "bin") {
-					potentialPath := filepath.Join(dir, "moniq")
+				if strings.Contains(dir, "catops") || strings.Contains(dir, ".local") || strings.Contains(dir, "bin") {
+					potentialPath := filepath.Join(dir, "catops")
 					if _, err := os.Stat(potentialPath); err == nil {
 						binaryPaths = append(binaryPaths, potentialPath)
 					}
@@ -1249,10 +1249,10 @@ Examples:
 			}
 
 			if !binaryRemoved {
-				ui.PrintStatus("warning", "Could not find any Moniq binaries in standard locations")
+				ui.PrintStatus("warning", "Could not find any CatOps binaries in standard locations")
 			}
 
-			ui.PrintStatus("success", "Moniq.sh completely removed from the system")
+			ui.PrintStatus("success", "CatOps completely removed from the system")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -1264,11 +1264,11 @@ Examples:
 	cleanupCmd := &cobra.Command{
 		Use:   "cleanup",
 		Short: "Clean up old backup files and duplicate processes",
-		Long: `Clean up old backup files created during updates and kill duplicate moniq processes.
-This will remove specific old backup files, clean up files older than 30 days, and ensure only one moniq daemon is running.
+		Long: `Clean up old backup files created during updates and kill duplicate catops processes.
+This will remove specific old backup files, clean up files older than 30 days, and ensure only one catops daemon is running.
 
 Examples:
-  moniq cleanup          # Clean up old backups and processes`,
+  catops cleanup          # Clean up old backups and processes`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Cleaning Up Old Backups and Processes")
@@ -1286,16 +1286,16 @@ Examples:
 				return
 			}
 			backupDir := executable
-			backupDir = backupDir[:len(backupDir)-len("/moniq")] // Adjust path
+			backupDir = backupDir[:len(backupDir)-len("/catops")] // Adjust path
 			removedCount := 0
 			for i := 3; i <= 10; i++ { // Remove specific old backups
-				backupFile := fmt.Sprintf("%s/moniq.backup.%d", backupDir, i)
+				backupFile := fmt.Sprintf("%s/catops.backup.%d", backupDir, i)
 				if _, err := os.Stat(backupFile); err == nil {
 					os.Remove(backupFile)
 					removedCount++
 				}
 			}
-			cmd2 := exec.Command("find", backupDir, "-name", "moniq.backup.*", "-mtime", "+30", "-delete")
+			cmd2 := exec.Command("find", backupDir, "-name", "catops.backup.*", "-mtime", "+30", "-delete")
 			cmd2.Run() // Ignore errors
 			ui.PrintStatus("success", fmt.Sprintf("Cleanup completed. Removed %d old backup files", removedCount))
 			ui.PrintSectionEnd()
@@ -1306,23 +1306,23 @@ Examples:
 	forceCleanupCmd := &cobra.Command{
 		Use:   "force-cleanup",
 		Short: "Force cleanup of all duplicate processes and zombie processes",
-		Long: `Force cleanup of all duplicate moniq processes and zombie processes.
-This command will kill ALL moniq daemon processes and clean up any zombie processes.
+		Long: `Force cleanup of all duplicate catops processes and zombie processes.
+This command will kill ALL catops daemon processes and clean up any zombie processes.
 Use this when you have multiple processes running and need a fresh start.
 
 Examples:
-  moniq force-cleanup    # Kill all processes and start fresh`,
+  catops force-cleanup    # Kill all processes and start fresh`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Force Cleanup of All Processes")
 
-			ui.PrintStatus("warning", "This will kill ALL moniq daemon processes!")
+			ui.PrintStatus("warning", "This will kill ALL catops daemon processes!")
 
-			// kill all moniq daemon processes
-			process.KillAllMoniqProcesses()
+			// kill all catops daemon processes
+			process.KillAllCatOpsProcesses()
 
 			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
-			ui.PrintStatus("info", "Run 'moniq start' to start fresh monitoring service.")
+			ui.PrintStatus("info", "Run 'catops start' to start fresh monitoring service.")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -1334,14 +1334,14 @@ Examples:
 		Long: `Configure Telegram bot token and group ID.
 This allows you to set up or change your configuration for notifications.
 
-Use 'moniq config show' to see current settings.`,
+Use 'catops config show' to see current settings.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Configuration")
 
 			if len(args) == 0 {
-				ui.PrintStatus("error", "Usage: moniq config [token=...|group=...|show]")
-				ui.PrintStatus("info", "Run 'moniq config show' to see current settings")
+				ui.PrintStatus("error", "Usage: catops config [token=...|group=...|show]")
+				ui.PrintStatus("info", "Run 'catops config show' to see current settings")
 				ui.PrintSectionEnd()
 				return
 			}
@@ -1412,7 +1412,7 @@ Use 'moniq config show' to see current settings.`,
 				ui.PrintStatus("success", fmt.Sprintf("Group ID updated to: %d", groupID))
 
 			case "auth":
-				ui.PrintStatus("error", "Use 'moniq auth login <token>' instead")
+				ui.PrintStatus("error", "Use 'catops auth login <token>' instead")
 				ui.PrintSectionEnd()
 				return
 
@@ -1432,7 +1432,7 @@ Use 'moniq config show' to see current settings.`,
 			}
 
 			ui.PrintStatus("success", "Configuration saved successfully")
-			ui.PrintStatus("info", "Run 'moniq restart' to apply changes to the monitoring service")
+			ui.PrintStatus("info", "Run 'catops restart' to apply changes to the monitoring service")
 			ui.PrintSectionEnd()
 		},
 	}
@@ -1442,11 +1442,11 @@ Use 'moniq config show' to see current settings.`,
 		Use:   "autostart",
 		Short: "Enable or disable autostart on boot",
 		Long: `Enable or disable autostart on boot.
-This creates systemd service (Linux) or launchd service (macOS) to start moniq automatically.
+This creates systemd service (Linux) or launchd service (macOS) to start catops automatically.
 Examples:
-  moniq autostart enable   # Enable autostart
-  moniq autostart disable  # Disable autostart
-  moniq autostart status   # Check autostart status`,
+  catops autostart enable   # Enable autostart
+  catops autostart disable  # Disable autostart
+  catops autostart status   # Check autostart status`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Autostart Management")
@@ -1484,7 +1484,7 @@ Examples:
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Authentication commands",
-		Long: `Manage authentication for Moniq.sh.
+		Long: `Manage authentication for CatOps.
 
 Commands:
   login    Login with authentication token
@@ -1496,11 +1496,11 @@ Commands:
 	loginCmd := &cobra.Command{
 		Use:   "login [token]",
 		Short: "Login with authentication token",
-		Long: `Login to Moniq.sh with your authentication token.
+		Long: `Login to CatOps with your authentication token.
 
 Examples:
-  moniq auth login your_token_here
-  moniq auth login eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`,
+  catops auth login your_token_here
+  catops auth login eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
@@ -1557,7 +1557,7 @@ Examples:
 	logoutCmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Logout and clear authentication",
-		Long:  `Logout from Moniq.sh and clear authentication token.`,
+		Long:  `Logout from CatOps and clear authentication token.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Authentication")
@@ -1611,7 +1611,7 @@ Examples:
 				}())
 			} else {
 				ui.PrintStatus("warning", "Not authenticated")
-				ui.PrintStatus("info", "Run 'moniq auth login <token>' to authenticate")
+				ui.PrintStatus("info", "Run 'catops auth login <token>' to authenticate")
 			}
 
 			ui.PrintSectionEnd()
@@ -1641,7 +1641,7 @@ This command shows the full token that is currently stored in the configuration.
 				fmt.Printf("  %s\n", cfg.AuthToken)
 			} else {
 				ui.PrintStatus("warning", "No authentication token found")
-				ui.PrintStatus("info", "Run 'moniq auth login <token>' to set a token")
+				ui.PrintStatus("info", "Run 'catops auth login <token>' to set a token")
 			}
 
 			ui.PrintSectionEnd()
@@ -1686,7 +1686,7 @@ func enableAutostart(executable string) {
 		os.MkdirAll(systemdDir, 0755)
 
 		serviceContent := fmt.Sprintf(`[Unit]
-Description=Moniq System Monitor
+Description=CatOps System Monitor
 After=network.target
 
 [Service]
@@ -1697,9 +1697,9 @@ RestartSec=10
 Environment=PATH=%s:/usr/local/bin:/usr/bin:/bin
 
 [Install]
-WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")])
+WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")])
 
-		serviceFile := systemdDir + "/moniq.service"
+		serviceFile := systemdDir + "/catops.service"
 		if err := os.WriteFile(serviceFile, []byte(serviceContent), 0644); err != nil {
 			ui.PrintStatus("error", "Failed to create systemd service file")
 			return
@@ -1707,11 +1707,11 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 
 		// enable and start service
 		exec.Command("systemctl", "--user", "daemon-reload").Run()
-		exec.Command("systemctl", "--user", "enable", "moniq.service").Run()
-		exec.Command("systemctl", "--user", "start", "moniq.service").Run()
+		exec.Command("systemctl", "--user", "enable", "catops.service").Run()
+		exec.Command("systemctl", "--user", "start", "catops.service").Run()
 
 		ui.PrintStatus("success", "Systemd service created and enabled")
-		ui.PrintStatus("info", "Moniq will start automatically on boot")
+		ui.PrintStatus("info", "CatOps will start automatically on boot")
 
 	case "darwin":
 		// create launchd service
@@ -1724,7 +1724,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.moniq.monitor</string>
+		<string>com.catops.monitor</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
@@ -1741,7 +1741,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 </dict>
 </plist>`, executable, constants.LOG_FILE, constants.LOG_FILE)
 
-		plistFile := launchAgentsDir + "/com.moniq.monitor.plist"
+		plistFile := launchAgentsDir + "/com.catops.monitor.plist"
 		if err := os.WriteFile(plistFile, []byte(plistContent), 0644); err != nil {
 			ui.PrintStatus("error", "Failed to create launchd plist file")
 			return
@@ -1751,7 +1751,7 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/moniq")]
 		exec.Command("launchctl", "load", plistFile).Run()
 
 		ui.PrintStatus("success", "Launchd service created and enabled")
-		ui.PrintStatus("info", "Moniq will start automatically on boot")
+		ui.PrintStatus("info", "CatOps will start automatically on boot")
 
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
@@ -1762,22 +1762,22 @@ func disableAutostart() {
 	switch runtime.GOOS {
 	case "linux":
 		// disable systemd service (without stopping to avoid duplicate Telegram messages)
-		exec.Command("systemctl", "--user", "disable", "moniq.service").Run()
+		exec.Command("systemctl", "--user", "disable", "catops.service").Run()
 
 		// remove service file
 		homeDir, _ := os.UserHomeDir()
-		serviceFile := homeDir + "/.config/systemd/user/moniq.service"
+		serviceFile := homeDir + "/.config/systemd/user/catops.service"
 		os.Remove(serviceFile)
 
 		ui.PrintStatus("success", "Systemd service disabled and removed")
 
 	case "darwin":
 		// unload launchd service
-		exec.Command("launchctl", "unload", "~/Library/LaunchAgents/com.moniq.monitor.plist").Run()
+		exec.Command("launchctl", "unload", "~/Library/LaunchAgents/com.catops.monitor.plist").Run()
 
 		// remove plist file
 		homeDir, _ := os.UserHomeDir()
-		plistFile := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
+		plistFile := homeDir + "/Library/LaunchAgents/com.catops.monitor.plist"
 		os.Remove(plistFile)
 
 		ui.PrintStatus("success", "Launchd service disabled and removed")
@@ -1791,7 +1791,7 @@ func checkAutostartStatus() {
 	switch runtime.GOOS {
 	case "linux":
 		// check systemd service status
-		cmd := exec.Command("systemctl", "--user", "is-enabled", "moniq.service")
+		cmd := exec.Command("systemctl", "--user", "is-enabled", "catops.service")
 		if err := cmd.Run(); err == nil {
 			ui.PrintStatus("success", "Autostart is enabled (systemd)")
 		} else {
@@ -1801,7 +1801,7 @@ func checkAutostartStatus() {
 	case "darwin":
 		// check launchd service status
 		homeDir, _ := os.UserHomeDir()
-		plistFile := homeDir + "/Library/LaunchAgents/com.moniq.monitor.plist"
+		plistFile := homeDir + "/Library/LaunchAgents/com.catops.monitor.plist"
 		if _, err := os.Stat(plistFile); err == nil {
 			ui.PrintStatus("success", "Autostart is enabled (launchd)")
 		} else {

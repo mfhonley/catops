@@ -1,4 +1,4 @@
-module moniq
+module catops
 
 go 1.21
 

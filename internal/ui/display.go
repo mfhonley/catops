@@ -1,8 +1,8 @@
 package ui
 
 import (
-	"fmt"
 	"catops/internal/metrics"
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -11,21 +11,21 @@ import (
 const (
 	// Main orange color
 	ORANGE = "\033[38;5;214m" // Orange
-	
+
 	// Status colors
 	SUCCESS = "\033[38;5;46m"  // Green
 	WARNING = "\033[38;5;226m" // Yellow
 	ERROR   = "\033[38;5;196m" // Red
 	INFO    = "\033[38;5;75m"  // Blue
-	
+
 	// Text colors
 	WHITE = "\033[38;5;15m"  // White
 	GRAY  = "\033[38;5;250m" // Light gray
 	DARK  = "\033[38;5;240m" // Dark gray
-	
+
 	// Special effects
 	BOLD = "\033[1m"
-	
+
 	// Reset
 	NC = "\033[0m" // No Color
 )
@@ -351,7 +351,7 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 		GRAY, len(processes), totalCPU, NC))
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		PRIMARY, strings.Repeat("─", 80), NC))
+		ORANGE, strings.Repeat("─", 80), NC))
 
 	// Column headers
 	result.WriteString("  ")
@@ -361,7 +361,7 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 	// Separator
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		PRIMARY, strings.Repeat("─", 100), NC))
+		ORANGE, strings.Repeat("─", 100), NC))
 
 	// Process rows
 	for _, proc := range processes {

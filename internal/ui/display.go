@@ -7,27 +7,38 @@ import (
 	"strings"
 )
 
-// Color constants
+// Color constants - Simple Orange Theme
 const (
-	RED    = "\033[0;31m"
-	GREEN  = "\033[0;32m"
-	YELLOW = "\033[1;33m"
-	BLUE   = "\033[0;34m"
-	CYAN   = "\033[0;36m"
-	WHITE  = "\033[1;37m"
-	GRAY   = "\033[0;37m"
-	NC     = "\033[0m" // No Color
+	// Main orange color
+	ORANGE = "\033[38;5;214m" // Orange
+	
+	// Status colors
+	SUCCESS = "\033[38;5;46m"  // Green
+	WARNING = "\033[38;5;226m" // Yellow
+	ERROR   = "\033[38;5;196m" // Red
+	INFO    = "\033[38;5;75m"  // Blue
+	
+	// Text colors
+	WHITE = "\033[38;5;15m"  // White
+	GRAY  = "\033[38;5;250m" // Light gray
+	DARK  = "\033[38;5;240m" // Dark gray
+	
+	// Special effects
+	BOLD = "\033[1m"
+	
+	// Reset
+	NC = "\033[0m" // No Color
 )
 
 // PrintHeader prints the application header
 func PrintHeader() {
-	fmt.Printf("%s███╗   ███╗ ██████╗ ███╗   ██╗██╗ ██████╗    ███████╗██╗  ██╗%s\n", CYAN, NC)
-	fmt.Printf("%s████╗ ████║██╔═══██╗████╗  ██║██║██╔═══██╗   ██╔════╝██║  ██║%s\n", CYAN, NC)
-	fmt.Printf("%s██╔████╔██║██║   ██║██╔██╗ ██║██║██║   ██║   ███████╗███████║%s\n", CYAN, NC)
-	fmt.Printf("%s██║╚██╔╝██║██║   ██║██║╚██╗██║██║██║▄▄ ██║   ╚════██║██╔══██║%s\n", CYAN, NC)
-	fmt.Printf("%s██║ ╚═╝ ██║╚██████╔╝██║ ╚████║██║╚██████╔╝██╗███████║██║  ██║%s\n", CYAN, NC)
-	fmt.Printf("%s╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝ ╚══▀▀═╝ ╚═╝╚══════╝╚═╝  ╚═╝%s\n", CYAN, NC)
-	fmt.Printf("%s                    Server Monitor%s\n", WHITE, NC)
+	fmt.Printf("%s%s ██████╗ █████╗ ████████╗ ██████╗ ██████╗ ███████╗%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s██╔════╝██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗██╔════╝%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s██║     ███████║   ██║   ██║   ██║██████╔╝███████╗%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s██║     ██╔══██║   ██║   ██║   ██║██╔═══╝ ╚════██║%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s╚██████╗██║  ██║   ██║   ╚██████╔╝██║     ███████║%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s ╚═════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝     ╚══════╝%s\n", BOLD, ORANGE, NC)
+	fmt.Printf("%s%s                    Server Monitor%s\n", BOLD, WHITE, NC)
 }
 
 // PrintSection prints a section header
@@ -38,30 +49,32 @@ func PrintSection(title string) {
 	if dashCount < 0 {
 		dashCount = 0
 	}
-	fmt.Printf("%s┌─ %s%s%s ─%s┐%s\n",
-		CYAN,
-		WHITE, title, CYAN,
+	fmt.Printf("%s%s┌─ %s%s%s ─%s%s┐%s\n",
+		ORANGE,
+		BOLD,
+		WHITE, title, ORANGE,
 		strings.Repeat("─", dashCount),
+		BOLD,
 		NC)
 }
 
 // PrintSectionEnd prints a section footer
 func PrintSectionEnd() {
 	totalWidth := 60 // Same fixed total width as PrintSection
-	fmt.Printf("%s└%s┘%s\n", CYAN, strings.Repeat("─", totalWidth), NC)
+	fmt.Printf("%s%s└%s%s┘%s\n", ORANGE, BOLD, strings.Repeat("─", totalWidth), BOLD, NC)
 }
 
 // PrintStatus prints a status message
 func PrintStatus(status, message string) {
 	switch status {
 	case "success":
-		fmt.Printf("  %s✓%s %s\n", GREEN, NC, message)
+		fmt.Printf("  %s%s✓%s %s%s\n", SUCCESS, BOLD, NC, WHITE, message)
 	case "warning":
-		fmt.Printf("  %s⚠%s %s\n", YELLOW, NC, message)
+		fmt.Printf("  %s%s⚠%s %s%s\n", WARNING, BOLD, NC, WHITE, message)
 	case "error":
-		fmt.Printf("  %s✗%s %s\n", RED, NC, message)
+		fmt.Printf("  %s%s✗%s %s%s\n", ERROR, BOLD, NC, WHITE, message)
 	case "info":
-		fmt.Printf("  %sℹ%s %s\n", BLUE, NC, message)
+		fmt.Printf("  %s%sℹ%s %s%s\n", INFO, BOLD, NC, WHITE, message)
 	}
 }
 
@@ -124,13 +137,13 @@ func CreateTable(data map[string]string) string {
 		}
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", CYAN, "•", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%-*s", maxKeyLen, displayKey))
+		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, displayKey, NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, ":", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%-*s", maxValueLen, displayValue))
+		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, displayValue, NC))
 		result.WriteString("\n")
 	}
 
@@ -179,11 +192,11 @@ func CreateFixedTable(data map[string]string) string {
 		paddedValue := fmt.Sprintf("%-*s", valueWidth, displayValue)
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", CYAN, "•", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, paddedKey, NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, ":", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, paddedValue, NC))
 		result.WriteString("\n")
@@ -254,11 +267,11 @@ func CreatePerfectTable(data map[string]string) string {
 		paddedValue := fmt.Sprintf("%-*s", maxValueLen, displayValue)
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", CYAN, "•", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, paddedKey, NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, ":", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, paddedValue, NC))
 		result.WriteString("\n")
@@ -291,11 +304,11 @@ func CreateBeautifulList(data map[string]string) string {
 	// Build list
 	for _, item := range items {
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", CYAN, "•", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, item.key, NC))
 		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, ":", NC))
+		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
 		result.WriteString(" ")
 		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, item.value, NC))
 		result.WriteString("\n")
@@ -338,31 +351,31 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 		GRAY, len(processes), totalCPU, NC))
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		CYAN, strings.Repeat("─", 80), NC))
+		PRIMARY, strings.Repeat("─", 80), NC))
 
 	// Column headers
 	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%-6s %-15s %-8s %-8s %-12s %-8s %-8s %s%s\n",
-		WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
+	result.WriteString(fmt.Sprintf("%s%s%-6s %-15s %-8s %-8s %-12s %-8s %-8s %s%s\n",
+		BOLD, WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
 
 	// Separator
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		CYAN, strings.Repeat("─", 100), NC))
+		PRIMARY, strings.Repeat("─", 100), NC))
 
 	// Process rows
 	for _, proc := range processes {
 		// Color code for status
-		statusColor := GRAY
+		statusColor := DARK
 		switch proc.Status {
 		case "R":
-			statusColor = GREEN // Running
+			statusColor = SUCCESS // Running
 		case "S":
-			statusColor = YELLOW // Sleeping
+			statusColor = WARNING // Sleeping
 		case "Z":
-			statusColor = RED // Zombie
+			statusColor = ERROR // Zombie
 		case "D":
-			statusColor = BLUE // Disk sleep
+			statusColor = INFO // Disk sleep
 		}
 
 		result.WriteString("  ")
@@ -385,31 +398,31 @@ func CreateDetailedResourceTable(title string, usage metrics.ResourceUsage, form
 	var result strings.Builder
 
 	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s\n", WHITE, title, NC))
+	result.WriteString(fmt.Sprintf("%s%s%s%s\n", BOLD, WHITE, title, NC))
 
 	// Main usage line
 	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s•%s Usage: %s\n",
-		CYAN, NC, formatFunc(usage.Usage, usage.Used, usage.Total)))
+	result.WriteString(fmt.Sprintf("%s%s•%s %sUsage: %s%s\n",
+		ORANGE, BOLD, NC, WHITE, GRAY, formatFunc(usage.Usage, usage.Used, usage.Total)))
 
 	// Detailed breakdown
 	if usage.Total > 0 {
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s•%s Total: %s\n",
-			CYAN, NC, formatKB(usage.Total)))
+		result.WriteString(fmt.Sprintf("%s%s•%s %sTotal: %s%s\n",
+			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Total)))
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s•%s Used: %s\n",
-			CYAN, NC, formatKB(usage.Used)))
+		result.WriteString(fmt.Sprintf("%s%s•%s %sUsed: %s%s\n",
+			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Used)))
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s•%s Free: %s\n",
-			CYAN, NC, formatKB(usage.Free)))
+		result.WriteString(fmt.Sprintf("%s%s•%s %sFree: %s%s\n",
+			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Free)))
 
 		if usage.Available != usage.Free {
 			result.WriteString("  ")
-			result.WriteString(fmt.Sprintf("%s•%s Available: %s\n",
-				CYAN, NC, formatKB(usage.Available)))
+			result.WriteString(fmt.Sprintf("%s%s•%s %sAvailable: %s%s\n",
+				ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Available)))
 		}
 	}
 

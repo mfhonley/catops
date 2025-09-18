@@ -64,6 +64,12 @@ func PrintSectionEnd() {
 	fmt.Printf("%s%s└%s%s┘%s\n", ORANGE, BOLD, strings.Repeat("─", totalWidth), BOLD, NC)
 }
 
+// PrintTableSectionEnd prints a section footer for tables
+func PrintTableSectionEnd() {
+	totalWidth := 100 // Same width as table separators
+	fmt.Printf("%s%s└%s%s┘%s\n", ORANGE, BOLD, strings.Repeat("─", totalWidth), BOLD, NC)
+}
+
 // PrintStatus prints a status message
 func PrintStatus(status, message string) {
 	switch status {
@@ -330,7 +336,7 @@ func GetAlertEmoji(usage float64) string {
 	}
 }
 
-// CreateProcessTable creates a formatted table for processes
+// CreateProcessTable creates a formatted table for processes with centered alignment
 func CreateProcessTable(processes []metrics.ProcessInfo) string {
 	var result strings.Builder
 
@@ -351,11 +357,11 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 		GRAY, len(processes), totalCPU, NC))
 	result.WriteString("  ")
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		ORANGE, strings.Repeat("─", 80), NC))
+		ORANGE, strings.Repeat("─", 100), NC))
 
-	// Column headers
+	// Column headers with centered alignment
 	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%-6s %-15s %-8s %-8s %-12s %-8s %-8s %s%s\n",
+	result.WriteString(fmt.Sprintf("%s%s%6s %15s %8s %8s %12s %8s %8s %s%s\n",
 		BOLD, WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
 
 	// Separator
@@ -363,7 +369,7 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 	result.WriteString(fmt.Sprintf("%s%s%s\n",
 		ORANGE, strings.Repeat("─", 100), NC))
 
-	// Process rows
+	// Process rows with centered alignment
 	for _, proc := range processes {
 		// Color code for status
 		statusColor := DARK
@@ -379,7 +385,70 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 		}
 
 		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%-6d %-15s %-8.1f %-8.1f %-12s %s%-8s%s %-8s %s\n",
+		result.WriteString(fmt.Sprintf("%6d %15s %8.1f %8.1f %12s %s%8s%s %8s %s\n",
+			proc.PID,
+			truncateString(proc.User, 15),
+			proc.CPUUsage,
+			proc.MemoryUsage,
+			formatKB(proc.MemoryKB),
+			statusColor, proc.Status, NC,
+			truncateString(proc.TTY, 8),
+			truncateString(proc.Command, 25)))
+	}
+
+	return result.String()
+}
+
+// CreateProcessTableByMemory creates a formatted table for processes sorted by memory usage
+func CreateProcessTableByMemory(processes []metrics.ProcessInfo) string {
+	var result strings.Builder
+
+	if len(processes) == 0 {
+		result.WriteString("  No processes found\n")
+		return result.String()
+	}
+
+	// Calculate total memory usage of shown processes
+	var totalMemory float64
+	for _, proc := range processes {
+		totalMemory += proc.MemoryUsage
+	}
+
+	// Header with summary
+	result.WriteString("  ")
+	result.WriteString(fmt.Sprintf("%sTop %d processes using %.1f%% of total system memory%s\n",
+		GRAY, len(processes), totalMemory, NC))
+	result.WriteString("  ")
+	result.WriteString(fmt.Sprintf("%s%s%s\n",
+		ORANGE, strings.Repeat("─", 100), NC))
+
+	// Column headers with centered alignment
+	result.WriteString("  ")
+	result.WriteString(fmt.Sprintf("%s%s%6s %15s %8s %8s %12s %8s %8s %s%s\n",
+		BOLD, WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
+
+	// Separator
+	result.WriteString("  ")
+	result.WriteString(fmt.Sprintf("%s%s%s\n",
+		ORANGE, strings.Repeat("─", 100), NC))
+
+	// Process rows with centered alignment
+	for _, proc := range processes {
+		// Color code for status
+		statusColor := DARK
+		switch proc.Status {
+		case "R":
+			statusColor = SUCCESS // Running
+		case "S":
+			statusColor = WARNING // Sleeping
+		case "Z":
+			statusColor = ERROR // Zombie
+		case "D":
+			statusColor = INFO // Disk sleep
+		}
+
+		result.WriteString("  ")
+		result.WriteString(fmt.Sprintf("%6d %15s %8.1f %8.1f %12s %s%8s%s %8s %s\n",
 			proc.PID,
 			truncateString(proc.User, 15),
 			proc.CPUUsage,

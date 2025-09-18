@@ -62,8 +62,8 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		"alert_type":   "threshold_exceeded",
 		"timestamp":    time.Now().Unix(),
 		"server_info": map[string]interface{}{
-			"hostname":      hostname,
-			"os_type":       metrics.OSName,
+			"hostname":       hostname,
+			"os_type":        metrics.OSName,
 			"catops_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
@@ -158,8 +158,8 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		"event_type":   eventType, // "service_start", "service_stop"
 		"timestamp":    time.Now().Unix(),
 		"server_info": map[string]interface{}{
-			"hostname":      hostname,
-			"os_type":       metrics.OSName,
+			"hostname":       hostname,
+			"os_type":        metrics.OSName,
 			"catops_version": getCurrentVersion(),
 		},
 		"metrics": map[string]interface{}{
@@ -294,8 +294,8 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()), // string with Unix timestamp like in install.sh
 		"user_token":   userToken,
 		"server_info": map[string]string{
-			"hostname":      hostname,
-			"os_type":       osName,
+			"hostname":       hostname,
+			"os_type":        osName,
 			"catops_version": getCurrentVersion(),
 		},
 		// Add server specifications
@@ -689,7 +689,7 @@ Examples:
 			} else {
 				ui.PrintStatus("warning", "No process information available")
 			}
-			ui.PrintSectionEnd()
+			ui.PrintTableSectionEnd()
 
 			// show top processes by memory
 			ui.PrintSection("Top Processes by Memory Usage")
@@ -706,11 +706,11 @@ Examples:
 					sortedProcesses = sortedProcesses[:limit]
 				}
 
-				fmt.Print(ui.CreateProcessTable(sortedProcesses))
+				fmt.Print(ui.CreateProcessTableByMemory(sortedProcesses))
 			} else {
 				ui.PrintStatus("warning", "No process information available")
 			}
-			ui.PrintSectionEnd()
+			ui.PrintTableSectionEnd()
 		},
 	}
 	processesCmd.Flags().IntP("limit", "n", 10, "Number of processes to show")

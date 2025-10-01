@@ -70,20 +70,15 @@ func checkServerVersion(authToken string) (string, string, bool, error) {
 		return "", "", false, err
 	}
 
-	// Check if request was successful
-	if result["success"] != true {
-		return "", "", false, fmt.Errorf("API request failed")
-	}
+	// Extract version information directly (no success/data wrapper)
+	serverVersion, _ := result["server_version"].(string)
+	latestVersion, _ := result["latest_version"].(string)
+	needsUpdate, _ := result["needs_update"].(bool)
 
-	// Extract version information
-	data, ok := result["data"].(map[string]interface{})
-	if !ok {
+	// Check if we got valid data
+	if serverVersion == "" && latestVersion == "" {
 		return "", "", false, fmt.Errorf("invalid response format")
 	}
-
-	serverVersion, _ := data["server_version"].(string)
-	latestVersion, _ := data["latest_version"].(string)
-	needsUpdate, _ := data["needs_update"].(bool)
 
 	return serverVersion, latestVersion, needsUpdate, nil
 }
@@ -163,6 +158,14 @@ func executeUpdateScript() {
 	if err := updateCmd.Run(); err != nil {
 		// don't treat any exit code as error (update.sh handles its own exit codes)
 		return
+	}
+
+	// Send update_installed event after successful update
+	cfg, err := config.LoadConfig()
+	if err == nil && cfg.IsCloudMode() {
+		if currentMetrics, err := metrics.GetMetrics(); err == nil {
+			sendServiceAnalytics(cfg, "update_installed", currentMetrics)
+		}
 	}
 }
 
@@ -324,6 +327,12 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		backendEventType = "service_stop"
 	case "system_monitoring":
 		backendEventType = "system_monitoring"
+	case "update_installed":
+		backendEventType = "update_installed"
+	case "config_change":
+		backendEventType = "config_change"
+	case "service_restart":
+		backendEventType = "service_restart"
 	default:
 		backendEventType = "service_start"
 	}
@@ -331,9 +340,9 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 	// Determine severity based on event type
 	var severity string
 	switch eventType {
-	case "service_start", "system_monitoring":
+	case "service_start", "system_monitoring", "update_installed", "service_restart":
 		severity = "info"
-	case "service_stop":
+	case "service_stop", "config_change":
 		severity = "warning"
 	default:
 		severity = "info"
@@ -348,6 +357,12 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		message = "CatOps monitoring service stopped"
 	case "system_monitoring":
 		message = "CatOps monitoring service is running and collecting metrics"
+	case "update_installed":
+		message = "CatOps update installed successfully"
+	case "config_change":
+		message = "CatOps configuration changed"
+	case "service_restart":
+		message = "CatOps monitoring service restarted"
 	default:
 		message = fmt.Sprintf("CatOps service event: %s", eventType)
 	}
@@ -1140,6 +1155,13 @@ Examples:
 
 			ui.PrintStatus("success", "Monitoring service restarted successfully")
 
+			// Send service_restart event
+			if cfg.AuthToken != "" && cfg.ServerID != "" {
+				if currentMetrics, err := metrics.GetMetrics(); err == nil {
+					sendServiceAnalytics(cfg, "service_restart", currentMetrics)
+				}
+			}
+
 			// check if Telegram is configured
 			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
 				ui.PrintStatus("info", "Telegram notifications enabled")
@@ -1331,6 +1353,14 @@ Examples:
 			}
 
 			ui.PrintStatus("success", "Configuration saved successfully")
+
+			// Send config_change event
+			if cfg.AuthToken != "" && cfg.ServerID != "" {
+				if currentMetrics, err := metrics.GetMetrics(); err == nil {
+					sendServiceAnalytics(cfg, "config_change", currentMetrics)
+				}
+			}
+
 			ui.PrintStatus("info", "Run 'catops restart' to apply changes")
 			ui.PrintSectionEnd()
 		},

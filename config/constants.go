@@ -10,7 +10,7 @@ const (
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.io/api/cli/servers/change-owner"
 	INSTALL_URL   = "https://api.catops.io/api/cli/install"
-	UNINSTALL_URL = "https://api.catops.io/api/cli/servers/uninstall"
+	UNINSTALL_URL = "https://api.catops.io/api/cli/uninstall"
 
 	// Version and update endpoints
 	VERSIONS_URL = "https://api.catops.io/api/versions/check"

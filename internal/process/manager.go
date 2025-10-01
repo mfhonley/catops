@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	constants "catops/config"
 )
@@ -57,16 +58,19 @@ func StopProcess() error {
 		return err
 	}
 
-	// Kill the process
+	// Send SIGTERM for graceful shutdown
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return err
 	}
 
-	err = process.Kill()
+	err = process.Signal(syscall.SIGTERM)
 	if err != nil {
 		return err
 	}
+
+	// Wait a bit for graceful shutdown
+	time.Sleep(2 * time.Second)
 
 	// Remove PID file
 	os.Remove(constants.PID_FILE)

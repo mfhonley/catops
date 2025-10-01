@@ -323,7 +323,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 	case "service_stop":
 		backendEventType = "service_stop"
 	case "system_monitoring":
-		backendEventType = "service_start" // Treat monitoring as service running
+		backendEventType = "system_monitoring"
 	default:
 		backendEventType = "service_start"
 	}

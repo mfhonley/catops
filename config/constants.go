@@ -13,6 +13,7 @@ const (
 	UNINSTALL_URL = "https://api.catops.io/api/cli/uninstall"
 
 	// Version and update endpoints
+	VERSIONS_BASE_URL = "https://api.catops.io/api/versions"
 	VERSIONS_URL = "https://api.catops.io/api/versions/check"
 
 	// Download endpoints

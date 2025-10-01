@@ -44,6 +44,128 @@ func getCurrentVersion() string {
 	return version
 }
 
+// checkServerVersion checks server version against latest version via API
+func checkServerVersion(authToken string) (string, string, bool, error) {
+	// Create request to server version check endpoint
+	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_BASE_URL+"/server-check?user_token="+authToken, nil, getCurrentVersion())
+	if err != nil {
+		return "", "", false, err
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", false, err
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return "", "", false, err
+	}
+
+	// Check if request was successful
+	if result["success"] != true {
+		return "", "", false, fmt.Errorf("API request failed")
+	}
+
+	// Extract version information
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		return "", "", false, fmt.Errorf("invalid response format")
+	}
+
+	serverVersion, _ := data["server_version"].(string)
+	latestVersion, _ := data["latest_version"].(string)
+	needsUpdate, _ := data["needs_update"].(bool)
+
+	return serverVersion, latestVersion, needsUpdate, nil
+}
+
+// checkBasicUpdate performs basic update check without server version
+func checkBasicUpdate() {
+	ui.PrintStatus("info", "Checking for latest version...")
+	
+	// Get current version
+	currentVersion := getCurrentVersion()
+	ui.PrintStatus("info", fmt.Sprintf("Current version: %s", currentVersion))
+	
+	// Check API for latest version
+	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL+"/check", nil, getCurrentVersion())
+	if err != nil {
+		ui.PrintStatus("warning", fmt.Sprintf("Failed to check latest version: %v", err))
+		ui.PrintStatus("info", "Continuing with update script...")
+		executeUpdateScript()
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		ui.PrintStatus("warning", fmt.Sprintf("Failed to check latest version: %v", err))
+		ui.PrintStatus("info", "Continuing with update script...")
+		executeUpdateScript()
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		ui.PrintStatus("warning", fmt.Sprintf("Failed to read response: %v", err))
+		ui.PrintStatus("info", "Continuing with update script...")
+		executeUpdateScript()
+		return
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		ui.PrintStatus("warning", fmt.Sprintf("Failed to parse response: %v", err))
+		ui.PrintStatus("info", "Continuing with update script...")
+		executeUpdateScript()
+		return
+	}
+
+	// Extract latest version
+	latestVersion, ok := result["version"].(string)
+	if !ok || latestVersion == "" {
+		ui.PrintStatus("warning", "Could not determine latest version")
+		ui.PrintStatus("info", "Continuing with update script...")
+		executeUpdateScript()
+		return
+	}
+
+	ui.PrintStatus("info", fmt.Sprintf("Latest version: %s", latestVersion))
+
+	if currentVersion == latestVersion {
+		ui.PrintStatus("success", "Already up to date!")
+		ui.PrintSectionEnd()
+		return
+	}
+
+	ui.PrintStatus("info", "Update available! Installing...")
+	ui.PrintSectionEnd()
+	executeUpdateScript()
+}
+
+// executeUpdateScript runs the update script
+func executeUpdateScript() {
+	updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
+	updateCmd.Stdout = os.Stdout
+	updateCmd.Stderr = os.Stderr
+
+	if err := updateCmd.Run(); err != nil {
+		// don't treat any exit code as error (update.sh handles its own exit codes)
+		return
+	}
+}
+
 // sendAlertAnalytics sends alert data to the backend for monitoring and analytics
 func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Metrics) {
 
@@ -665,16 +787,37 @@ func sendUninstallNotification(authToken, serverID string) bool {
 	}
 
 	jsonData, _ := json.Marshal(uninstallData)
+	
+	// Debug logging
+	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer f.Close()
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: Uninstall request data: %s\n",
+			time.Now().Format("2006-01-02 15:04:05"), string(jsonData)))
+		f.WriteString(fmt.Sprintf("[%s] DEBUG: Uninstall URL: %s\n",
+			time.Now().Format("2006-01-02 15:04:05"), constants.UNINSTALL_URL))
+	}
 
 	// create request
 	req, err := utils.CreateCLIRequest("POST", constants.UNINSTALL_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
 	if err != nil {
+		// Debug logging for error
+		if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer f.Close()
+			f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to create uninstall request: %v\n",
+				time.Now().Format("2006-01-02 15:04:05"), err))
+		}
 		return false
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		// Debug logging for HTTP error
+		if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer f.Close()
+			f.WriteString(fmt.Sprintf("[%s] ERROR: HTTP request failed: %v\n",
+				time.Now().Format("2006-01-02 15:04:05"), err))
+		}
 		return false
 	}
 	defer resp.Body.Close()
@@ -816,6 +959,18 @@ Examples:
   catops status          # Show all system information`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
+
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				ui.PrintStatus("error", "Failed to load configuration")
+				ui.PrintStatus("info", "Using default thresholds")
+				cfg = &config.Config{
+					CPUThreshold:  constants.DEFAULT_CPU_THRESHOLD,
+					MemThreshold:  constants.DEFAULT_MEMORY_THRESHOLD,
+					DiskThreshold: constants.DEFAULT_DISK_THRESHOLD,
+				}
+			}
 
 			// get system information
 			hostname, _ := os.Hostname()
@@ -1005,7 +1160,51 @@ The update process is handled by the official update script.
 Examples:
   catops update          # Check and install updates`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// execute the update script directly
+			ui.PrintHeader()
+			ui.PrintSection("Checking for Updates")
+
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				ui.PrintStatus("error", "Failed to load configuration")
+				ui.PrintStatus("info", "Continuing with update check without server version")
+				cfg = &config.Config{}
+			}
+
+			// Check if we have authentication
+			if cfg.AuthToken == "" {
+				ui.PrintStatus("warning", "No authentication token found")
+				ui.PrintStatus("info", "Run 'catops auth login <token>' to authenticate")
+				ui.PrintStatus("info", "Continuing with basic update check...")
+				
+				// Fallback to basic update check
+				checkBasicUpdate()
+				return
+			}
+
+			// Check server version against latest
+			ui.PrintStatus("info", "Checking server version...")
+			serverVersion, latestVersion, needsUpdate, err := checkServerVersion(cfg.AuthToken)
+			if err != nil {
+				ui.PrintStatus("warning", fmt.Sprintf("Failed to check server version: %v", err))
+				ui.PrintStatus("info", "Falling back to basic update check...")
+				checkBasicUpdate()
+				return
+			}
+
+			ui.PrintStatus("info", fmt.Sprintf("Current version: %s", serverVersion))
+			ui.PrintStatus("info", fmt.Sprintf("Latest version: %s", latestVersion))
+
+			if !needsUpdate {
+				ui.PrintStatus("success", "Server is up to date!")
+				ui.PrintSectionEnd()
+				return
+			}
+
+			ui.PrintStatus("info", "Update available! Installing...")
+			ui.PrintSectionEnd()
+
+			// Execute the update script
 			updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
 			updateCmd.Stdout = os.Stdout
 			updateCmd.Stderr = os.Stderr
@@ -1076,6 +1275,18 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Configuring Alert Thresholds")
 
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				ui.PrintStatus("error", "Failed to load configuration")
+				ui.PrintStatus("info", "Using default values")
+				cfg = &config.Config{
+					CPUThreshold:  constants.DEFAULT_CPU_THRESHOLD,
+					MemThreshold:  constants.DEFAULT_MEMORY_THRESHOLD,
+					DiskThreshold: constants.DEFAULT_DISK_THRESHOLD,
+				}
+			}
+
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: catops set cpu=90 mem=90 disk=90")
 				ui.PrintStatus("info", "Supported: cpu, mem, disk")
@@ -1119,7 +1330,7 @@ Examples:
 			}
 
 			// save configuration
-			err := config.SaveConfig(cfg)
+			err = config.SaveConfig(cfg)
 			if err != nil {
 				ui.PrintStatus("error", fmt.Sprintf("Failed to save config: %v", err))
 				ui.PrintSectionEnd()
@@ -1387,6 +1598,14 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Uninstall CatOps")
 
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				ui.PrintStatus("error", "Failed to load configuration")
+				ui.PrintStatus("info", "Continuing with uninstall without backend notification")
+				cfg = &config.Config{} // Use empty config
+			}
+
 			// check if --yes flag is set
 			skipConfirm := cmd.Flags().Lookup("yes").Changed
 
@@ -1407,13 +1626,19 @@ Examples:
 			}
 
 			// send uninstall notification to backend if we have tokens
+			ui.PrintStatus("debug", fmt.Sprintf("AuthToken present: %t, ServerID present: %t", cfg.AuthToken != "", cfg.ServerID != ""))
+			backendNotified := false
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				ui.PrintStatus("info", "Notifying backend about uninstall...")
+				ui.PrintStatus("debug", fmt.Sprintf("Sending to URL: %s", constants.UNINSTALL_URL))
 				if sendUninstallNotification(cfg.AuthToken, cfg.ServerID) {
 					ui.PrintStatus("success", "Backend notified about uninstall")
+					backendNotified = true
 				} else {
 					ui.PrintStatus("warning", "Could not notify backend (continuing with uninstall)")
 				}
+			} else {
+				ui.PrintStatus("warning", "No auth token or server ID found - skipping backend notification")
 			}
 
 			// remove autostart services FIRST (before stopping service)
@@ -1443,18 +1668,22 @@ Examples:
 				ui.PrintStatus("warning", "Could not remove configuration directory")
 			}
 
-			// remove log files
-			logFiles := []string{
-				"/tmp/catops.log",
-				"/tmp/catops.pid",
-			}
+			// remove log files only if backend was notified successfully
+			if backendNotified {
+				logFiles := []string{
+					"/tmp/catops.log",
+					"/tmp/catops.pid",
+				}
 
-			for _, logFile := range logFiles {
-				if _, err := os.Stat(logFile); err == nil {
-					if err := os.Remove(logFile); err == nil {
-						ui.PrintStatus("success", "Removed log file: "+logFile)
+				for _, logFile := range logFiles {
+					if _, err := os.Stat(logFile); err == nil {
+						if err := os.Remove(logFile); err == nil {
+							ui.PrintStatus("success", "Removed log file: "+logFile)
+						}
 					}
 				}
+			} else {
+				ui.PrintStatus("info", "Keeping log files for debugging (backend not notified)")
 			}
 
 			// stop ALL catops processes (after removing config)
@@ -1583,6 +1812,14 @@ Use 'catops config show' to see current settings.`,
 			ui.PrintHeader()
 			ui.PrintSection("Configuration")
 
+			// Load configuration
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				ui.PrintStatus("error", "Failed to load configuration")
+				ui.PrintStatus("info", "Using default values")
+				cfg = &config.Config{}
+			}
+
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: catops config [token=...|group=...|show]")
 				ui.PrintStatus("info", "Run 'catops config show' to see current settings")
@@ -1668,7 +1905,7 @@ Use 'catops config show' to see current settings.`,
 
 			// save configuration
 			{
-				err := config.SaveConfig(cfg)
+				err = config.SaveConfig(cfg)
 				if err != nil {
 					ui.PrintStatus("error", fmt.Sprintf("Failed to save config: %v", err))
 					return

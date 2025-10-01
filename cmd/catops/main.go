@@ -1205,14 +1205,7 @@ Examples:
 			ui.PrintSectionEnd()
 
 			// Execute the update script
-			updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
-			updateCmd.Stdout = os.Stdout
-			updateCmd.Stderr = os.Stderr
-
-			if err := updateCmd.Run(); err != nil {
-				// don't treat any exit code as error (update.sh handles its own exit codes)
-				return
-			}
+			executeUpdateScript()
 		},
 	}
 

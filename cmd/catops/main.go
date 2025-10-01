@@ -519,6 +519,7 @@ func registerServer(userToken string, cfg *config.Config) bool {
 		"server_info": map[string]string{
 			"hostname":       hostname,
 			"os_type":        osName,
+			"os_version":     runtime.GOOS + "/" + runtime.GOARCH, // Add OS version info
 			"catops_version": getCurrentVersion(),
 		},
 		// Add server specifications

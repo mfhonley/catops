@@ -47,8 +47,8 @@ func getCurrentVersion() string {
 // sendAlertAnalytics sends alert data to the backend for monitoring and analytics
 func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Metrics) {
 
-	if cfg.AuthToken == "" || cfg.ServerToken == "" {
-		return // Don't send if tokens are missing
+	if cfg.AuthToken == "" || cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
 	}
 
 	hostname, _ := os.Hostname()
@@ -56,42 +56,88 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		hostname = "unknown"
 	}
 
-	alertData := map[string]interface{}{
-		"user_token":   cfg.AuthToken,
-		"server_token": cfg.ServerToken,
-		"alert_type":   "threshold_exceeded",
-		"timestamp":    time.Now().Unix(),
-		"server_info": map[string]interface{}{
-			"hostname":       hostname,
-			"os_type":        metrics.OSName,
-			"catops_version": getCurrentVersion(),
-		},
-		"metrics": map[string]interface{}{
-			"cpu_usage":      metrics.CPUUsage,
-			"memory_usage":   metrics.MemoryUsage,
-			"disk_usage":     metrics.DiskUsage,
-			"https_requests": metrics.HTTPSRequests,
-			"iops":           metrics.IOPS,
-			"io_wait":        metrics.IOWait,
-		},
-		"thresholds": map[string]interface{}{
-			"cpu_threshold":    cfg.CPUThreshold,
-			"memory_threshold": cfg.MemThreshold,
-			"disk_threshold":   cfg.DiskThreshold,
-		},
-		"alerts": alerts,
+	// Convert alert strings to AlertModel format
+	alertModels := []map[string]interface{}{}
 
-		// Include detailed process analytics for backend monitoring
-		"process_analytics": map[string]interface{}{
-			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 10),
-			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 10),
-			"process_summary": map[string]interface{}{
-				"total_processes":    len(metrics.TopProcesses),
-				"running_processes":  countProcessesByStatus(metrics.TopProcesses, "R"),
-				"sleeping_processes": countProcessesByStatus(metrics.TopProcesses, "S"),
-				"zombie_processes":   countProcessesByStatus(metrics.TopProcesses, "Z"),
+	for i, alertText := range alerts {
+		// Generate unique alert ID
+		alertID := fmt.Sprintf("alert_%s_%d_%d", cfg.ServerID, time.Now().Unix(), i)
+
+		// Parse alert text to extract metric info
+		var metricType, metricName string
+		var currentValue, thresholdValue float64
+		var level string
+
+		// Parse alert patterns like "CPU: 95.0% (limit: 90.0%)"
+		if strings.Contains(alertText, "CPU") {
+			metricType = "system"
+			metricName = "cpu_usage"
+			currentValue = metrics.CPUUsage
+			thresholdValue = cfg.CPUThreshold
+		} else if strings.Contains(alertText, "Memory") {
+			metricType = "system"
+			metricName = "memory_usage"
+			currentValue = metrics.MemoryUsage
+			thresholdValue = cfg.MemThreshold
+		} else if strings.Contains(alertText, "Disk") {
+			metricType = "system"
+			metricName = "disk_usage"
+			currentValue = metrics.DiskUsage
+			thresholdValue = cfg.DiskThreshold
+		} else {
+			// Default for unknown alerts
+			metricType = "system"
+			metricName = "unknown"
+			currentValue = 0
+			thresholdValue = 0
+		}
+
+		// Determine alert level based on severity
+		if currentValue >= thresholdValue*1.5 {
+			level = "critical"
+		} else if currentValue >= thresholdValue*1.2 {
+			level = "error"
+		} else if currentValue >= thresholdValue {
+			level = "warning"
+		} else {
+			level = "info"
+		}
+
+		alertModel := map[string]interface{}{
+			"timestamp":          time.Now().Format("2006-01-02T15:04:05Z"),
+			"server_id":          cfg.ServerID,
+			"alert_id":           alertID,
+			"metric_type":        metricType,
+			"metric_name":        metricName,
+			"level":              level,
+			"status":             "active",
+			"title":              fmt.Sprintf("%s Threshold Exceeded", strings.Title(metricName)),
+			"message":            alertText,
+			"current_value":      currentValue,
+			"threshold_value":    thresholdValue,
+			"threshold_operator": ">=",
+			"resolved_at":        nil,
+			"tags": map[string]string{
+				"hostname":       hostname,
+				"os_type":        metrics.OSName,
+				"catops_version": getCurrentVersion(),
+				"alert_type":     "threshold_exceeded",
 			},
-		},
+			"metadata": fmt.Sprintf(`{"process_analytics":{"total_processes":%d,"running_processes":%d,"sleeping_processes":%d,"zombie_processes":%d}}`,
+				len(metrics.TopProcesses),
+				countProcessesByStatus(metrics.TopProcesses, "R"),
+				countProcessesByStatus(metrics.TopProcesses, "S"),
+				countProcessesByStatus(metrics.TopProcesses, "Z")),
+		}
+
+		alertModels = append(alertModels, alertModel)
+	}
+
+	// Create AlertsBatchRequest format
+	alertData := map[string]interface{}{
+		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token": cfg.AuthToken,
+		"alerts":     alertModels,
 	}
 
 	jsonData, _ := json.Marshal(alertData)
@@ -105,15 +151,10 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 				time.Now().Format("2006-01-02 15:04:05"), constants.ANALYTICS_URL))
 		}
 
-		req, err := http.NewRequest("POST", constants.ANALYTICS_URL, bytes.NewBuffer(jsonData))
+		req, err := utils.CreateCLIRequest("POST", constants.ANALYTICS_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
 		if err != nil {
 			return
 		}
-
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", constants.USER_AGENT)
-		req.Header.Set("X-Platform", runtime.GOOS)
-		req.Header.Set("X-Version", getCurrentVersion())
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
@@ -138,10 +179,10 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 	}()
 }
 
-// Отправка аналитики событий сервиса на бэк
+// sendServiceAnalytics sends service event data to the backend for monitoring and analytics
 func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics.Metrics) {
-	if cfg.AuthToken == "" || cfg.ServerToken == "" {
-		return // Не отправляем если нет токенов
+	if cfg.AuthToken == "" || cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
 	}
 
 	hostname, _ := os.Hostname()
@@ -149,54 +190,78 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 		hostname = "unknown"
 	}
 
-	// Получаем PID процесса
+	// Get process PID
 	pid := os.Getpid()
 
-	serviceData := map[string]interface{}{
-		"user_token":   cfg.AuthToken,
-		"server_token": cfg.ServerToken,
-		"event_type":   eventType, // "service_start", "service_stop"
-		"timestamp":    time.Now().Unix(),
-		"server_info": map[string]interface{}{
+	// Map CLI event types to backend EventType enum
+	var backendEventType string
+	switch eventType {
+	case "service_start":
+		backendEventType = "service_start"
+	case "service_stop":
+		backendEventType = "service_stop"
+	case "system_monitoring":
+		backendEventType = "service_start" // Treat monitoring as service running
+	default:
+		backendEventType = "service_start"
+	}
+
+	// Determine severity based on event type
+	var severity string
+	switch eventType {
+	case "service_start", "system_monitoring":
+		severity = "info"
+	case "service_stop":
+		severity = "warning"
+	default:
+		severity = "info"
+	}
+
+	// Create message for the event
+	var message string
+	switch eventType {
+	case "service_start":
+		message = "CatOps monitoring service started successfully"
+	case "service_stop":
+		message = "CatOps monitoring service stopped"
+	case "system_monitoring":
+		message = "CatOps monitoring service is running and collecting metrics"
+	default:
+		message = fmt.Sprintf("CatOps service event: %s", eventType)
+	}
+
+	// Create single EventModel object
+	eventModel := map[string]interface{}{
+		"timestamp":    time.Now().Format("2006-01-02T15:04:05Z"),
+		"server_id":    cfg.ServerID,
+		"event_type":   backendEventType,
+		"service_name": "catops",
+		"process_name": "catops",
+		"pid":          pid,
+		"message":      message,
+		"severity":     severity,
+		"error_message": nil,
+		"tags": map[string]string{
 			"hostname":       hostname,
 			"os_type":        metrics.OSName,
 			"catops_version": getCurrentVersion(),
+			"original_event": eventType,
 		},
-		"metrics": map[string]interface{}{
-			"cpu_usage":      metrics.CPUUsage,
-			"memory_usage":   metrics.MemoryUsage,
-			"disk_usage":     metrics.DiskUsage,
-			"https_requests": metrics.HTTPSRequests,
-			"iops":           metrics.IOPS,
-			"io_wait":        metrics.IOWait,
-		},
-		"service_name": "catops",
-		"service_status": func() string {
-			if eventType == "service_start" || eventType == "system_monitoring" {
-				return "running"
-			}
-			return "stopped"
-		}(),
-		"service_pid": pid,
-		"service_uptime": func() int64 {
-			if eventType == "service_start" || eventType == "service_stop" {
-				return 0
-			}
-			// could try to get uptime from PID file for stop events
-			return 0
-		}(),
+		"metadata": fmt.Sprintf(`{"process_analytics":{"total_processes":%d,"running_processes":%d,"sleeping_processes":%d,"zombie_processes":%d},"metrics":{"cpu_usage":%.2f,"memory_usage":%.2f,"disk_usage":%.2f}}`,
+			len(metrics.TopProcesses),
+			countProcessesByStatus(metrics.TopProcesses, "R"),
+			countProcessesByStatus(metrics.TopProcesses, "S"),
+			countProcessesByStatus(metrics.TopProcesses, "Z"),
+			metrics.CPUUsage,
+			metrics.MemoryUsage,
+			metrics.DiskUsage),
+	}
 
-		// add process analytics data for service events
-		"process_analytics": map[string]interface{}{
-			"top_cpu_processes":    getTopProcessesByCPU(metrics.TopProcesses, 5),
-			"top_memory_processes": getTopProcessesByMemory(metrics.TopProcesses, 5),
-			"process_summary": map[string]interface{}{
-				"total_processes":    len(metrics.TopProcesses),
-				"running_processes":  countProcessesByStatus(metrics.TopProcesses, "R"),
-				"sleeping_processes": countProcessesByStatus(metrics.TopProcesses, "S"),
-				"zombie_processes":   countProcessesByStatus(metrics.TopProcesses, "Z"),
-			},
-		},
+	// Create EventsBatchRequest format
+	serviceData := map[string]interface{}{
+		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token": cfg.AuthToken,
+		"events":     []map[string]interface{}{eventModel},
 	}
 
 	jsonData, _ := json.Marshal(serviceData)
@@ -210,15 +275,10 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 				time.Now().Format("2006-01-02 15:04:05"), eventType, constants.EVENTS_URL))
 		}
 
-		req, err := http.NewRequest("POST", constants.EVENTS_URL, bytes.NewBuffer(jsonData))
+		req, err := utils.CreateCLIRequest("POST", constants.EVENTS_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
 		if err != nil {
 			return
 		}
-
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", constants.USER_AGENT)
-		req.Header.Set("X-Platform", runtime.GOOS)
-		req.Header.Set("X-Version", getCurrentVersion())
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
@@ -240,6 +300,169 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 				time.Now().Format("2006-01-02 15:04:05"), eventType))
 		}
 
+	}()
+}
+
+// sendMetrics sends system metrics to the backend metrics endpoint
+func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
+	if cfg.AuthToken == "" || cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	// Current timestamp in ISO format for BaseMetric
+	timestamp := time.Now().Format("2006-01-02T15:04:05Z")
+
+	// Convert to BaseMetric format - each metric is a separate object
+	baseMetrics := []map[string]interface{}{
+		// CPU metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "system",
+			"metric_name":  "cpu_usage",
+			"metric_value": metrics.CPUUsage,
+			"metric_unit":  "percent",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": fmt.Sprintf(`{"cores_total": %d, "cores_used": %d}`,
+				metrics.CPUDetails.Total, metrics.CPUDetails.Used),
+		},
+		// Memory metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "system",
+			"metric_name":  "memory_usage",
+			"metric_value": metrics.MemoryUsage,
+			"metric_unit":  "percent",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": fmt.Sprintf(`{"total_kb": %d, "used_kb": %d, "available_kb": %d}`,
+				metrics.MemoryDetails.Total, metrics.MemoryDetails.Used, metrics.MemoryDetails.Available),
+		},
+		// Disk metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "system",
+			"metric_name":  "disk_usage",
+			"metric_value": metrics.DiskUsage,
+			"metric_unit":  "percent",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": fmt.Sprintf(`{"total_kb": %d, "used_kb": %d, "available_kb": %d}`,
+				metrics.DiskDetails.Total, metrics.DiskDetails.Used, metrics.DiskDetails.Available),
+		},
+		// HTTPS connections metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "network",
+			"metric_name":  "https_connections",
+			"metric_value": float64(metrics.HTTPSRequests),
+			"metric_unit":  "count",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": `{}`,
+		},
+		// IOPS metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "storage",
+			"metric_name":  "iops",
+			"metric_value": float64(metrics.IOPS),
+			"metric_unit":  "operations_per_second",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": `{}`,
+		},
+		// IO Wait metric
+		{
+			"timestamp":    timestamp,
+			"server_id":    cfg.ServerID,
+			"metric_type":  "storage",
+			"metric_name":  "io_wait",
+			"metric_value": metrics.IOWait,
+			"metric_unit":  "percent",
+			"tags": map[string]string{
+				"hostname": hostname,
+				"os_name":  metrics.OSName,
+			},
+			"metadata": `{}`,
+		},
+	}
+
+	// Create the request payload according to MetricsBatchRequest schema
+	requestData := map[string]interface{}{
+		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()), // Unix timestamp for request
+		"user_token": cfg.AuthToken,
+		"metrics":    baseMetrics, // Array of BaseMetric objects
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return
+	}
+
+	// Send metrics to backend asynchronously
+	go func() {
+		// Log metrics request start
+		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer logFile.Close()
+			logFile.WriteString(fmt.Sprintf("[%s] INFO: Metrics request started - URL: %s\n",
+				time.Now().Format("2006-01-02 15:04:05"), constants.METRICS_URL))
+		}
+
+		req, err := utils.CreateCLIRequest("POST", constants.METRICS_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
+		if err != nil {
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to create metrics request: %v\n",
+					time.Now().Format("2006-01-02 15:04:05"), err))
+			}
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			// Log metrics send error
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to send metrics: %v\n",
+					time.Now().Format("2006-01-02 15:04:05"), err))
+			}
+			return
+		}
+		defer resp.Body.Close()
+
+		// Log metrics success
+		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer logFile.Close()
+			if resp.StatusCode == 200 {
+				logFile.WriteString(fmt.Sprintf("[%s] INFO: Metrics sent successfully - Status: %d\n",
+					time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+			} else {
+				logFile.WriteString(fmt.Sprintf("[%s] WARNING: Metrics sent with non-200 status - Status: %d\n",
+					time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+			}
+		}
 	}()
 }
 
@@ -330,15 +553,10 @@ func registerServer(userToken string, cfg *config.Config) bool {
 			time.Now().Format("2006-01-02 15:04:05")))
 	}
 
-	req, err := http.NewRequest("POST", constants.INSTALL_URL, bytes.NewBuffer(jsonData))
+	req, err := utils.CreateCLIRequest("POST", constants.INSTALL_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
 	if err != nil {
 		return false
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", constants.USER_AGENT)
-	req.Header.Set("X-Platform", platform)
-	req.Header.Set("X-Version", getCurrentVersion())
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -356,18 +574,35 @@ func registerServer(userToken string, cfg *config.Config) bool {
 	}
 
 	if result["success"] == true {
-		// save server_token if it exists in response
-		// server_token is in data.server_token
+		// Extract user_token and server_id from response
+		// New backend returns: data.user_token and data.id
 
 		if data, ok := result["data"].(map[string]interface{}); ok {
-			if serverToken, ok := data["server_token"].(string); ok && serverToken != "" {
-				// log found server_token
+			// Extract permanent user_token (replaces server_token)
+			if userToken, ok := data["user_token"].(string); ok && userToken != "" {
+				cfg.AuthToken = userToken // Store permanent user_token as AuthToken
+				if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+					defer f.Close()
+					f.WriteString(fmt.Sprintf("[%s] INFO: Permanent user_token received and saved\n",
+						time.Now().Format("2006-01-02 15:04:05")))
+				}
+			}
 
-				// set server_token in passed cfg object
-				cfg.ServerToken = serverToken
-			} else {
-				// log that server_token not found
+			// Extract server_id (MongoDB ObjectId)
+			if serverID, ok := data["id"].(string); ok && serverID != "" {
+				cfg.ServerID = serverID
+				if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+					defer f.Close()
+					f.WriteString(fmt.Sprintf("[%s] INFO: Server ID received and saved: %s\n",
+						time.Now().Format("2006-01-02 15:04:05"), serverID))
+				}
+			}
 
+			// Log successful registration
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] SUCCESS: Server registration completed\n",
+					time.Now().Format("2006-01-02 15:04:05")))
 			}
 		} else {
 			// log that data section not found
@@ -421,27 +656,20 @@ func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metri
 }
 
 // send uninstall notification to backend
-func sendUninstallNotification(authToken, serverToken string) bool {
+func sendUninstallNotification(authToken, serverID string) bool {
+	// ServerUninstallRequest format - only needs timestamp and user_token
 	uninstallData := map[string]interface{}{
-		"auth_token":   authToken,
-		"server_token": serverToken,
-		"action":       "uninstall",
-		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()),
+		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token": authToken,
 	}
 
 	jsonData, _ := json.Marshal(uninstallData)
 
 	// create request
-	req, err := http.NewRequest("POST", constants.UNINSTALL_URL, bytes.NewBuffer(jsonData))
+	req, err := utils.CreateCLIRequest("POST", constants.UNINSTALL_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
 	if err != nil {
 		return false
 	}
-
-	// set headers (as required by backend)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", constants.USER_AGENT)
-	req.Header.Set("X-Platform", runtime.GOOS) // linux/darwin/windows
-	req.Header.Set("X-Version", getCurrentVersion())
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -466,17 +694,23 @@ func sendUninstallNotification(authToken, serverToken string) bool {
 }
 
 // transfer server ownership
-func transferServerOwnership(oldToken, newToken, serverToken string) bool {
+func transferServerOwnership(oldToken, newToken, serverID string) bool {
+	// ServerOwnerChangeRequest format - no server_id needed, backend finds it via token
 	changeData := map[string]interface{}{
+		"timestamp":      fmt.Sprintf("%d", time.Now().Unix()),
 		"old_user_token": oldToken,
 		"new_user_token": newToken,
-		"server_token":   serverToken,
 	}
 
 	jsonData, _ := json.Marshal(changeData)
 
-	resp, err := http.Post(constants.SERVERS_URL,
-		"application/json", bytes.NewBuffer(jsonData))
+	req, err := utils.CreateCLIRequest("POST", constants.SERVERS_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
+	if err != nil {
+		return false
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 
 	if err != nil {
 		return false
@@ -953,6 +1187,7 @@ Examples:
 			// send service start analytics (always if in cloud mode)
 			if currentMetrics, err := metrics.GetMetrics(); err == nil {
 				sendServiceAnalytics(cfg, "service_start", currentMetrics)
+				sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
 			}
 
 			// start Telegram bot in background if configured
@@ -1030,6 +1265,7 @@ Examples:
 						// if thresholds are not exceeded, send regular analytics
 						if currentCfg.IsCloudMode() {
 							sendServiceAnalytics(currentCfg, "system_monitoring", currentMetrics)
+							sendMetrics(currentCfg, currentMetrics) // Also send metrics to new endpoint
 						}
 					}
 
@@ -1050,7 +1286,13 @@ Examples:
 								time.Now().Format("2006-01-02 15:04:05"), constants.VERSIONS_URL))
 						}
 
-						resp, err := http.Get(constants.VERSIONS_URL)
+						req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, getCurrentVersion())
+						if err != nil {
+							continue
+						}
+
+						client := &http.Client{Timeout: 10 * time.Second}
+						resp, err := client.Do(req)
 						if err == nil {
 							defer resp.Body.Close()
 							var result map[string]interface{}
@@ -1106,6 +1348,7 @@ Examples:
 					// send service stop analytics (always if in cloud mode)
 					if currentMetrics, err := metrics.GetMetrics(); err == nil {
 						sendServiceAnalytics(cfg, "service_stop", currentMetrics)
+						sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
 					}
 
 					// log service stop
@@ -1163,9 +1406,9 @@ Examples:
 			}
 
 			// send uninstall notification to backend if we have tokens
-			if cfg.AuthToken != "" && cfg.ServerToken != "" {
+			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				ui.PrintStatus("info", "Notifying backend about uninstall...")
-				if sendUninstallNotification(cfg.AuthToken, cfg.ServerToken) {
+				if sendUninstallNotification(cfg.AuthToken, cfg.ServerID) {
 					ui.PrintStatus("success", "Backend notified about uninstall")
 				} else {
 					ui.PrintStatus("warning", "Could not notify backend (continuing with uninstall)")
@@ -1422,8 +1665,8 @@ Use 'catops config show' to see current settings.`,
 				return
 			}
 
-			// save configuration (only if registerServer was not called)
-			if cfg.AuthToken == "" || cfg.ServerToken != "" {
+			// save configuration
+			{
 				err := config.SaveConfig(cfg)
 				if err != nil {
 					ui.PrintStatus("error", fmt.Sprintf("Failed to save config: %v", err))
@@ -1515,11 +1758,11 @@ Examples:
 				return
 			}
 
-			// if we already have server_token, transfer ownership
-			if cfg.ServerToken != "" && cfg.AuthToken != "" {
+			// if we already have server_id, transfer ownership
+			if cfg.ServerID != "" && cfg.AuthToken != "" {
 				ui.PrintStatus("info", "Server is already registered, transferring ownership...")
 
-				if !transferServerOwnership(cfg.AuthToken, newToken, cfg.ServerToken) {
+				if !transferServerOwnership(cfg.AuthToken, newToken, cfg.ServerID) {
 					ui.PrintStatus("error", "Failed to transfer server ownership")
 					ui.PrintStatus("info", "Please check your token and try again")
 					ui.PrintSectionEnd()
@@ -1541,7 +1784,7 @@ Examples:
 				ui.PrintStatus("success", "Server registered successfully")
 			}
 
-			// update auth_token (server_token is already saved in registerServer)
+			// update auth_token (server_id is already saved in registerServer)
 			cfg.AuthToken = newToken
 			if err := config.SaveConfig(cfg); err != nil {
 				ui.PrintStatus("error", "Failed to save authentication token")
@@ -1604,7 +1847,7 @@ Examples:
 				ui.PrintStatus("success", "Authenticated")
 				ui.PrintStatus("info", "User ID: "+cfg.AuthToken)
 				ui.PrintStatus("info", "Server registered: "+func() string {
-					if cfg.ServerToken != "" {
+					if cfg.ServerID != "" {
 						return "Yes"
 					}
 					return "No"

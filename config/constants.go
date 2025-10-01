@@ -3,13 +3,14 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ANALYTICS_URL = "https://api.catops.io/api/data/alerts"
-	EVENTS_URL    = "https://api.catops.io/api/data/events"
+	ANALYTICS_URL = "https://api.catops.io/api/cli/alerts"
+	EVENTS_URL    = "https://api.catops.io/api/cli/events"
+	METRICS_URL   = "https://api.catops.io/api/cli/metrics"
 
 	// Server management endpoints
-	SERVERS_URL   = "https://api.catops.io/api/servers/change-owner"
-	INSTALL_URL   = "https://api.catops.io/api/downloads/install"
-	UNINSTALL_URL = "https://api.catops.io/api/servers/uninstall"
+	SERVERS_URL   = "https://api.catops.io/api/cli/servers/change-owner"
+	INSTALL_URL   = "https://api.catops.io/api/cli/install"
+	UNINSTALL_URL = "https://api.catops.io/api/cli/servers/uninstall"
 
 	// Version and update endpoints
 	VERSIONS_URL = "https://api.catops.io/api/versions/check"
@@ -18,9 +19,11 @@ const (
 	GET_CATOPS_URL = "https://get.catops.io"
 )
 
-// Application constants
+// HTTP headers required by new backend
 const (
-	USER_AGENT = "CatOps-CLI/1.0.0"
+	HEADER_USER_AGENT = "CatOps-CLI/1.0.0"
+	HEADER_PLATFORM   = "X-Platform"
+	HEADER_VERSION    = "X-Version"
 )
 
 // External services

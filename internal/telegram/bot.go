@@ -345,21 +345,30 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 					time.Now().Format("2006-01-02 15:04:05"), constants.VERSIONS_URL))
 			}
 
-			resp, err := http.Get(constants.VERSIONS_URL)
+			// Create request with proper CLI headers
+			req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, version)
 			var updateInfo string
-			if err == nil {
-				defer resp.Body.Close()
-				var result map[string]interface{}
-				if json.NewDecoder(resp.Body).Decode(&result) == nil {
-					if latestVersion, ok := result["latest_version"].(string); ok {
-						// Extract version number from "v0.0.3" format
-						currentVersion := strings.TrimPrefix(version, "v")
-						if latestVersion != currentVersion {
-							updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", latestVersion)
-						} else {
-							updateInfo = "\n\n✅ <b>You have the latest version!</b>"
+			if err != nil {
+				updateInfo = "\n\n❌ <b>Update check failed</b>"
+			} else {
+				client := &http.Client{Timeout: 10 * time.Second}
+				resp, err := client.Do(req)
+				if err == nil {
+					defer resp.Body.Close()
+					var result map[string]interface{}
+					if json.NewDecoder(resp.Body).Decode(&result) == nil {
+						if latestVersion, ok := result["latest_version"].(string); ok {
+							// Extract version number from "v0.0.3" format
+							currentVersion := strings.TrimPrefix(version, "v")
+							if latestVersion != currentVersion {
+								updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", latestVersion)
+							} else {
+								updateInfo = "\n\n✅ <b>You have the latest version!</b>"
+							}
 						}
 					}
+				} else {
+					updateInfo = "\n\n❌ <b>Update check failed</b>"
 				}
 			}
 

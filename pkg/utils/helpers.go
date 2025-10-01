@@ -4,9 +4,13 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+
+	constants "catops/config"
 )
 
 // CheckCPUAlert checks if CPU usage exceeds threshold
@@ -127,4 +131,34 @@ func FormatCPU(percent float64, usedCores, totalCores int64) string {
 		return fmt.Sprintf("%.1f%% (%d/%d cores)", percent, usedCores, totalCores)
 	}
 	return fmt.Sprintf("%.1f%%", percent)
+}
+
+// GetCurrentVersion gets CLI version from VERSION variable or version.txt
+func GetCurrentVersion() string {
+	// This will be set by main.go
+	return "1.0.0" // Default fallback
+}
+
+// AddCLIHeaders adds required headers for new backend API
+func AddCLIHeaders(req *http.Request, version string) {
+	if req == nil {
+		return
+	}
+
+	// Add required headers for new backend
+	req.Header.Set("User-Agent", constants.HEADER_USER_AGENT)
+	req.Header.Set(constants.HEADER_PLATFORM, runtime.GOOS)
+	req.Header.Set(constants.HEADER_VERSION, version)
+	req.Header.Set("Content-Type", "application/json")
+}
+
+// CreateCLIRequest creates HTTP request with proper CLI headers
+func CreateCLIRequest(method, url string, body io.Reader, version string) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	AddCLIHeaders(req, version)
+	return req, nil
 }

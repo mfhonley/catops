@@ -15,6 +15,7 @@ type Config struct {
 	ChatID        int64   `mapstructure:"chat_id"`
 	AuthToken     string  `mapstructure:"auth_token"`
 	ServerToken   string  `mapstructure:"server_token"`
+	ServerID      string  `mapstructure:"server_id"`
 	Mode          string  `mapstructure:"mode"`
 	CPUThreshold  float64 `mapstructure:"cpu_threshold"`
 	MemThreshold  float64 `mapstructure:"mem_threshold"`
@@ -23,7 +24,7 @@ type Config struct {
 
 // determineMode automatically sets the operation mode based on tokens
 func (cfg *Config) determineMode() {
-	if cfg.AuthToken != "" && cfg.ServerToken != "" {
+	if cfg.AuthToken != "" && cfg.ServerID != "" {
 		cfg.Mode = constants.MODE_CLOUD
 	} else {
 		cfg.Mode = constants.MODE_LOCAL
@@ -78,11 +79,12 @@ func SaveConfig(cfg *Config) error {
 chat_id: %d
 auth_token: %s
 server_token: %s
+server_id: %s
 mode: %s
 cpu_threshold: %.1f
 mem_threshold: %.1f
 disk_threshold: %.1f
-`, cfg.TelegramToken, cfg.ChatID, cfg.AuthToken, cfg.ServerToken, cfg.Mode, cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
+`, cfg.TelegramToken, cfg.ChatID, cfg.AuthToken, cfg.ServerToken, cfg.ServerID, cfg.Mode, cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
 
 	// Записываем в файл
 	configFile := configDir + "/config.yaml"

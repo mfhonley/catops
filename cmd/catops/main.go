@@ -151,7 +151,7 @@ func checkBasicUpdate() {
 
 // executeUpdateScript runs the update script
 func executeUpdateScript() {
-	updateCmd := exec.Command("bash", "-c", "curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
+	updateCmd := exec.Command("bash", "-c", "CATOPS_CLI_MODE=1 curl -sfL "+constants.GET_CATOPS_URL+"/update.sh | bash")
 	updateCmd.Stdout = os.Stdout
 	updateCmd.Stderr = os.Stderr
 

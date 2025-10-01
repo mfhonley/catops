@@ -97,7 +97,7 @@ func checkBasicUpdate() {
 	ui.PrintStatus("info", fmt.Sprintf("Current version: %s", currentVersion))
 	
 	// Check API for latest version
-	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL+"/check", nil, getCurrentVersion())
+	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, getCurrentVersion())
 	if err != nil {
 		ui.PrintStatus("warning", fmt.Sprintf("Failed to check latest version: %v", err))
 		ui.PrintStatus("info", "Continuing with update script...")

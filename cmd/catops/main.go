@@ -440,6 +440,174 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 	}()
 }
 
+// sendProcessMetrics sends process analytics to the backend processes endpoint
+func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
+	if cfg.AuthToken == "" || cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
+	}
+
+	if len(metrics.TopProcesses) == 0 {
+		return // No processes to send
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	// Get top 10 CPU processes
+	topCPU := getTopProcessesByCPU(metrics.TopProcesses, 10)
+	topCPUData := make([]map[string]interface{}, 0, len(topCPU))
+	for i, proc := range topCPU {
+		topCPUData = append(topCPUData, map[string]interface{}{
+			"pid":          proc.PID,
+			"name":         proc.Name,
+			"cpu_usage":    proc.CPUUsage,
+			"memory_usage": proc.MemoryUsage,
+			"memory_kb":    proc.MemoryKB,
+			"command":      proc.Command,
+			"user":         proc.User,
+			"status":       proc.Status,
+			"start_time":   proc.StartTime,
+			"threads":      proc.Threads,
+			"virtual_mem":  proc.VirtualMem,
+			"resident_mem": proc.ResidentMem,
+			"tty":          proc.TTY,
+			"cpu_num":      proc.CPU,
+			"priority":     proc.Priority,
+			"nice":         proc.Nice,
+			"rank_type":    "cpu",
+			"rank_position": i + 1,
+		})
+	}
+
+	// Get top 10 Memory processes
+	topMemory := getTopProcessesByMemory(metrics.TopProcesses, 10)
+	topMemoryData := make([]map[string]interface{}, 0, len(topMemory))
+	for i, proc := range topMemory {
+		topMemoryData = append(topMemoryData, map[string]interface{}{
+			"pid":          proc.PID,
+			"name":         proc.Name,
+			"cpu_usage":    proc.CPUUsage,
+			"memory_usage": proc.MemoryUsage,
+			"memory_kb":    proc.MemoryKB,
+			"command":      proc.Command,
+			"user":         proc.User,
+			"status":       proc.Status,
+			"start_time":   proc.StartTime,
+			"threads":      proc.Threads,
+			"virtual_mem":  proc.VirtualMem,
+			"resident_mem": proc.ResidentMem,
+			"tty":          proc.TTY,
+			"cpu_num":      proc.CPU,
+			"priority":     proc.Priority,
+			"nice":         proc.Nice,
+			"rank_type":    "memory",
+			"rank_position": i + 1,
+		})
+	}
+
+	// Calculate process summary statistics
+	totalProcs := len(metrics.TopProcesses)
+	runningProcs := countProcessesByStatus(metrics.TopProcesses, "R")
+	sleepingProcs := countProcessesByStatus(metrics.TopProcesses, "S")
+	zombieProcs := countProcessesByStatus(metrics.TopProcesses, "Z")
+	diskSleepProcs := countProcessesByStatus(metrics.TopProcesses, "D")
+	stoppedProcs := countProcessesByStatus(metrics.TopProcesses, "T")
+
+	// Calculate aggregated resource usage
+	var totalCPU float64
+	var totalMemoryKB int64
+	for _, proc := range metrics.TopProcesses {
+		totalCPU += proc.CPUUsage
+		totalMemoryKB += proc.MemoryKB
+	}
+
+	avgCPU := float64(0)
+	avgMemoryKB := int64(0)
+	if totalProcs > 0 {
+		avgCPU = totalCPU / float64(totalProcs)
+		avgMemoryKB = totalMemoryKB / int64(totalProcs)
+	}
+
+	processSummary := map[string]interface{}{
+		"total_processes":            totalProcs,
+		"running_processes":          runningProcs,
+		"sleeping_processes":         sleepingProcs,
+		"zombie_processes":           zombieProcs,
+		"disk_sleep_processes":       diskSleepProcs,
+		"stopped_processes":          stoppedProcs,
+		"total_cpu_usage":            totalCPU,
+		"total_memory_kb":            totalMemoryKB,
+		"avg_cpu_per_process":        avgCPU,
+		"avg_memory_kb_per_process":  avgMemoryKB,
+		"tags": map[string]string{
+			"hostname": hostname,
+			"os_name":  metrics.OSName,
+		},
+	}
+
+	// Create the request payload according to ProcessesBatchRequest schema
+	requestData := map[string]interface{}{
+		"timestamp":             fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token":            cfg.AuthToken,
+		"server_id":             cfg.ServerID,
+		"top_cpu_processes":     topCPUData,
+		"top_memory_processes":  topMemoryData,
+		"process_summary":       processSummary,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return
+	}
+
+	// Send process metrics to backend asynchronously
+	go func() {
+		// Log process metrics request start
+		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer logFile.Close()
+			logFile.WriteString(fmt.Sprintf("[%s] INFO: Process metrics request started - URL: %s\n",
+				time.Now().Format("2006-01-02 15:04:05"), constants.PROCESSES_URL))
+		}
+
+		req, err := utils.CreateCLIRequest("POST", constants.PROCESSES_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
+		if err != nil {
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to create process metrics request: %v\n",
+					time.Now().Format("2006-01-02 15:04:05"), err))
+			}
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			// Log process metrics send error
+			if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+				defer f.Close()
+				f.WriteString(fmt.Sprintf("[%s] ERROR: Failed to send process metrics: %v\n",
+					time.Now().Format("2006-01-02 15:04:05"), err))
+			}
+			return
+		}
+		defer resp.Body.Close()
+
+		// Log process metrics success
+		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer logFile.Close()
+			if resp.StatusCode == 200 {
+				logFile.WriteString(fmt.Sprintf("[%s] INFO: Process metrics sent successfully - Status: %d\n",
+					time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+			} else {
+				logFile.WriteString(fmt.Sprintf("[%s] WARNING: Process metrics sent with non-200 status - Status: %d\n",
+					time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+			}
+		}
+	}()
+}
+
 // sendMetrics sends system metrics to the backend metrics endpoint
 func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 	if cfg.AuthToken == "" || cfg.ServerID == "" {
@@ -1423,6 +1591,7 @@ Examples:
 			if currentMetrics, err := metrics.GetMetrics(); err == nil {
 				sendServiceAnalytics(cfg, "service_start", currentMetrics)
 				sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
+				sendProcessMetrics(cfg, currentMetrics) // Send process analytics
 			}
 
 			// start Telegram bot in background if configured
@@ -1501,6 +1670,7 @@ Examples:
 						if currentCfg.IsCloudMode() {
 							sendServiceAnalytics(currentCfg, "system_monitoring", currentMetrics)
 							sendMetrics(currentCfg, currentMetrics) // Also send metrics to new endpoint
+							sendProcessMetrics(currentCfg, currentMetrics) // Send process analytics
 						}
 					}
 
@@ -1584,6 +1754,7 @@ Examples:
 					if currentMetrics, err := metrics.GetMetrics(); err == nil {
 						sendServiceAnalytics(cfg, "service_stop", currentMetrics)
 						sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
+						sendProcessMetrics(cfg, currentMetrics) // Send process analytics
 					}
 
 					// log service stop

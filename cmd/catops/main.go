@@ -2116,6 +2116,16 @@ Use 'catops config show' to see current settings.`,
 			}
 
 			ui.PrintStatus("success", "Configuration saved successfully")
+
+			// Send config_change event
+			if cfg.AuthToken != "" && cfg.ServerID != "" {
+				if currentMetrics, err := metrics.GetMetrics(); err == nil {
+					sendServiceAnalytics(cfg, "config_change", currentMetrics)
+					// Wait for analytics to be sent (goroutine needs time)
+					time.Sleep(2 * time.Second)
+				}
+			}
+
 			ui.PrintStatus("info", "Run 'catops restart' to apply changes to the monitoring service")
 			ui.PrintSectionEnd()
 		},

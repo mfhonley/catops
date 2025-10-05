@@ -165,6 +165,8 @@ func executeUpdateScript() {
 	if err == nil && cfg.IsCloudMode() {
 		if currentMetrics, err := metrics.GetMetrics(); err == nil {
 			sendServiceAnalytics(cfg, "update_installed", currentMetrics)
+			// Wait for analytics to be sent (goroutine needs time)
+			time.Sleep(2 * time.Second)
 		}
 	}
 }
@@ -1327,6 +1329,8 @@ Examples:
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
 					sendServiceAnalytics(cfg, "service_restart", currentMetrics)
+					// Wait for analytics to be sent (goroutine needs time)
+					time.Sleep(2 * time.Second)
 				}
 			}
 
@@ -1526,6 +1530,8 @@ Examples:
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
 					sendServiceAnalytics(cfg, "config_change", currentMetrics)
+					// Wait for analytics to be sent (goroutine needs time)
+					time.Sleep(2 * time.Second)
 				}
 			}
 
@@ -1755,6 +1761,9 @@ Examples:
 						sendServiceAnalytics(cfg, "service_stop", currentMetrics)
 						sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
 						sendProcessMetrics(cfg, currentMetrics) // Send process analytics
+						
+						// Wait for all analytics to be sent before shutdown (goroutines need time)
+						time.Sleep(3 * time.Second)
 					}
 
 					// log service stop

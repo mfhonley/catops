@@ -22,6 +22,12 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       
+      - name: Download dependencies
+        run: |
+          echo "📦 Downloading Go dependencies..."
+          go mod download
+          go mod verify
+      
       - name: Get version from tag
         id: version
         run: |

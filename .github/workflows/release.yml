@@ -9,29 +9,25 @@ env:
   GO_VERSION: '1.22'
 
 jobs:
-  build-and-release:
-    name: Build and Release
+  build-linux:
+    name: Build Linux Binaries
     runs-on: ubuntu-latest
-    
-    permissions:
-      contents: write
-      packages: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      
+
       - name: Download dependencies
         run: |
           echo "📦 Downloading Go dependencies..."
           go mod download
           go mod verify
-      
+
       - name: Get version from tag
         id: version
         run: |
@@ -39,7 +35,7 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Building version: $VERSION"
-      
+
       - name: Build Linux AMD64
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -52,7 +48,7 @@ jobs:
             ./cmd/catops
           chmod +x catops-linux-amd64
           ls -lh catops-linux-amd64
-      
+
       - name: Build Linux ARM64
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -65,7 +61,41 @@ jobs:
             ./cmd/catops
           chmod +x catops-linux-arm64
           ls -lh catops-linux-arm64
-      
+
+      - name: Upload Linux binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-binaries
+          path: catops-linux-*
+          retention-days: 1
+
+  build-macos:
+    name: Build macOS Binaries
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: |
+          echo "📦 Downloading Go dependencies..."
+          go mod download
+          go mod verify
+
+      - name: Get version from tag
+        id: version
+        run: |
+          # Убираем 'v' из тега: v0.0.3 -> 0.0.3
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building version: $VERSION"
+
       - name: Build macOS AMD64
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -78,7 +108,7 @@ jobs:
             ./cmd/catops
           chmod +x catops-darwin-amd64
           ls -lh catops-darwin-amd64
-      
+
       - name: Build macOS ARM64 (M1/M2)
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -91,13 +121,59 @@ jobs:
             ./cmd/catops
           chmod +x catops-darwin-arm64
           ls -lh catops-darwin-arm64
-      
+
+      - name: Sign macOS binaries (ad-hoc)
+        run: |
+          echo "✍️  Signing macOS binaries with ad-hoc signature..."
+          codesign -s - -f catops-darwin-amd64
+          codesign -s - -f catops-darwin-arm64
+          echo "✅ Verifying signatures..."
+          codesign -v catops-darwin-amd64
+          codesign -v catops-darwin-arm64
+
+      - name: Upload macOS binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-binaries
+          path: catops-darwin-*
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Creating release for version: $VERSION"
+
+      - name: Download Linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-binaries
+
+      - name: Download macOS binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-binaries
+
       - name: Generate checksums
         run: |
           echo "📝 Generating checksums..."
           sha256sum catops-* > checksums.txt
           cat checksums.txt
-      
+
       - name: Verify binaries
         run: |
           echo "✅ Verifying binaries exist..."

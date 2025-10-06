@@ -122,8 +122,8 @@ $RECYCLE.BIN/
 # DEPENDENCIES
 # =============================================================================
 
-# Go modules
-go.sum
+# Go modules - IMPORTANT: go.sum must be committed for reproducible builds!
+# DO NOT ignore go.sum
 
 # Node modules (if any)
 node_modules/

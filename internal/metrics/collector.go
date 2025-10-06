@@ -129,16 +129,80 @@ func GetHTTPSRequests() (int64, error) {
 
 // GetIOPS returns Input/Output Operations Per Second
 func GetIOPS() (int64, error) {
-	// TODO: Implement native IOPS calculation with gopsutil
-	// For now, return 0 to maintain compatibility
-	return 0, nil
+	// Get disk I/O counters (first snapshot)
+	io1, err := disk.IOCounters()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get IO counters: %w", err)
+	}
+
+	// Wait 1 second to measure IOPS
+	time.Sleep(1 * time.Second)
+
+	// Get disk I/O counters (second snapshot)
+	io2, err := disk.IOCounters()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get IO counters: %w", err)
+	}
+
+	// Calculate IOPS = (read operations + write operations) per second
+	var totalIOPS int64
+	for device, stats2 := range io2 {
+		if stats1, ok := io1[device]; ok {
+			// Skip loop devices, partitions, and virtual devices
+			if strings.HasPrefix(device, "loop") ||
+				strings.Contains(device, "dm-") ||
+				strings.Contains(device, "sr") ||
+				len(device) > 20 { // Skip very long device names (usually virtual)
+				continue
+			}
+
+			// Calculate read and write operations difference
+			readOps := stats2.ReadCount - stats1.ReadCount
+			writeOps := stats2.WriteCount - stats1.WriteCount
+			totalIOPS += int64(readOps + writeOps)
+		}
+	}
+
+	return totalIOPS, nil
 }
 
 // GetIOWait returns I/O Wait percentage
 func GetIOWait() (float64, error) {
-	// TODO: Implement native IOWait calculation with gopsutil
-	// For now, return 0 to maintain compatibility
-	return 0, nil
+	// IOWait is only available on Linux
+	if runtime.GOOS != "linux" {
+		return 0.0, nil // macOS/Windows don't have IOWait metric
+	}
+
+	// Get CPU times (includes IOWait on Linux)
+	times, err := cpu.Times(false)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get CPU times: %w", err)
+	}
+
+	if len(times) == 0 {
+		return 0, fmt.Errorf("no CPU time data available")
+	}
+
+	cpuTime := times[0]
+
+	// Calculate total CPU time
+	total := cpuTime.User +
+		cpuTime.System +
+		cpuTime.Idle +
+		cpuTime.Iowait +
+		cpuTime.Nice +
+		cpuTime.Irq +
+		cpuTime.Softirq +
+		cpuTime.Steal
+
+	if total == 0 {
+		return 0, nil
+	}
+
+	// IOWait percentage = (IOWait time / Total time) * 100
+	ioWaitPercent := (cpuTime.Iowait / total) * 100
+
+	return ioWaitPercent, nil
 }
 
 // GetOSName returns operating system name
@@ -222,14 +286,18 @@ func GetMetrics() (*Metrics, error) {
 		return nil, fmt.Errorf("HTTPS requests error: %w", err)
 	}
 
+	// Get IOPS (non-critical - don't fail if error occurs)
 	ioPS, err := GetIOPS()
 	if err != nil {
-		return nil, fmt.Errorf("IOPS error: %w", err)
+		// Log error but continue with 0 value
+		ioPS = 0
 	}
 
+	// Get IOWait (non-critical - don't fail if error occurs)
 	ioWait, err := GetIOWait()
 	if err != nil {
-		return nil, fmt.Errorf("IOWait error: %w", err)
+		// Log error but continue with 0 value
+		ioWait = 0
 	}
 
 	osName, err := GetOSName()

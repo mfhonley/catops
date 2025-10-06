@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +32,58 @@ import (
 var VERSION string
 
 // Helper functions for server operations
+
+// sendAllAnalytics sends all analytics (metrics, processes, events) synchronously with WaitGroup
+func sendAllAnalytics(cfg *config.Config, eventType string, currentMetrics *metrics.Metrics) {
+	if cfg.AuthToken == "" || cfg.ServerID == "" {
+		return // Skip if not in cloud mode
+	}
+
+	var wg sync.WaitGroup
+
+	// Send service analytics
+	if eventType != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sendServiceAnalytics(cfg, eventType, currentMetrics)
+		}()
+	}
+
+	// Send metrics
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sendMetrics(cfg, currentMetrics)
+	}()
+
+	// Send process metrics
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		sendProcessMetrics(cfg, currentMetrics)
+	}()
+
+	// Wait for all goroutines to complete (with timeout)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	// Wait max 10 seconds for all analytics to be sent
+	select {
+	case <-done:
+		// All done successfully
+	case <-time.After(10 * time.Second):
+		// Timeout - log but don't block
+		if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer logFile.Close()
+			logFile.WriteString(fmt.Sprintf("[%s] WARNING: Analytics send timeout after 10 seconds\n",
+				time.Now().Format("2006-01-02 15:04:05")))
+		}
+	}
+}
 
 // getCurrentVersion retrieves the current version from build flags or version.txt
 func getCurrentVersion() string {
@@ -86,11 +139,11 @@ func checkServerVersion(authToken string) (string, string, bool, error) {
 // checkBasicUpdate performs basic update check without server version
 func checkBasicUpdate() {
 	ui.PrintStatus("info", "Checking for latest version...")
-	
+
 	// Get current version
 	currentVersion := getCurrentVersion()
 	ui.PrintStatus("info", fmt.Sprintf("Current version: %s", currentVersion))
-	
+
 	// Check API for latest version
 	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, getCurrentVersion())
 	if err != nil {
@@ -164,9 +217,7 @@ func executeUpdateScript() {
 	cfg, err := config.LoadConfig()
 	if err == nil && cfg.IsCloudMode() {
 		if currentMetrics, err := metrics.GetMetrics(); err == nil {
-			sendServiceAnalytics(cfg, "update_installed", currentMetrics)
-			// Wait for analytics to be sent (goroutine needs time)
-			time.Sleep(2 * time.Second)
+			sendAllAnalytics(cfg, "update_installed", currentMetrics)
 		}
 	}
 }
@@ -371,14 +422,14 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 
 	// Create single EventModel object
 	eventModel := map[string]interface{}{
-		"timestamp":    time.Now().Format("2006-01-02T15:04:05Z"),
-		"server_id":    cfg.ServerID,
-		"event_type":   backendEventType,
-		"service_name": "catops",
-		"process_name": "catops",
-		"pid":          pid,
-		"message":      message,
-		"severity":     severity,
+		"timestamp":     time.Now().Format("2006-01-02T15:04:05Z"),
+		"server_id":     cfg.ServerID,
+		"event_type":    backendEventType,
+		"service_name":  "catops",
+		"process_name":  "catops",
+		"pid":           pid,
+		"message":       message,
+		"severity":      severity,
 		"error_message": nil,
 		"tags": map[string]string{
 			"hostname":       hostname,
@@ -462,23 +513,23 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 	topCPUData := make([]map[string]interface{}, 0, len(topCPU))
 	for i, proc := range topCPU {
 		topCPUData = append(topCPUData, map[string]interface{}{
-			"pid":          proc.PID,
-			"name":         proc.Name,
-			"cpu_usage":    proc.CPUUsage,
-			"memory_usage": proc.MemoryUsage,
-			"memory_kb":    proc.MemoryKB,
-			"command":      proc.Command,
-			"user":         proc.User,
-			"status":       proc.Status,
-			"start_time":   proc.StartTime,
-			"threads":      proc.Threads,
-			"virtual_mem":  proc.VirtualMem,
-			"resident_mem": proc.ResidentMem,
-			"tty":          proc.TTY,
-			"cpu_num":      proc.CPU,
-			"priority":     proc.Priority,
-			"nice":         proc.Nice,
-			"rank_type":    "cpu",
+			"pid":           proc.PID,
+			"name":          proc.Name,
+			"cpu_usage":     proc.CPUUsage,
+			"memory_usage":  proc.MemoryUsage,
+			"memory_kb":     proc.MemoryKB,
+			"command":       proc.Command,
+			"user":          proc.User,
+			"status":        proc.Status,
+			"start_time":    proc.StartTime,
+			"threads":       proc.Threads,
+			"virtual_mem":   proc.VirtualMem,
+			"resident_mem":  proc.ResidentMem,
+			"tty":           proc.TTY,
+			"cpu_num":       proc.CPU,
+			"priority":      proc.Priority,
+			"nice":          proc.Nice,
+			"rank_type":     "cpu",
 			"rank_position": i + 1,
 		})
 	}
@@ -488,23 +539,23 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 	topMemoryData := make([]map[string]interface{}, 0, len(topMemory))
 	for i, proc := range topMemory {
 		topMemoryData = append(topMemoryData, map[string]interface{}{
-			"pid":          proc.PID,
-			"name":         proc.Name,
-			"cpu_usage":    proc.CPUUsage,
-			"memory_usage": proc.MemoryUsage,
-			"memory_kb":    proc.MemoryKB,
-			"command":      proc.Command,
-			"user":         proc.User,
-			"status":       proc.Status,
-			"start_time":   proc.StartTime,
-			"threads":      proc.Threads,
-			"virtual_mem":  proc.VirtualMem,
-			"resident_mem": proc.ResidentMem,
-			"tty":          proc.TTY,
-			"cpu_num":      proc.CPU,
-			"priority":     proc.Priority,
-			"nice":         proc.Nice,
-			"rank_type":    "memory",
+			"pid":           proc.PID,
+			"name":          proc.Name,
+			"cpu_usage":     proc.CPUUsage,
+			"memory_usage":  proc.MemoryUsage,
+			"memory_kb":     proc.MemoryKB,
+			"command":       proc.Command,
+			"user":          proc.User,
+			"status":        proc.Status,
+			"start_time":    proc.StartTime,
+			"threads":       proc.Threads,
+			"virtual_mem":   proc.VirtualMem,
+			"resident_mem":  proc.ResidentMem,
+			"tty":           proc.TTY,
+			"cpu_num":       proc.CPU,
+			"priority":      proc.Priority,
+			"nice":          proc.Nice,
+			"rank_type":     "memory",
 			"rank_position": i + 1,
 		})
 	}
@@ -533,16 +584,16 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 	}
 
 	processSummary := map[string]interface{}{
-		"total_processes":            totalProcs,
-		"running_processes":          runningProcs,
-		"sleeping_processes":         sleepingProcs,
-		"zombie_processes":           zombieProcs,
-		"disk_sleep_processes":       diskSleepProcs,
-		"stopped_processes":          stoppedProcs,
-		"total_cpu_usage":            totalCPU,
-		"total_memory_kb":            totalMemoryKB,
-		"avg_cpu_per_process":        avgCPU,
-		"avg_memory_kb_per_process":  avgMemoryKB,
+		"total_processes":           totalProcs,
+		"running_processes":         runningProcs,
+		"sleeping_processes":        sleepingProcs,
+		"zombie_processes":          zombieProcs,
+		"disk_sleep_processes":      diskSleepProcs,
+		"stopped_processes":         stoppedProcs,
+		"total_cpu_usage":           totalCPU,
+		"total_memory_kb":           totalMemoryKB,
+		"avg_cpu_per_process":       avgCPU,
+		"avg_memory_kb_per_process": avgMemoryKB,
 		"tags": map[string]string{
 			"hostname": hostname,
 			"os_name":  metrics.OSName,
@@ -551,12 +602,12 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 
 	// Create the request payload according to ProcessesBatchRequest schema
 	requestData := map[string]interface{}{
-		"timestamp":             fmt.Sprintf("%d", time.Now().Unix()),
-		"user_token":            cfg.AuthToken,
-		"server_id":             cfg.ServerID,
-		"top_cpu_processes":     topCPUData,
-		"top_memory_processes":  topMemoryData,
-		"process_summary":       processSummary,
+		"timestamp":            fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token":           cfg.AuthToken,
+		"server_id":            cfg.ServerID,
+		"top_cpu_processes":    topCPUData,
+		"top_memory_processes": topMemoryData,
+		"process_summary":      processSummary,
 	}
 
 	jsonData, err := json.Marshal(requestData)
@@ -692,7 +743,7 @@ func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 			"metric_type":  "storage",
 			"metric_name":  "iops",
 			"metric_value": float64(metrics.IOPS),
-			"metric_unit":  "operations_per_second",
+			"metric_unit":  "operations_per_sec",
 			"tags": map[string]string{
 				"hostname": hostname,
 				"os_name":  metrics.OSName,
@@ -972,7 +1023,7 @@ func sendUninstallNotification(authToken, serverID string) bool {
 	}
 
 	jsonData, _ := json.Marshal(uninstallData)
-	
+
 	// Debug logging
 	if f, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		defer f.Close()
@@ -1328,9 +1379,7 @@ Examples:
 			// Send service_restart event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
-					sendServiceAnalytics(cfg, "service_restart", currentMetrics)
-					// Wait for analytics to be sent (goroutine needs time)
-					time.Sleep(2 * time.Second)
+					sendAllAnalytics(cfg, "service_restart", currentMetrics)
 				}
 			}
 
@@ -1370,7 +1419,7 @@ Examples:
 				ui.PrintStatus("warning", "No authentication token found")
 				ui.PrintStatus("info", "Run 'catops auth login <token>' to authenticate")
 				ui.PrintStatus("info", "Continuing with basic update check...")
-				
+
 				// Fallback to basic update check
 				checkBasicUpdate()
 				return
@@ -1529,9 +1578,7 @@ Examples:
 			// Send config_change event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
-					sendServiceAnalytics(cfg, "config_change", currentMetrics)
-					// Wait for analytics to be sent (goroutine needs time)
-					time.Sleep(2 * time.Second)
+					sendAllAnalytics(cfg, "config_change", currentMetrics)
 				}
 			}
 
@@ -1595,9 +1642,7 @@ Examples:
 
 			// send service start analytics (always if in cloud mode)
 			if currentMetrics, err := metrics.GetMetrics(); err == nil {
-				sendServiceAnalytics(cfg, "service_start", currentMetrics)
-				sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
-				sendProcessMetrics(cfg, currentMetrics) // Send process analytics
+				sendAllAnalytics(cfg, "service_start", currentMetrics)
 			}
 
 			// start Telegram bot in background if configured
@@ -1674,9 +1719,7 @@ Examples:
 					} else {
 						// if thresholds are not exceeded, send regular analytics
 						if currentCfg.IsCloudMode() {
-							sendServiceAnalytics(currentCfg, "system_monitoring", currentMetrics)
-							sendMetrics(currentCfg, currentMetrics) // Also send metrics to new endpoint
-							sendProcessMetrics(currentCfg, currentMetrics) // Send process analytics
+							sendAllAnalytics(currentCfg, "system_monitoring", currentMetrics)
 						}
 					}
 
@@ -1758,12 +1801,7 @@ Examples:
 
 					// send service stop analytics (always if in cloud mode)
 					if currentMetrics, err := metrics.GetMetrics(); err == nil {
-						sendServiceAnalytics(cfg, "service_stop", currentMetrics)
-						sendMetrics(cfg, currentMetrics) // Also send metrics to new endpoint
-						sendProcessMetrics(cfg, currentMetrics) // Send process analytics
-						
-						// Wait for all analytics to be sent before shutdown (goroutines need time)
-						time.Sleep(3 * time.Second)
+						sendAllAnalytics(cfg, "service_stop", currentMetrics)
 					}
 
 					// log service stop
@@ -1774,7 +1812,13 @@ Examples:
 					}
 
 					// remove PID file
-					os.Remove(constants.PID_FILE)
+					if err := os.Remove(constants.PID_FILE); err != nil && !os.IsNotExist(err) {
+						if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+							defer logFile.Close()
+							logFile.WriteString(fmt.Sprintf("[%s] WARNING: Failed to remove PID file: %v\n",
+								time.Now().Format("2006-01-02 15:04:05"), err))
+						}
+					}
 					return
 				}
 			}
@@ -1850,16 +1894,26 @@ Examples:
 				homeDir, _ := os.UserHomeDir()
 				systemdService := homeDir + "/.config/systemd/user/catops.service"
 				if _, err := os.Stat(systemdService); err == nil {
-					exec.Command("systemctl", "--user", "disable", "catops.service").Run()
-					exec.Command("systemctl", "--user", "stop", "catops.service").Run()
-					os.Remove(systemdService)
+					if err := exec.Command("systemctl", "--user", "disable", "catops.service").Run(); err != nil {
+						ui.PrintStatus("warning", "Failed to disable systemd service (may already be disabled)")
+					}
+					if err := exec.Command("systemctl", "--user", "stop", "catops.service").Run(); err != nil {
+						ui.PrintStatus("warning", "Failed to stop systemd service (may already be stopped)")
+					}
+					if err := os.Remove(systemdService); err != nil {
+						ui.PrintStatus("warning", fmt.Sprintf("Failed to remove systemd service file: %v", err))
+					}
 				}
 			case "darwin":
 				homeDir, _ := os.UserHomeDir()
 				launchAgent := homeDir + "/Library/LaunchAgents/com.catops.monitor.plist"
 				if _, err := os.Stat(launchAgent); err == nil {
-					exec.Command("launchctl", "unload", launchAgent).Run()
-					os.Remove(launchAgent)
+					if err := exec.Command("launchctl", "unload", launchAgent).Run(); err != nil {
+						ui.PrintStatus("warning", "Failed to unload launchd service (may already be unloaded)")
+					}
+					if err := os.Remove(launchAgent); err != nil {
+						ui.PrintStatus("warning", fmt.Sprintf("Failed to remove launchd plist: %v", err))
+					}
 				}
 			}
 
@@ -2120,9 +2174,7 @@ Use 'catops config show' to see current settings.`,
 			// Send config_change event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				if currentMetrics, err := metrics.GetMetrics(); err == nil {
-					sendServiceAnalytics(cfg, "config_change", currentMetrics)
-					// Wait for analytics to be sent (goroutine needs time)
-					time.Sleep(2 * time.Second)
+					sendAllAnalytics(cfg, "config_change", currentMetrics)
 				}
 			}
 

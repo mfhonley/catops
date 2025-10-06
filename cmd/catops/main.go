@@ -213,13 +213,10 @@ func executeUpdateScript() {
 		return
 	}
 
-	// Send update_installed event and update server version after successful update
+	// Note: Version update is handled by daemon on restart (new CLI version will update on daemon start)
+	// Send analytics event
 	cfg, err := config.LoadConfig()
 	if err == nil && cfg.IsCloudMode() {
-		// Send update notification to update server version in database
-		updateServerVersion(cfg.AuthToken, cfg)
-
-		// Send analytics event
 		if currentMetrics, err := metrics.GetMetrics(); err == nil {
 			sendAllAnalytics(cfg, "update_installed", currentMetrics)
 		}
@@ -864,9 +861,10 @@ func updateServerVersion(userToken string, cfg *config.Config) bool {
 	serverData := map[string]interface{}{
 		"platform":     platform,
 		"architecture": arch,
-		"type":         "update", // ключевое отличие - type: update
+		"type":         "update",
 		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()),
 		"user_token":   userToken,
+		"server_id":    cfg.ServerID, // Include server_id for exact server match during update
 		"server_info": map[string]string{
 			"hostname":       hostname,
 			"os_type":        osName,
@@ -1725,6 +1723,12 @@ Examples:
 			// send service start analytics (always if in cloud mode)
 			if currentMetrics, err := metrics.GetMetrics(); err == nil {
 				sendAllAnalytics(cfg, "service_start", currentMetrics)
+			}
+
+			// Update server version in database if in cloud mode
+			// This ensures version is updated after CLI updates
+			if cfg.IsCloudMode() && cfg.AuthToken != "" && cfg.ServerID != "" {
+				updateServerVersion(cfg.AuthToken, cfg)
 			}
 
 			// start Telegram bot in background if configured

@@ -14,7 +14,6 @@ type Config struct {
 	TelegramToken string  `mapstructure:"telegram_token"`
 	ChatID        int64   `mapstructure:"chat_id"`
 	AuthToken     string  `mapstructure:"auth_token"`
-	ServerToken   string  `mapstructure:"server_token"`
 	ServerID      string  `mapstructure:"server_id"`
 	Mode          string  `mapstructure:"mode"`
 	CPUThreshold  float64 `mapstructure:"cpu_threshold"`
@@ -74,19 +73,40 @@ func SaveConfig(cfg *Config) error {
 		return err
 	}
 
-	// Создаем содержимое конфига вручную
-	configContent := fmt.Sprintf(`telegram_token: %s
-chat_id: %d
-auth_token: %s
-server_token: %s
-server_id: %s
-mode: %s
-cpu_threshold: %.1f
-mem_threshold: %.1f
-disk_threshold: %.1f
-`, cfg.TelegramToken, cfg.ChatID, cfg.AuthToken, cfg.ServerToken, cfg.ServerID, cfg.Mode, cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
+	// Build config content with only non-empty values
+	var configLines []string
 
-	// Записываем в файл
+	// Telegram settings (optional)
+	if cfg.TelegramToken != "" {
+		configLines = append(configLines, fmt.Sprintf("telegram_token: %s", cfg.TelegramToken))
+	}
+	if cfg.ChatID != 0 {
+		configLines = append(configLines, fmt.Sprintf("chat_id: %d", cfg.ChatID))
+	}
+
+	// Cloud mode settings
+	if cfg.AuthToken != "" {
+		configLines = append(configLines, fmt.Sprintf("auth_token: %s", cfg.AuthToken))
+	}
+	if cfg.ServerID != "" {
+		configLines = append(configLines, fmt.Sprintf("server_id: %s", cfg.ServerID))
+	}
+
+	// Alert thresholds (always save)
+	configLines = append(configLines, fmt.Sprintf("cpu_threshold: %.1f", cfg.CPUThreshold))
+	configLines = append(configLines, fmt.Sprintf("mem_threshold: %.1f", cfg.MemThreshold))
+	configLines = append(configLines, fmt.Sprintf("disk_threshold: %.1f", cfg.DiskThreshold))
+
+	// Join lines with newline
+	configContent := ""
+	for i, line := range configLines {
+		configContent += line
+		if i < len(configLines)-1 {
+			configContent += "\n"
+		}
+	}
+
+	// Write to file
 	configFile := configDir + "/config.yaml"
 	err := os.WriteFile(configFile, []byte(configContent), 0644)
 	if err != nil {

@@ -1507,7 +1507,7 @@ Examples:
 
 			// Check server version against latest
 			ui.PrintStatus("info", "Checking server version...")
-			serverVersion, latestVersion, needsUpdate, err := checkServerVersion(cfg.AuthToken)
+			serverVersion, latestVersion, _, err := checkServerVersion(cfg.AuthToken)
 			if err != nil {
 				ui.PrintStatus("warning", fmt.Sprintf("Failed to check server version: %v", err))
 				ui.PrintStatus("info", "Falling back to basic update check...")
@@ -1515,10 +1515,22 @@ Examples:
 				return
 			}
 
-			ui.PrintStatus("info", fmt.Sprintf("Current version: %s", serverVersion))
+			// Show CLI binary version as current version (not database version)
+			currentVersion := getCurrentVersion()
+			ui.PrintStatus("info", fmt.Sprintf("Current version: %s", currentVersion))
 			ui.PrintStatus("info", fmt.Sprintf("Latest version: %s", latestVersion))
 
-			if !needsUpdate {
+			// Log if database version differs from binary version (for debugging)
+			if serverVersion != "" && serverVersion != currentVersion {
+				if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+					defer logFile.Close()
+					logFile.WriteString(fmt.Sprintf("[%s] WARNING: Version mismatch - Binary: %s, Database: %s\n",
+						time.Now().Format("2006-01-02 15:04:05"), currentVersion, serverVersion))
+				}
+			}
+
+			// Check if binary needs update (compare binary version with latest)
+			if currentVersion == latestVersion {
 				ui.PrintStatus("success", "Server is up to date!")
 				ui.PrintSectionEnd()
 				return

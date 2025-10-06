@@ -213,9 +213,13 @@ func executeUpdateScript() {
 		return
 	}
 
-	// Send update_installed event after successful update
+	// Send update_installed event and update server version after successful update
 	cfg, err := config.LoadConfig()
 	if err == nil && cfg.IsCloudMode() {
+		// Send update notification to update server version in database
+		updateServerVersion(cfg.AuthToken, cfg)
+
+		// Send analytics event
 		if currentMetrics, err := metrics.GetMetrics(); err == nil {
 			sendAllAnalytics(cfg, "update_installed", currentMetrics)
 		}
@@ -822,6 +826,84 @@ func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 			}
 		}
 	}()
+}
+
+// updateServerVersion updates server version in database after update
+func updateServerVersion(userToken string, cfg *config.Config) bool {
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	var osName string
+	systemMetrics, err := metrics.GetMetrics()
+	if err != nil {
+		osName = runtime.GOOS
+	} else {
+		osName = systemMetrics.OSName
+	}
+
+	platform := runtime.GOOS
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "amd64"
+	case "arm64":
+		arch = "arm64"
+	}
+
+	serverSpecs, err := metrics.GetServerSpecs()
+	if err != nil {
+		serverSpecs = map[string]interface{}{
+			"cpu_cores":     0,
+			"total_memory":  0,
+			"total_storage": 0,
+		}
+	}
+
+	serverData := map[string]interface{}{
+		"platform":     platform,
+		"architecture": arch,
+		"type":         "update", // ключевое отличие - type: update
+		"timestamp":    fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token":   userToken,
+		"server_info": map[string]string{
+			"hostname":       hostname,
+			"os_type":        osName,
+			"os_version":     runtime.GOOS + "/" + runtime.GOARCH,
+			"catops_version": getCurrentVersion(),
+		},
+		"cpu_cores":     serverSpecs["cpu_cores"],
+		"total_memory":  serverSpecs["total_memory"],
+		"total_storage": serverSpecs["total_storage"],
+	}
+
+	jsonData, _ := json.Marshal(serverData)
+
+	req, err := utils.CreateCLIRequest("POST", constants.INSTALL_URL, bytes.NewBuffer(jsonData), getCurrentVersion())
+	if err != nil {
+		return false
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if logFile, err := os.OpenFile(constants.LOG_FILE, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		defer logFile.Close()
+		if resp.StatusCode == 200 {
+			logFile.WriteString(fmt.Sprintf("[%s] INFO: Server version updated to %s\n",
+				time.Now().Format("2006-01-02 15:04:05"), getCurrentVersion()))
+		} else {
+			logFile.WriteString(fmt.Sprintf("[%s] WARNING: Failed to update server version - Status: %d\n",
+				time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode))
+		}
+	}
+
+	return resp.StatusCode == 200
 }
 
 // Регистрация сервера

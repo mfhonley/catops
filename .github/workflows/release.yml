@@ -1,0 +1,213 @@
+name: Release CatOps CLI
+
+on:
+  push:
+    tags:
+      - 'v*'  # Срабатывает на теги v0.0.3, v1.0.0 и т.д.
+
+env:
+  GO_VERSION: '1.22'
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      
+      - name: Get version from tag
+        id: version
+        run: |
+          # Убираем 'v' из тега: v0.0.3 -> 0.0.3
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Building version: $VERSION"
+      
+      - name: Build Linux AMD64
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "🔨 Building Linux AMD64..."
+          GOOS=linux GOARCH=amd64 go build \
+            -ldflags "-X main.VERSION=$VERSION -s -w" \
+            -trimpath \
+            -o catops-linux-amd64 \
+            ./cmd/catops
+          chmod +x catops-linux-amd64
+          ls -lh catops-linux-amd64
+      
+      - name: Build Linux ARM64
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "🔨 Building Linux ARM64..."
+          GOOS=linux GOARCH=arm64 go build \
+            -ldflags "-X main.VERSION=$VERSION -s -w" \
+            -trimpath \
+            -o catops-linux-arm64 \
+            ./cmd/catops
+          chmod +x catops-linux-arm64
+          ls -lh catops-linux-arm64
+      
+      - name: Build macOS AMD64
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "🔨 Building macOS AMD64..."
+          GOOS=darwin GOARCH=amd64 go build \
+            -ldflags "-X main.VERSION=$VERSION -s -w" \
+            -trimpath \
+            -o catops-darwin-amd64 \
+            ./cmd/catops
+          chmod +x catops-darwin-amd64
+          ls -lh catops-darwin-amd64
+      
+      - name: Build macOS ARM64 (M1/M2)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "🔨 Building macOS ARM64..."
+          GOOS=darwin GOARCH=arm64 go build \
+            -ldflags "-X main.VERSION=$VERSION -s -w" \
+            -trimpath \
+            -o catops-darwin-arm64 \
+            ./cmd/catops
+          chmod +x catops-darwin-arm64
+          ls -lh catops-darwin-arm64
+      
+      - name: Generate checksums
+        run: |
+          echo "📝 Generating checksums..."
+          sha256sum catops-* > checksums.txt
+          cat checksums.txt
+      
+      - name: Verify binaries
+        run: |
+          echo "✅ Verifying binaries exist..."
+          for binary in catops-linux-amd64 catops-linux-arm64 catops-darwin-amd64 catops-darwin-arm64; do
+            if [ -f "$binary" ]; then
+              echo "  ✓ $binary ($(du -h $binary | cut -f1))"
+            else
+              echo "  ✗ $binary - MISSING!"
+              exit 1
+            fi
+          done
+      
+      - name: Register version in CatOps database
+        env:
+          CATOPS_API_TOKEN: ${{ secrets.CATOPS_API_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ -n "$CATOPS_API_TOKEN" ]; then
+            echo "📡 Registering version $VERSION in database..."
+            
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.catops.io/api/versions/new" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $CATOPS_API_TOKEN" \
+              -d "{\"version\":\"$VERSION\",\"changelog\":\"See GitHub release notes at https://github.com/${{ github.repository }}/releases/tag/v$VERSION\"}")
+            
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            RESPONSE_BODY=$(echo "$RESPONSE" | head -n-1)
+            
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+              echo "  ✅ Version registered successfully in database"
+            else
+              echo "  ⚠️  Warning: Failed to register version (HTTP $HTTP_CODE)"
+              echo "  Response: $RESPONSE_BODY"
+              echo "  Note: Release will continue, but version not registered in database"
+            fi
+          else
+            echo "⚠️  CATOPS_API_TOKEN not set, skipping database registration"
+            echo "To enable: GitHub → Settings → Secrets → New secret"
+            echo "Name: CATOPS_API_TOKEN"
+            echo "Value: Your admin JWT token"
+          fi
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: CatOps CLI v${{ steps.version.outputs.version }}
+          body: |
+            ## 🚀 CatOps CLI v${{ steps.version.outputs.version }}
+            
+            ### 📦 Installation
+            
+            **Linux (AMD64):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-linux-amd64 -o catops
+            chmod +x catops
+            sudo mv catops /usr/local/bin/
+            ```
+            
+            **Linux (ARM64):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-linux-arm64 -o catops
+            chmod +x catops
+            sudo mv catops /usr/local/bin/
+            ```
+            
+            **macOS (Intel):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-amd64 -o catops
+            chmod +x catops
+            sudo mv catops /usr/local/bin/
+            ```
+            
+            **macOS (M1/M2):**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-arm64 -o catops
+            chmod +x catops
+            sudo mv catops /usr/local/bin/
+            ```
+            
+            **Or use the install script:**
+            ```bash
+            curl -sfL https://get.catops.io | sh -
+            ```
+            
+            ### 📝 Checksums
+            See `checksums.txt` for SHA256 checksums of all binaries.
+            
+            ### 🔗 Links
+            - 📖 [Documentation](https://catops.io/docs)
+            - 🌐 [Website](https://catops.io)
+            - 💬 [Support](https://t.me/catops)
+          files: |
+            catops-linux-amd64
+            catops-linux-arm64
+            catops-darwin-amd64
+            catops-darwin-arm64
+            checksums.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Release summary
+        run: |
+          echo "🎉 Release v${{ steps.version.outputs.version }} completed successfully!"
+          echo ""
+          echo "📦 Artifacts published:"
+          echo "  • catops-linux-amd64"
+          echo "  • catops-linux-arm64"
+          echo "  • catops-darwin-amd64"
+          echo "  • catops-darwin-arm64"
+          echo "  • checksums.txt"
+          echo ""
+          echo "🔗 Release URL:"
+          echo "  https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}"
+          echo ""
+          echo "📥 Download URLs:"
+          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-linux-amd64"
+          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-linux-arm64"
+          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-amd64"
+          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-arm64"
+

@@ -73,8 +73,9 @@ type Metrics struct {
 
 // GetCPUUsage retrieves the current CPU usage percentage across all cores
 func GetCPUUsage() (float64, error) {
-	// Use native gopsutil instead of exec.Command for better performance
-	percent, err := cpu.Percent(0, false)
+	// Use 1 second interval for accurate CPU measurement
+	// Using 0 interval on first call returns incorrect values (often 100%)
+	percent, err := cpu.Percent(time.Second, false)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get CPU usage: %w", err)
 	}

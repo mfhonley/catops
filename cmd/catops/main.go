@@ -239,8 +239,8 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 	alertModels := []map[string]interface{}{}
 
 	for i, alertText := range alerts {
-		// Generate unique alert ID
-		alertID := fmt.Sprintf("alert_%s_%d_%d", cfg.ServerID, time.Now().Unix(), i)
+		// Generate unique alert ID (use UTC timestamp)
+		alertID := fmt.Sprintf("alert_%s_%d_%d", cfg.ServerID, time.Now().UTC().Unix(), i)
 
 		// Parse alert text to extract metric info
 		var metricType, metricName string
@@ -283,7 +283,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 		}
 
 		alertModel := map[string]interface{}{
-			"timestamp":          time.Now().Format("2006-01-02T15:04:05Z"),
+			"timestamp":          time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 			"server_id":          cfg.ServerID,
 			"alert_id":           alertID,
 			"metric_type":        metricType,
@@ -314,7 +314,7 @@ func sendAlertAnalytics(cfg *config.Config, alerts []string, metrics *metrics.Me
 
 	// Create AlertsBatchRequest format
 	alertData := map[string]interface{}{
-		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
 		"user_token": cfg.AuthToken,
 		"alerts":     alertModels,
 	}
@@ -423,7 +423,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 
 	// Create single EventModel object
 	eventModel := map[string]interface{}{
-		"timestamp":     time.Now().Format("2006-01-02T15:04:05Z"),
+		"timestamp":     time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		"server_id":     cfg.ServerID,
 		"event_type":    backendEventType,
 		"service_name":  "catops",
@@ -450,7 +450,7 @@ func sendServiceAnalytics(cfg *config.Config, eventType string, metrics *metrics
 
 	// Create EventsBatchRequest format
 	serviceData := map[string]interface{}{
-		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
 		"user_token": cfg.AuthToken,
 		"events":     []map[string]interface{}{eventModel},
 	}
@@ -673,8 +673,8 @@ func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 		hostname = "unknown"
 	}
 
-	// Current timestamp in ISO format for BaseMetric
-	timestamp := time.Now().Format("2006-01-02T15:04:05Z")
+	// Current timestamp in ISO format for BaseMetric (UTC)
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 
 	// Convert to BaseMetric format - each metric is a separate object
 	baseMetrics := []map[string]interface{}{
@@ -769,7 +769,7 @@ func sendMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 
 	// Create the request payload according to MetricsBatchRequest schema
 	requestData := map[string]interface{}{
-		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()), // Unix timestamp for request
+		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()), // Unix timestamp for request
 		"user_token": cfg.AuthToken,
 		"metrics":    baseMetrics, // Array of BaseMetric objects
 	}
@@ -1098,7 +1098,7 @@ func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metri
 func sendUninstallNotification(authToken, serverID string) bool {
 	// ServerUninstallRequest format - only needs timestamp and user_token
 	uninstallData := map[string]interface{}{
-		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
 		"user_token": authToken,
 	}
 

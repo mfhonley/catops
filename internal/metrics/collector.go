@@ -333,7 +333,7 @@ func GetMetrics() (*Metrics, error) {
 		OSName:        osName,
 		IPAddress:     ipAddress,
 		Uptime:        uptime,
-		Timestamp:     time.Now().Format("2006-01-02 15:04:05"),
+		Timestamp:     time.Now().UTC().Format("2006-01-02 15:04:05"),
 
 		// New detailed resource fields
 		CPUDetails:    cpuDetails,

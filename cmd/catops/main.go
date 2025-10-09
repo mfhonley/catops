@@ -2597,6 +2597,16 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")
 		ui.PrintStatus("success", "Launchd service created and enabled")
 		ui.PrintStatus("info", "CatOps will start automatically on boot")
 
+	case "windows":
+		// create Windows Task Scheduler task
+		if err := createWindowsAutostart(executable); err != nil {
+			ui.PrintStatus("error", fmt.Sprintf("Failed to create Windows task: %v", err))
+			return
+		}
+
+		ui.PrintStatus("success", "Windows Task Scheduler task created")
+		ui.PrintStatus("info", "CatOps will start automatically on boot")
+
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
 	}
@@ -2626,6 +2636,15 @@ func disableAutostart() {
 
 		ui.PrintStatus("success", "Launchd service disabled and removed")
 
+	case "windows":
+		// remove Windows Task Scheduler task
+		if err := removeWindowsAutostart(); err != nil {
+			ui.PrintStatus("error", fmt.Sprintf("Failed to remove Windows task: %v", err))
+			return
+		}
+
+		ui.PrintStatus("success", "Windows Task Scheduler task removed")
+
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
 	}
@@ -2652,7 +2671,91 @@ func checkAutostartStatus() {
 			ui.PrintStatus("info", "Autostart is disabled (launchd)")
 		}
 
+	case "windows":
+		// check Windows Task Scheduler task status
+		cmd := exec.Command("schtasks", "/Query", "/TN", "CatOpsMonitor")
+		if err := cmd.Run(); err == nil {
+			ui.PrintStatus("success", "Autostart is enabled (Task Scheduler)")
+		} else {
+			ui.PrintStatus("info", "Autostart is disabled (Task Scheduler)")
+		}
+
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
 	}
+}
+
+// Windows autostart functions
+func createWindowsAutostart(executable string) error {
+	taskName := "CatOpsMonitor"
+
+	// Create XML task definition
+	taskXML := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>CatOps System Monitor - Automatically monitors system resources</Description>
+    <Author>CatOps</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>%s</Command>
+      <Arguments>daemon</Arguments>
+    </Exec>
+  </Actions>
+</Task>`, executable)
+
+	// Write XML to temp file
+	tempFile := filepath.Join(os.TempDir(), "catops_task.xml")
+	err := os.WriteFile(tempFile, []byte(taskXML), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write task XML: %w", err)
+	}
+	defer os.Remove(tempFile)
+
+	// Create task using schtasks
+	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/XML", tempFile, "/F")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to create task: %s - %w", string(output), err)
+	}
+
+	return nil
+}
+
+func removeWindowsAutostart() error {
+	taskName := "CatOpsMonitor"
+
+	cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to delete task: %s - %w", string(output), err)
+	}
+
+	return nil
 }

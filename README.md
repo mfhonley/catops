@@ -2,11 +2,11 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **CatOps** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
 
-**Simple and flexible** - works offline or with web dashboard at [dash.catops.io](https://dash.catops.io)
+**Simple and flexible** - works offline or with web dashboard at [catops.app](https://catops.app)
 
 ```bash
 # Install in seconds (from website)
@@ -21,8 +21,8 @@ git clone https://github.com/honley1/catops.git && cd catops && go build -o cato
 ### Core Monitoring
 - **System Metrics**: CPU, Memory, Disk, Network, I/O monitoring
 - **Advanced Metrics**: IOPS, I/O Wait, HTTPS connections, process monitoring
-- **Cross-platform Support**: Linux (systemd) and macOS (launchd) compatibility
-- **Ultra-Lightweight**: Minimal resource footprint (< 1MB binary)
+- **Cross-platform Support**: Linux (systemd), macOS (launchd), Windows (Task Scheduler)
+- **Ultra-Lightweight**: Minimal resource footprint (~15MB binary)
 - **Terminal UI**: Clean, color-coded terminal interface
 
 ### Alerting & Notifications
@@ -35,10 +35,10 @@ git clone https://github.com/honley1/catops.git && cd catops && go build -o cato
 ### System Management
 - **Background Service**: Daemon mode with auto-start capabilities
 - **Process Monitoring**: Top processes by resource usage with detailed information
-- **Service Control**: Start, stop, restart, and status commands
-- **Auto-start Management**: Systemd/launchd service creation and management
+- **Service Control**: Start, restart, and status commands
+- **Auto-start Management**: Systemd/launchd/Task Scheduler service creation and management
 - **Duplicate Process Protection**: Automatic detection and cleanup of multiple instances
-- **Zombie Process Cleanup**: Automatic cleanup of defunct processes
+- **Zombie Process Cleanup**: Automatic cleanup of defunct processes (Unix only)
 
 ### Configuration & Updates
 - **Configuration Management**: YAML-based configuration system
@@ -57,7 +57,7 @@ git clone https://github.com/honley1/catops.git && cd catops && go build -o cato
 
 **Local Mode** (default): Works offline, sends alerts to Telegram only.
 
-**Cloud Mode**: Also sends metrics to web dashboard at [dash.catops.io](https://dash.catops.io) for online monitoring.
+**Cloud Mode**: Also sends metrics to web dashboard at [catops.app](https://catops.app) for online monitoring.
 
 *Switch between modes automatically by running `catops auth login <token>`*
 
@@ -171,7 +171,7 @@ curl -sfL https://get.catops.io/install.sh | bash
 curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID="your_group_id" sh -
 ```
 
-**💡 Pro Tip:** Get ready-to-use commands from [dash.catops.io](https://dash.catops.io) or [catops.io](https://catops.io)
+**💡 Pro Tip:** Get ready-to-use commands from [catops.app](https://catops.app)
 
 **Option B: From GitHub**
 ```bash
@@ -185,7 +185,7 @@ chmod +x catops
 ./catops --version
 ```
 
-### 2. Configure Telegram Bot
+### 2. Configure Telegram Bot (Optional)
 
 ```bash
 # Set bot token
@@ -198,10 +198,12 @@ catops config group=-1001234567890
 catops config show
 ```
 
+Or let the installer configure it automatically during installation.
+
 ### 3. Enable Cloud Mode (Optional but Recommended)
 
-**Get your auth token from [dash.catops.io](https://dash.catops.io):**
-1. Visit [dash.catops.io](https://dash.catops.io)
+**Get your auth token from [catops.app](https://catops.app):**
+1. Visit [catops.app](https://catops.app)
 2. Create account or login
 3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
 4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
@@ -211,7 +213,7 @@ catops config show
 
 **Authenticate with backend:**
 ```bash
-# This enables Cloud Mode - your metrics will be available at [dash.catops.io](https://dash.catops.io)
+# This enables Cloud Mode - your metrics will be available at [catops.app](https://catops.app)
 catops auth login your_auth_token
 
 # Verify Cloud Mode is enabled
@@ -229,9 +231,6 @@ catops auth info
 ### 4. Start Monitoring
 
 ```bash
-# Start monitoring service
-catops start
-
 # Check status
 catops status
 
@@ -240,6 +239,9 @@ catops processes
 
 # Set alert thresholds
 catops set cpu=70 mem=75 disk=85
+
+# Restart monitoring service if needed
+catops restart
 ```
 
 ### 5. Enable Autostart (Optional)
@@ -260,8 +262,8 @@ catops autostart status
 |---------|-------------|---------|
 | `catops status` | Display current system metrics and alert thresholds | `catops status` |
 | `catops processes` | Show detailed information about running processes | `catops processes` |
-| `catops start` | Start background monitoring service | `catops start` |
-| `catops restart` | Stop and restart the monitoring service | `catops restart` |
+| `catops restart` | Restart the monitoring service | `catops restart` |
+| `catops set` | Configure alert thresholds | `catops set cpu=90 mem=80` |
 
 ### Configuration Commands
 
@@ -270,6 +272,8 @@ catops autostart status
 | `catops auth login <token>` | Authenticate with backend for web dashboard access | `catops auth login your_token` |
 | `catops auth logout` | Logout and clear authentication | `catops auth logout` |
 | `catops auth info` | Show authentication status | `catops auth info` |
+| `catops auth token` | Show current authentication token | `catops auth token` |
+| `catops config token=` | Set Telegram bot token | `catops config token=123:ABC` |
 | `catops config group=` | Set Telegram chat ID | `catops config group=-100123` |
 | `catops config show` | Display current configuration | `catops config show` |
 | `catops set` | Configure alert thresholds | `catops set cpu=90 mem=80` |
@@ -285,7 +289,7 @@ catops autostart status
 
 **Example**:
 ```bash
-# Get token from [dash.catops.io](https://dash.catops.io) - go to "My Profile"
+# Get token from [catops.app](https://catops.app) - go to "My Profile"
 catops auth login 6893bbb3b008cb8d34acbfa9
 
 # Server automatically appears in dashboard
@@ -315,7 +319,7 @@ catops auth logout
 **Example**:
 ```bash
 catops auth info
-# Shows: ✅ Cloud Mode: ENABLED | 🔐 Authenticated | 🌐 Dashboard: Available
+# Shows authentication and Cloud Mode status
 ```
 
 ### System Commands
@@ -354,7 +358,7 @@ catops auth info
 ### Cloud Mode Data Transmission
 
 #### **What Data is Sent to Backend**
-When Cloud Mode is enabled, CatOps automatically sends comprehensive data to [dash.catops.io](https://dash.catops.io):
+When Cloud Mode is enabled, CatOps automatically sends comprehensive data to [catops.app](https://catops.app):
 
 **Service Lifecycle Events** (via Events API):
 - `service_start`: Server startup with system specifications
@@ -414,13 +418,13 @@ When Cloud Mode is enabled, CatOps automatically sends comprehensive data to [da
 1. Create a Telegram bot via [@BotFather](https://t.me/botfather)
 2. Get your bot token
 3. Add bot to your group/channel
-4. Get your chat ID
-5. Configure CLI: `catops config token=<token> group=<chat_id>`
+4. Get your chat ID using [@myidbot](https://t.me/myidbot)
+5. Configure: `catops config token=<token> group=<chat_id>`
 
 ## 🌐 Web Dashboard (Cloud Mode)
 
 ### Access Your Server Metrics Online
-When you enable Cloud Mode with `catops auth login <token>`, your server metrics become available at [dash.catops.io](https://dash.catops.io).
+When you enable Cloud Mode with `catops auth login <token>`, your server metrics become available at [catops.app](https://catops.app).
 
 ### Dashboard Features
 - **Real-time Monitoring**: Live metrics streaming from your servers
@@ -443,12 +447,12 @@ CatOps automatically determines your operation mode based on configuration:
 - **Cloud Mode**: When both `auth_token` and `server_token` are present
 
 #### **Cloud Mode Activation Process**
-1. **Get Auth Token**: Visit [dash.catops.io](https://dash.catops.io), go to "My Profile", and copy your user ID from "Profile Information"
+1. **Get Auth Token**: Visit [catops.app](https://catops.app), go to "My Profile", and copy your user ID from "Profile Information"
 2. **Authenticate**: Run `catops auth login your_auth_token`
 3. **Server Registration**: CLI automatically registers your server with the backend
 4. **Token Exchange**: Backend returns a unique `server_token` for your server
 5. **Mode Switch**: Both tokens are now present → Cloud Mode activated
-6. **Metrics Streaming**: All metrics automatically start streaming to [dash.catops.io](https://dash.catops.io)
+6. **Metrics Streaming**: All metrics automatically start streaming to [catops.app](https://catops.app)
 
 #### **What Happens in Cloud Mode**
 - **Service Analytics**: Automatically sent to backend API endpoints
@@ -459,9 +463,9 @@ CatOps automatically determines your operation mode based on configuration:
 
 #### **Backend API Integration**
 Cloud Mode sends data to these secure endpoints:
-- **Events API**: `https://api.catops.io/api/data/events` - Service lifecycle events
-- **Alerts API**: `https://api.catops.io/api/data/alerts` - Threshold violations
-- **Server Management**: `https://api.catops.io/api/downloads/install` - Server registration
+- **Events API**: `https://api.catops.app/api/data/events` - Service lifecycle events
+- **Alerts API**: `https://api.catops.app/api/data/alerts` - Threshold violations
+- **Server Management**: `https://api.catops.app/api/downloads/install` - Server registration
 
 #### **Data Security & Privacy**
 - **Authentication Required**: All requests include `user_token` and `server_token`
@@ -471,7 +475,7 @@ Cloud Mode sends data to these secure endpoints:
 - **No Data Sharing**: Your data never shared with other users
 
 ### How to Enable Cloud Mode
-1. **Visit [dash.catops.io](https://dash.catops.io)**
+1. **Visit [catops.app](https://catops.app)**
 2. **Create an account** or login
 3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
 4. **Find your ID**: In the "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
@@ -488,7 +492,7 @@ Cloud Mode sends data to these secure endpoints:
 ### 📍 Where to Find Your Auth Token
 
 **Step-by-step guide:**
-1. **Login to [dash.catops.io](https://dash.catops.io)**
+1. **Login to [catops.app](https://catops.app)**
 2. **Go to Profile**: Click "My Profile" in the left sidebar  
 3. **Find User ID**: In "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
 4. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
@@ -535,7 +539,7 @@ Cloud Mode sends data to these secure endpoints:
 
 ### Auto-start Management
 ```bash
-# Enable autostart (creates systemd/launchd service)
+# Enable autostart (creates systemd/launchd/Task Scheduler service)
 catops autostart enable
 
 # Check autostart status
@@ -599,7 +603,7 @@ catops-cli/
 ### Backend Integration Architecture
 - **API Client**: Automatic HTTP requests to backend endpoints
 - **Token Management**: Secure storage and validation of auth/server tokens
-- **Data Transmission**: Asynchronous metrics streaming to [dash.catops.io](https://dash.catops.io)
+- **Data Transmission**: Asynchronous metrics streaming to [catops.app](https://catops.app)
 - **Mode Detection**: Automatic switching between Local and Cloud modes
 - **Server Registration**: Backend API integration for server management
 - **Real-time Streaming**: Continuous data transmission during monitoring
@@ -656,7 +660,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **Project Components:**
 - **CatOps**: Open source monitoring tool (MIT License)
 - **Backend APIs**: Cloud infrastructure for metrics storage
-- **Web Dashboard**: [dash.catops.io](https://dash.catops.io) - Centralized monitoring interface
+- **Web Dashboard**: [catops.app](https://catops.app) - Centralized monitoring interface
 - **Telegram Bot**: Open source bot integration code
 
 ## 🤝 Contributing
@@ -672,10 +676,10 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 ## 📞 Support & Contact
 
 ### Get Help
-- **Email**: honley@catop.io
-- **Telegram**: [@catopsio](https://t.me/catopsio)
+- **Telegram**: [@mfhonley](https://t.me/mfhonley) - Direct support
 - **GitHub Issues**: [Report Issues](https://github.com/honley1/catops/issues)
 - **GitHub Discussions**: [Community Forum](https://github.com/honley1/catops/discussions)
+- **Email**: honley@catop.io
 
 
 

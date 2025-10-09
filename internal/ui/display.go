@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// Color constants - Simple Orange Theme
+// Color constants - Simple Blue Theme
 const (
-	// Main orange color
-	ORANGE = "\033[38;5;214m" // Orange
+	// Main theme color
+	ORANGE = "\033[38;5;75m" // Blue (kept variable name for compatibility)
 
 	// Status colors
 	SUCCESS = "\033[38;5;46m"  // Green

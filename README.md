@@ -13,7 +13,7 @@
 curl -sfL https://get.catops.io/install.sh | bash
 
 # Or from GitHub
-git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
+git clone https://github.com/mfhonley/catops.git && cd catops && go build -o catops ./cmd/catops
 ```
 
 ## 🚀 Features
@@ -125,7 +125,7 @@ curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID
 
 ```bash
 # Clone and build in one command
-git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
+git clone https://github.com/mfhonley/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Make executable and test
 chmod +x catops
@@ -140,7 +140,7 @@ sudo chmod +x /usr/local/bin/catops
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/honley1/catops.git
+git clone https://github.com/mfhonley/catops.git
 cd catops
 
 # 2. Build binary
@@ -176,7 +176,7 @@ curl -sfL https://get.catops.io/install.sh | BOT_TOKEN="your_bot_token" GROUP_ID
 **Option B: From GitHub**
 ```bash
 # Clone and build
-git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
+git clone https://github.com/mfhonley/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Make executable
 chmod +x catops
@@ -615,10 +615,10 @@ catops-cli/
 ### Building from Source
 ```bash
 # Quick build
-git clone https://github.com/honley1/catops.git && cd catops && go build -o catops ./cmd/catops
+git clone https://github.com/mfhonley/catops.git && cd catops && go build -o catops ./cmd/catops
 
 # Or step by step
-git clone https://github.com/honley1/catops.git
+git clone https://github.com/mfhonley/catops.git
 cd catops
 go build -o catops ./cmd/catops
 
@@ -665,7 +665,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [contributing guidelines](https://github.com/honley1/catops/blob/main/CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [contributing guidelines](https://github.com/mfhonley/catops/blob/main/CONTRIBUTING.md) for details.
 
 **Main Areas:**
 - **New Features**: Additional monitoring capabilities and platform support
@@ -677,8 +677,8 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 
 ### Get Help
 - **Telegram**: [@mfhonley](https://t.me/mfhonley) - Direct support
-- **GitHub Issues**: [Report Issues](https://github.com/honley1/catops/issues)
-- **GitHub Discussions**: [Community Forum](https://github.com/honley1/catops/discussions)
+- **GitHub Issues**: [Report Issues](https://github.com/mfhonley/catops/issues)
+- **GitHub Discussions**: [Community Forum](https://github.com/mfhonley/catops/discussions)
 - **Email**: honley@catop.io
 
 

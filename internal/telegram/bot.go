@@ -329,13 +329,24 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		}
 
 	case "version":
-		// Get CatOps version
-		cmd := exec.Command("catops", "--version")
+		// Get CatOps version - use absolute path for daemon compatibility
+		exePath, err := os.Executable()
+		if err != nil {
+			msg.Text = "❌ <b>Error getting executable path:</b>\n" + err.Error()
+			break
+		}
+
+		cmd := exec.Command(exePath, "--version")
 		output, err := cmd.Output()
 		if err != nil {
 			msg.Text = "❌ <b>Error getting version:</b>\n" + err.Error()
 		} else {
-			version := strings.TrimSpace(string(output))
+			// Extract only version line (first line)
+			fullOutput := strings.TrimSpace(string(output))
+			lines := strings.Split(fullOutput, "\n")
+			version := strings.TrimSpace(lines[0])
+			// Remove "CatOps " prefix if present
+			version = strings.TrimPrefix(version, "CatOps ")
 
 			// Check for updates
 			// Логируем начало запроса проверки версии
@@ -375,7 +386,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 				}
 			}
 
-			msg.Text = fmt.Sprintf("📦 <b>CatOps Version</b>\n\n<code>%s</code>%s", version, updateInfo)
+			msg.Text = fmt.Sprintf("📦 <b>CatOps Version</b>\n\n<code>%s</code>%s\n\n💬 <b>Support:</b> @mfhonley", version, updateInfo)
 		}
 
 	case "update":

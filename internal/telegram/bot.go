@@ -357,11 +357,14 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 					defer resp.Body.Close()
 					var result map[string]interface{}
 					if json.NewDecoder(resp.Body).Decode(&result) == nil {
-						if latestVersion, ok := result["latest_version"].(string); ok {
-							// Extract version number from "v0.0.3" format
+						// API returns "version" field, not "latest_version"
+						if latestVersion, ok := result["version"].(string); ok {
+							// Normalize both versions by removing "v" prefix for comparison
 							currentVersion := strings.TrimPrefix(version, "v")
-							if latestVersion != currentVersion {
-								updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", latestVersion)
+							normalizedLatest := strings.TrimPrefix(latestVersion, "v")
+
+							if normalizedLatest != currentVersion {
+								updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", normalizedLatest)
 							} else {
 								updateInfo = "\n\n✅ <b>You have the latest version!</b>"
 							}

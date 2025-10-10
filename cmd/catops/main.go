@@ -1238,7 +1238,7 @@ func main() {
 	// load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		fmt.Printf("Error loading config: %v\n", err)
+		ui.PrintErrorWithSupport(fmt.Sprintf("Error loading config: %v", err))
 		os.Exit(1)
 	}
 
@@ -1258,7 +1258,8 @@ func main() {
 						version = strings.TrimSpace(string(versionData))
 					}
 				}
-				fmt.Printf("v%s\n", version)
+				fmt.Printf("CatOps v%s\n", version)
+				fmt.Printf("\n💬 Support: @mfhonley\n")
 				return nil
 			}
 
@@ -1304,6 +1305,7 @@ func main() {
 			ui.PrintSectionEnd()
 
 			ui.PrintStatus("info", "Use 'catops [command] --help' for detailed help")
+			ui.PrintStatus("info", "💬 Need help? Telegram: @mfhonley")
 			return nil
 		},
 	}
@@ -1488,7 +1490,7 @@ Examples:
 			if process.IsRunning() {
 				err := process.StopProcess()
 				if err != nil {
-					ui.PrintStatus("error", fmt.Sprintf("Failed to stop: %v", err))
+					ui.PrintErrorWithSupport(fmt.Sprintf("Failed to stop: %v", err))
 					ui.PrintSectionEnd()
 					return
 				}
@@ -1498,7 +1500,7 @@ Examples:
 			// start new process
 			err := process.StartProcess()
 			if err != nil {
-				ui.PrintStatus("error", fmt.Sprintf("Failed to start: %v", err))
+				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
 				ui.PrintSectionEnd()
 				return
 			}
@@ -1622,7 +1624,7 @@ Examples:
 
 			err := process.StartProcess()
 			if err != nil {
-				ui.PrintStatus("error", fmt.Sprintf("Failed to start: %v", err))
+				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
 				ui.PrintSectionEnd()
 				return
 			}

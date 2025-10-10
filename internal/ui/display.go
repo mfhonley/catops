@@ -84,6 +84,12 @@ func PrintStatus(status, message string) {
 	}
 }
 
+// PrintErrorWithSupport prints an error message with support contact
+func PrintErrorWithSupport(message string) {
+	fmt.Printf("  %s%s✗%s %s%s\n", ERROR, BOLD, NC, WHITE, message)
+	fmt.Printf("  %s%s💬%s %sNeed help? Telegram: @mfhonley%s\n", INFO, BOLD, NC, GRAY, NC)
+}
+
 // CreateTable creates a formatted table
 func CreateTable(data map[string]string) string {
 	var result strings.Builder

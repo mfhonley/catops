@@ -676,10 +676,17 @@ We welcome contributions! Please see our [contributing guidelines](https://githu
 ## 📞 Support & Contact
 
 ### Get Help
-- **Telegram**: [@mfhonley](https://t.me/mfhonley) - Direct support
-- **GitHub Issues**: [Report Issues](https://github.com/mfhonley/catops/issues)
-- **GitHub Discussions**: [Community Forum](https://github.com/mfhonley/catops/discussions)
-- **Email**: honley@catop.io
+
+Having issues? We're here to help!
+
+**Quick Support:**
+- 💬 **Telegram**: [@mfhonley](https://t.me/mfhonley) - *Fastest response* ⚡
+- 📧 **Email**: me@thehonley.org - *24h response time*
+
+**Community & Development:**
+- 🐛 **GitHub Issues**: [Report a bug](https://github.com/mfhonley/catops/issues/new)
+- 💬 **GitHub Discussions**: [Community forum](https://github.com/mfhonley/catops/discussions)
+- 📚 **Documentation**: [github.com/mfhonley/catops](https://github.com/mfhonley/catops#readme)
 
 
 

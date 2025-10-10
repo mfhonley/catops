@@ -321,8 +321,8 @@ func GetMetrics() (*Metrics, error) {
 	memoryDetails, _ := GetDetailedMemoryUsage()
 	diskDetails, _ := GetDetailedDiskUsage()
 
-	// Get top processes
-	topProcesses, _ := GetTopProcesses(10)
+	// Get top processes (increased from 10 to 100 to capture more system resource usage)
+	topProcesses, _ := GetTopProcesses(100)
 
 	return &Metrics{
 		CPUUsage:      cpuUsage,

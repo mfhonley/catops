@@ -509,8 +509,8 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 		hostname = "unknown"
 	}
 
-	// Get top 10 CPU processes
-	topCPU := getTopProcessesByCPU(metrics.TopProcesses, 10)
+	// Get top 30 CPU processes (increased from 10 to capture more resource usage)
+	topCPU := getTopProcessesByCPU(metrics.TopProcesses, 30)
 	topCPUData := make([]map[string]interface{}, 0, len(topCPU))
 	for i, proc := range topCPU {
 		topCPUData = append(topCPUData, map[string]interface{}{
@@ -535,8 +535,8 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 		})
 	}
 
-	// Get top 10 Memory processes
-	topMemory := getTopProcessesByMemory(metrics.TopProcesses, 10)
+	// Get top 30 Memory processes (increased from 10 to capture more resource usage)
+	topMemory := getTopProcessesByMemory(metrics.TopProcesses, 30)
 	topMemoryData := make([]map[string]interface{}, 0, len(topMemory))
 	for i, proc := range topMemory {
 		topMemoryData = append(topMemoryData, map[string]interface{}{
@@ -569,7 +569,7 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 	diskSleepProcs := countProcessesByStatus(metrics.TopProcesses, "D")
 	stoppedProcs := countProcessesByStatus(metrics.TopProcesses, "T")
 
-	// Calculate aggregated resource usage
+	// Calculate aggregated resource usage for ALL processes
 	var totalCPU float64
 	var totalMemoryKB int64
 	for _, proc := range metrics.TopProcesses {
@@ -584,6 +584,49 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 		avgMemoryKB = totalMemoryKB / int64(totalProcs)
 	}
 
+	// Calculate "other" processes (not in top-30 CPU or top-30 Memory)
+	includedPIDs := make(map[int]bool)
+	for _, proc := range topCPU {
+		includedPIDs[proc.PID] = true
+	}
+	for _, proc := range topMemory {
+		includedPIDs[proc.PID] = true
+	}
+
+	// Aggregate "other" processes
+	var otherCount int
+	var otherCPU float64
+	var otherMemoryKB int64
+	otherByUser := make(map[string]map[string]interface{})
+
+	for _, proc := range metrics.TopProcesses {
+		if !includedPIDs[proc.PID] {
+			otherCount++
+			otherCPU += proc.CPUUsage
+			otherMemoryKB += proc.MemoryKB
+
+			// Aggregate by user
+			if _, exists := otherByUser[proc.User]; !exists {
+				otherByUser[proc.User] = map[string]interface{}{
+					"count":     0,
+					"cpu":       float64(0),
+					"memory_kb": int64(0),
+				}
+			}
+			userData := otherByUser[proc.User]
+			userData["count"] = userData["count"].(int) + 1
+			userData["cpu"] = userData["cpu"].(float64) + proc.CPUUsage
+			userData["memory_kb"] = userData["memory_kb"].(int64) + proc.MemoryKB
+		}
+	}
+
+	// Calculate "other" memory percentage (based on system total memory)
+	otherMemoryPercent := float64(0)
+	if metrics.MemoryDetails.Total > 0 {
+		// Convert KB to bytes for accurate percentage
+		otherMemoryPercent = (float64(otherMemoryKB) * 1024 / float64(metrics.MemoryDetails.Total*1024)) * 100
+	}
+
 	processSummary := map[string]interface{}{
 		"total_processes":           totalProcs,
 		"running_processes":         runningProcs,
@@ -595,6 +638,12 @@ func sendProcessMetrics(cfg *config.Config, metrics *metrics.Metrics) {
 		"total_memory_kb":           totalMemoryKB,
 		"avg_cpu_per_process":       avgCPU,
 		"avg_memory_kb_per_process": avgMemoryKB,
+		// New fields for "other" processes
+		"other_processes_count":   otherCount,
+		"other_cpu_usage":         otherCPU,
+		"other_memory_kb":         otherMemoryKB,
+		"other_memory_percent":    otherMemoryPercent,
+		"other_breakdown_by_user": otherByUser,
 		"tags": map[string]string{
 			"hostname": hostname,
 			"os_name":  metrics.OSName,

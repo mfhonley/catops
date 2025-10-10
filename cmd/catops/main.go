@@ -1258,8 +1258,7 @@ func main() {
 						version = strings.TrimSpace(string(versionData))
 					}
 				}
-				fmt.Printf("CatOps v%s\n", version)
-				fmt.Printf("\n💬 Support: @mfhonley\n")
+				fmt.Printf("v%s\n", version)
 				return nil
 			}
 

@@ -341,12 +341,8 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 		if err != nil {
 			msg.Text = "❌ <b>Error getting version:</b>\n" + err.Error()
 		} else {
-			// Extract only version line (first line)
-			fullOutput := strings.TrimSpace(string(output))
-			lines := strings.Split(fullOutput, "\n")
-			version := strings.TrimSpace(lines[0])
-			// Remove "CatOps " prefix if present
-			version = strings.TrimPrefix(version, "CatOps ")
+			// CLI --version now returns just "v0.1.4"
+			version := strings.TrimSpace(string(output))
 
 			// Check for updates
 			// Логируем начало запроса проверки версии

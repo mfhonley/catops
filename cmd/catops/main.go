@@ -42,8 +42,14 @@ func main() {
 
 	// create root command
 	rootCmd := &cobra.Command{
-		Use:                "catops",
-		Short:              "Professional CatOps Tool",
+		Use:   "catops",
+		Short: "Professional CatOps Tool",
+		Long: `CatOps - Professional Server Monitoring Tool
+
+Monitor your servers with real-time metrics, alerts, and analytics.
+Lightweight, open-source, and easy to use.
+
+Need help? Telegram: @mfhonley`,
 		DisableSuggestions: true,
 		CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -102,7 +108,7 @@ func main() {
 			ui.PrintSectionEnd()
 
 			ui.PrintStatus("info", "Use 'catops [command] --help' for detailed help")
-			ui.PrintStatus("info", "💬 Need help? Telegram: @mfhonley")
+			ui.PrintStatus("info", "Need help? Telegram: @mfhonley")
 			return nil
 		},
 	}

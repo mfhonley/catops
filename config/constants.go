@@ -3,10 +3,11 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ANALYTICS_URL = "https://api.catops.io/api/cli/alerts"
-	EVENTS_URL    = "https://api.catops.io/api/cli/events"
-	METRICS_URL   = "https://api.catops.io/api/cli/metrics"
-	PROCESSES_URL = "https://api.catops.io/api/cli/processes"
+	ANALYTICS_URL       = "https://api.catops.io/api/cli/alerts"
+	EVENTS_URL          = "https://api.catops.io/api/cli/events"
+	METRICS_URL         = "https://api.catops.io/api/cli/metrics"
+	PROCESSES_URL       = "https://api.catops.io/api/cli/processes"
+	NETWORK_METRICS_URL = "https://api.catops.io/api/cli/network" // Network observability metrics
 
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.io/api/cli/servers/change-owner"

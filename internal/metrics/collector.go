@@ -69,6 +69,9 @@ type Metrics struct {
 
 	// Process monitoring and analysis
 	TopProcesses []ProcessInfo `json:"top_processes"` // Top processes by resource consumption
+
+	// Network monitoring (Phase 1 - Network Observability)
+	NetworkMetrics *NetworkMetrics `json:"network_metrics,omitempty"` // Network bandwidth, connections, top connections
 }
 
 // GetCPUUsage retrieves the current CPU usage percentage across all cores
@@ -324,6 +327,13 @@ func GetMetrics() (*Metrics, error) {
 	// Get top processes (increased from 10 to 100 to capture more system resource usage)
 	topProcesses, _ := GetTopProcesses(100)
 
+	// Get network metrics (non-critical - don't fail if error occurs)
+	networkMetrics, err := GetNetworkMetrics()
+	if err != nil {
+		// Log error but continue with nil value
+		networkMetrics = nil
+	}
+
 	return &Metrics{
 		CPUUsage:      cpuUsage,
 		DiskUsage:     diskUsage,
@@ -343,6 +353,9 @@ func GetMetrics() (*Metrics, error) {
 
 		// Process monitoring
 		TopProcesses: topProcesses,
+
+		// Network monitoring (Phase 1 - Network Observability)
+		NetworkMetrics: networkMetrics,
 	}, nil
 }
 

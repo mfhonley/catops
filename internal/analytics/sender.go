@@ -63,6 +63,13 @@ func (s *Sender) SendAll(eventType string, currentMetrics *metrics.Metrics) {
 		s.SendProcessMetrics(currentMetrics)
 	}()
 
+	// Send network metrics (Phase 1 - Network Observability)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.SendNetworkMetrics(currentMetrics)
+	}()
+
 	// Wait for all goroutines to complete (with timeout)
 	done := make(chan struct{})
 	go func() {
@@ -709,4 +716,90 @@ func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metri
 		return sorted[:limit]
 	}
 	return sorted
+}
+
+// SendNetworkMetrics sends network metrics to the backend network endpoint
+func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
+	}
+
+	// Skip if no network metrics collected
+	if metricsData.NetworkMetrics == nil {
+		return
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	networkMetrics := metricsData.NetworkMetrics
+
+	// Convert NetworkConnection slice to []map[string]interface{}
+	topConnectionsData := make([]map[string]interface{}, 0, len(networkMetrics.TopConnections))
+	for _, conn := range networkMetrics.TopConnections {
+		topConnectionsData = append(topConnectionsData, map[string]interface{}{
+			"remote_ip":        conn.RemoteIP,
+			"remote_port":      conn.RemotePort,
+			"local_port":       conn.LocalPort,
+			"protocol":         conn.Protocol,
+			"state":            conn.State,
+			"pid":              conn.PID,
+			"family":           conn.Family,
+			"importance_score": conn.ImportanceScore,
+		})
+	}
+
+	// Create the request payload according to NetworkMetricsBatchRequest schema
+	requestData := map[string]interface{}{
+		"timestamp":                 fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token":                s.cfg.AuthToken,
+		"server_id":                 s.cfg.ServerID,
+		"inbound_bytes_per_sec":     networkMetrics.InboundBytesPerSec,
+		"outbound_bytes_per_sec":    networkMetrics.OutboundBytesPerSec,
+		"connections_established":   networkMetrics.ConnectionsEstablished,
+		"connections_time_wait":     networkMetrics.ConnectionsTimeWait,
+		"connections_close_wait":    networkMetrics.ConnectionsCloseWait,
+		"connections_syn_sent":      networkMetrics.ConnectionsSynSent,
+		"connections_syn_recv":      networkMetrics.ConnectionsSynRecv,
+		"connections_fin_wait1":     networkMetrics.ConnectionsFinWait1,
+		"connections_fin_wait2":     networkMetrics.ConnectionsFinWait2,
+		"connections_listen":        networkMetrics.ConnectionsListen,
+		"total_connections":         networkMetrics.TotalConnections,
+		"top_connections":           topConnectionsData,
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return
+	}
+
+	// Send network metrics to backend asynchronously
+	go func() {
+		// Log network metrics request start
+		logger.Info("Network metrics request started - URL: %s", constants.NETWORK_METRICS_URL)
+
+		req, err := utils.CreateCLIRequest("POST", constants.NETWORK_METRICS_URL, bytes.NewBuffer(jsonData), s.version)
+		if err != nil {
+			logger.Error("Failed to create network metrics request: %v", err)
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			// Log network metrics send error
+			logger.Error("Failed to send network metrics: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Log network metrics success
+		if resp.StatusCode == 200 {
+			logger.Info("Network metrics sent successfully - Status: %d", resp.StatusCode)
+		} else {
+			logger.Warning("Network metrics sent with non-200 status - Status: %d", resp.StatusCode)
+		}
+	}()
 }

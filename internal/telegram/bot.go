@@ -371,7 +371,7 @@ func HandleBotCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update, cfg *config.
 							normalizedLatest := strings.TrimPrefix(latestVersion, "v")
 
 							if normalizedLatest != currentVersion {
-								updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code>\n💡 <b>To update:</b>\n<code>catops update</code>", normalizedLatest)
+								updateInfo = fmt.Sprintf("\n\n🔄 <b>Update available:</b> <code>v%s</code> — Run: <code>catops update</code>", normalizedLatest)
 							} else {
 								updateInfo = "\n\n✅ <b>You have the latest version!</b>"
 							}

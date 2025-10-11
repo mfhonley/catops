@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -168,31 +167,35 @@ func NewDaemonCmd() *cobra.Command {
 				case <-updateTicker.C:
 					// check for updates once per day (always check, Telegram is optional)
 					// get current version
-					cmd := exec.Command("catops", "--version")
-					output, err := cmd.Output()
-					if err == nil {
-						currentVersion := strings.TrimSpace(string(output))
-						currentVersion = strings.TrimPrefix(currentVersion, "v")
+					currentVersion := GetCurrentVersion()
+					currentVersion = strings.TrimPrefix(currentVersion, "v")
 
-						// check API for latest version
-						// log version check request start
-						logger.Info("Version check request started - URL: %s", constants.VERSIONS_URL)
+					// check API for latest version
+					logger.Info("Daily update check started - URL: %s", constants.VERSIONS_URL)
 
-						req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, GetCurrentVersion())
-						if err != nil {
-							continue
-						}
+					req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, GetCurrentVersion())
+					if err != nil {
+						logger.Error("Failed to create update check request: %s", err.Error())
+						continue
+					}
 
-						client := &http.Client{Timeout: 10 * time.Second}
-						resp, err := client.Do(req)
-						if err == nil {
-							defer resp.Body.Close()
-							var result map[string]interface{}
-							if json.NewDecoder(resp.Body).Decode(&result) == nil {
-								if latestVersion, ok := result["latest_version"].(string); ok {
-									if latestVersion != currentVersion {
-										hostname, _ := os.Hostname()
-										updateMessage := fmt.Sprintf(`🔄 <b>New Update Available!</b>
+					client := &http.Client{Timeout: 10 * time.Second}
+					resp, err := client.Do(req)
+					if err != nil {
+						logger.Error("Failed to check for updates: %s", err.Error())
+						continue
+					}
+
+					defer resp.Body.Close()
+					var result map[string]interface{}
+					if json.NewDecoder(resp.Body).Decode(&result) == nil {
+						// API returns "version" field, not "latest_version"
+						if latestVersion, ok := result["version"].(string); ok {
+							latestVersion = strings.TrimPrefix(latestVersion, "v")
+
+							if latestVersion != currentVersion {
+								hostname, _ := os.Hostname()
+								updateMessage := fmt.Sprintf(`🔄 <b>New Update Available!</b>
 
 📦 <b>Current:</b> v%s
 🆕 <b>Latest:</b> v%s
@@ -203,14 +206,21 @@ func NewDaemonCmd() *cobra.Command {
 📊 <b>Server:</b> %s
 ⏰ <b>Check Time:</b> %s`, currentVersion, latestVersion, hostname, time.Now().Format("2006-01-02 15:04:05"))
 
-										// Send Telegram notification if configured
-										if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-											telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, updateMessage)
-										}
-									}
+								logger.Info("New version available: v%s (current: v%s)", latestVersion, currentVersion)
+
+								// Send Telegram notification if configured
+								if cfg.TelegramToken != "" && cfg.ChatID != 0 {
+									telegram.SendToTelegram(cfg.TelegramToken, cfg.ChatID, updateMessage)
+									logger.Info("Update notification sent to Telegram")
 								}
+							} else {
+								logger.Info("Already running latest version: v%s", currentVersion)
 							}
+						} else {
+							logger.Error("Invalid response from version API: missing 'version' field")
 						}
+					} else {
+						logger.Error("Failed to parse version API response")
 					}
 
 				case <-sigChan:

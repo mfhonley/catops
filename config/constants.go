@@ -3,10 +3,10 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ANALYTICS_URL  = "https://api.catops.io/api/cli/alerts"
-	EVENTS_URL     = "https://api.catops.io/api/cli/events"
-	METRICS_URL    = "https://api.catops.io/api/cli/metrics"
-	PROCESSES_URL  = "https://api.catops.io/api/cli/processes"
+	ANALYTICS_URL = "https://api.catops.io/api/cli/alerts"
+	EVENTS_URL    = "https://api.catops.io/api/cli/events"
+	METRICS_URL   = "https://api.catops.io/api/cli/metrics"
+	PROCESSES_URL = "https://api.catops.io/api/cli/processes"
 
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.io/api/cli/servers/change-owner"
@@ -15,7 +15,7 @@ const (
 
 	// Version and update endpoints
 	VERSIONS_BASE_URL = "https://api.catops.io/api/versions"
-	VERSIONS_URL = "https://api.catops.io/api/versions/check"
+	VERSIONS_URL      = "https://api.catops.io/api/versions/check"
 
 	// Download endpoints
 	GET_CATOPS_URL = "https://get.catops.io"
@@ -31,7 +31,7 @@ const (
 // External services
 const (
 	TELEGRAM_API_URL = "https://api.telegram.org/bot%s/sendMessage"
-	CATOPS_WEBSITE    = "https://catops.io"
+	CATOPS_WEBSITE   = "https://catops.io"
 )
 
 // Operation modes

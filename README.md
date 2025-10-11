@@ -41,7 +41,8 @@ git clone https://github.com/mfhonley/catops.git && cd catops && go build -o cat
 - **Zombie Process Cleanup**: Automatic cleanup of defunct processes (Unix only)
 
 ### Configuration & Updates
-- **Configuration Management**: YAML-based configuration system
+- **Configuration Management**: YAML-based configuration in `~/.catops/config.yaml`
+- **Auto Mode Detection**: Automatically switches between Local and Cloud mode
 - **Update System**: Automatic version checking and updates
 
 
@@ -200,14 +201,16 @@ catops config show
 
 Or let the installer configure it automatically during installation.
 
+**Configuration is stored in `~/.catops/config.yaml`**
+
 ### 3. Enable Cloud Mode (Optional but Recommended)
 
 **Get your auth token from [catops.app](https://catops.app):**
 1. Visit [catops.app](https://catops.app)
 2. Create account or login
-3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
-4. **Find your ID**: In the "Profile Information" section, you'll see your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
-5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
+3. **Go to Profile**: Click on "Profile" in the left sidebar
+4. **Generate Token**: Click the "Generate Auth Token" button
+5. **Copy the Token**: Your authentication token will be displayed - copy it to use with CatOps CLI
 
 
 
@@ -283,14 +286,18 @@ catops autostart status
 #### **`catops auth login <token>`**
 **Purpose**: Enables Cloud Mode by authenticating with the backend
 **Process**:
-1. **First Time**: Registers your server with the backend and gets a `server_token`
-2. **Subsequent**: Transfers server ownership to new auth token
-3. **Result**: Both `auth_token` and `server_token` are saved → Cloud Mode activated
+1. **First Time**:
+   - Registers your server with the backend
+   - Receives permanent `user_token` and `server_id` from backend
+   - Saves to `~/.catops/config.yaml`: `auth_token` and `server_id`
+2. **Subsequent Logins**:
+   - If you login with a different token, server ownership is transferred to the new account
+3. **Result**: Cloud Mode activated → metrics stream to [catops.app](https://catops.app)
 
 **Example**:
 ```bash
-# Get token from [catops.app](https://catops.app) - go to "My Profile"
-catops auth login 6893bbb3b008cb8d34acbfa9
+# Get token from [catops.app](https://catops.app) - go to "Profile" and click "Generate Auth Token"
+catops auth login your_generated_auth_token
 
 # Server automatically appears in dashboard
 ```
@@ -298,8 +305,8 @@ catops auth login 6893bbb3b008cb8d34acbfa9
 #### **`catops auth logout`**
 **Purpose**: Disables Cloud Mode by clearing authentication
 **Process**:
-1. Clears `auth_token` from configuration
-2. Keeps `server_token` (server remains registered)
+1. Clears `auth_token` from `~/.catops/config.yaml`
+2. Keeps `server_id` (server remains registered in backend)
 3. **Result**: Cloud Mode deactivated, metrics no longer sent to backend
 
 **Example**:
@@ -434,25 +441,26 @@ When you enable Cloud Mode with `catops auth login <token>`, your server metrics
 - **Team Sharing**: Share access with your team members
 
 **Dashboard Overview:**
-![Dashboard Overview](docs/images/dashboards-reference.png)
+![Dashboard Overview](docs/images/dashboard-reference.png)
 
 *This screenshot shows the main dashboard interface with real-time metrics, server overview, and monitoring capabilities.*
 
 ### How Cloud Mode Works
 
 #### **Automatic Mode Detection**
-CatOps automatically determines your operation mode based on configuration:
+CatOps automatically determines your operation mode based on `~/.catops/config.yaml`:
 
-- **Local Mode (Default)**: When `auth_token` or `server_token` is missing
-- **Cloud Mode**: When both `auth_token` and `server_token` are present
+- **Local Mode (Default)**: When `auth_token` or `server_id` is missing
+- **Cloud Mode**: When both `auth_token` and `server_id` are present
 
 #### **Cloud Mode Activation Process**
-1. **Get Auth Token**: Visit [catops.app](https://catops.app), go to "My Profile", and copy your user ID from "Profile Information"
+1. **Get Auth Token**: Visit [catops.app](https://catops.app), go to "Profile", and click "Generate Auth Token" button
 2. **Authenticate**: Run `catops auth login your_auth_token`
 3. **Server Registration**: CLI automatically registers your server with the backend
-4. **Token Exchange**: Backend returns a unique `server_token` for your server
-5. **Mode Switch**: Both tokens are now present → Cloud Mode activated
-6. **Metrics Streaming**: All metrics automatically start streaming to [catops.app](https://catops.app)
+4. **Receive Credentials**: Backend returns permanent `user_token` and `server_id`
+5. **Save to Config**: CLI saves both to `~/.catops/config.yaml` as `auth_token` and `server_id`
+6. **Mode Switch**: Both values are now present → Cloud Mode activated
+7. **Metrics Streaming**: All metrics automatically start streaming to [catops.app](https://catops.app)
 
 #### **What Happens in Cloud Mode**
 - **Service Analytics**: Automatically sent to backend API endpoints
@@ -468,18 +476,19 @@ Cloud Mode sends data to these secure endpoints:
 - **Server Management**: `https://api.catops.app/api/downloads/install` - Server registration
 
 #### **Data Security & Privacy**
-- **Authentication Required**: All requests include `user_token` and `server_token`
+- **Authentication Required**: All requests include `auth_token` (permanent user_token) and `server_id`
 - **Encrypted Transmission**: HTTPS-only communication with backend
 - **User Isolation**: Metrics are isolated per user account
-- **Server Binding**: Each server tied to specific user account
+- **Server Binding**: Each server tied to specific user account via `server_id`
 - **No Data Sharing**: Your data never shared with other users
+- **Token Storage**: Credentials stored securely in `~/.catops/config.yaml`
 
 ### How to Enable Cloud Mode
 1. **Visit [catops.app](https://catops.app)**
 2. **Create an account** or login
-3. **Go to Profile Settings**: Click on "My Profile" in the left sidebar
-4. **Find your ID**: In the "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
-5. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
+3. **Go to Profile**: Click on "Profile" in the left sidebar
+4. **Generate Token**: Click the "Generate Auth Token" button
+5. **Copy the Token**: Your authentication token will be displayed - copy it
 6. **Run**: `catops auth login your_auth_token`
 7. **Your server will appear** in the dashboard automatically
 
@@ -493,12 +502,14 @@ Cloud Mode sends data to these secure endpoints:
 
 **Step-by-step guide:**
 1. **Login to [catops.app](https://catops.app)**
-2. **Go to Profile**: Click "My Profile" in the left sidebar  
-3. **Find User ID**: In "Profile Information" section, locate your user ID (e.g., `6893bbb3b008cb8d34acbfa9`)
-4. **Copy the ID**: Click the copy icon next to your ID - this is your auth token
+2. **Go to Profile**: Click "Profile" in the left sidebar
+3. **Generate Token**: Click the "Generate Auth Token" button
+4. **Copy Token**: Your authentication token will be displayed - click to copy it
 
 **Visual Reference:**
 ![Auth Token Location](docs/images/auth-token-location.png)
+
+*The screenshot shows the "Generate Auth Token" button in the Profile section. Click this button to generate a new authentication token for your CLI.*
 
 
 
@@ -518,6 +529,40 @@ Cloud Mode sends data to these secure endpoints:
 | **Resource Usage** | Minimal | Minimal + network calls |
 | **Internet Required** | No (except Telegram) | Yes (for dashboard) |
 | **Use Case** | Air-gapped servers, testing | Production monitoring, team access |
+
+---
+
+### 📝 Configuration File Structure
+
+**Location**: `~/.catops/config.yaml`
+
+**Example configuration**:
+
+```yaml
+# Telegram Bot Settings (Optional - for Telegram alerts)
+telegram_token: "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+chat_id: -1001234567890
+
+# Cloud Mode Settings (Set automatically via 'catops auth login')
+auth_token: "permanent_user_token_from_backend"
+server_id: "507f1f77bcf86cd799439011"
+
+# Alert Thresholds (Configurable via 'catops set')
+cpu_threshold: 70.0
+mem_threshold: 75.0
+disk_threshold: 85.0
+```
+
+**How it works**:
+- **Local Mode**: Only `telegram_token`, `chat_id`, and thresholds are present
+- **Cloud Mode**: `auth_token` and `server_id` are added after running `catops auth login`
+- **Auto-Detection**: CLI automatically detects mode based on presence of `auth_token` and `server_id`
+
+**Important Notes**:
+- ⚠️ `auth_token` is the **permanent user_token** from backend (not the token you generate on dashboard)
+- ⚠️ `server_id` is your server's unique MongoDB ObjectId
+- ✅ Both values are set automatically during `catops auth login` - no manual editing needed
+- ✅ The file is created automatically on first run with default thresholds
 
 
 

@@ -1,0 +1,55 @@
+# Dockerfile для CatOps Kubernetes Connector
+# Multi-stage build для минимального размера образа
+
+# ============================================================================
+# Build stage
+# ============================================================================
+FROM golang:1.24-alpine AS builder
+
+# Установка необходимых build dependencies
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /build
+
+# Копируем go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Копируем исходный код
+COPY . .
+
+# Собираем бинарник (статически линкуем для alpine)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s" \
+    -o catops-k8s \
+    ./cmd/kubernetes
+
+# ============================================================================
+# Runtime stage
+# ============================================================================
+FROM alpine:latest
+
+# Установка CA certificates (для HTTPS запросов)
+RUN apk --no-cache add ca-certificates
+
+# Создаем non-root пользователя
+RUN addgroup -g 65534 catops && \
+    adduser -D -u 65534 -G catops catops
+
+# Создаем директорию для временных файлов
+RUN mkdir -p /tmp && chown catops:catops /tmp
+
+WORKDIR /app
+
+# Копируем бинарник из builder stage
+COPY --from=builder /build/catops-k8s /app/catops-k8s
+
+# Переключаемся на non-root пользователя
+USER catops
+
+# Healthcheck (опционально)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD /app/catops-k8s --version || exit 1
+
+# Запускаем приложение
+ENTRYPOINT ["/app/catops-k8s"]

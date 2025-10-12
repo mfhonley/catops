@@ -22,6 +22,7 @@ git clone https://github.com/mfhonley/catops.git && cd catops && go build -o cat
 - **System Metrics**: CPU, Memory, Disk, Network, I/O monitoring
 - **Advanced Metrics**: IOPS, I/O Wait, HTTPS connections, process monitoring
 - **Cross-platform Support**: Linux (systemd), macOS (launchd), Windows (Task Scheduler)
+- **Kubernetes Support**: Native DaemonSet monitoring for K8s clusters
 - **Ultra-Lightweight**: Minimal resource footprint (~15MB binary)
 - **Terminal UI**: Clean, color-coded terminal interface
 
@@ -256,6 +257,79 @@ catops autostart enable
 # Check autostart status
 catops autostart status
 ```
+
+## ☸️ Kubernetes Installation
+
+**Monitor your entire Kubernetes cluster with one Helm command!**
+
+### Prerequisites
+
+- Kubernetes 1.19+
+- Helm 3.0+
+- `metrics-server` installed ([installation guide](https://github.com/kubernetes-sigs/metrics-server#installation))
+
+### Quick Install
+
+```bash
+# 1. Get your auth token from https://app.catops.io/settings/integrations
+
+# 2. Install CatOps Kubernetes Connector
+helm repo add catops https://charts.catops.io
+helm repo update
+
+helm install catops catops/catops \
+  --set auth.token=YOUR_AUTH_TOKEN \
+  --namespace catops-system \
+  --create-namespace
+```
+
+**That's it!** 🎉 Your cluster metrics will appear in the dashboard within 1 minute.
+
+### What Gets Monitored?
+
+**Per-Node Metrics:**
+- CPU, Memory, Disk usage
+- Network I/O
+- Running pods count
+
+**Per-Pod Metrics:**
+- CPU cores usage
+- Memory bytes usage
+- Restart count
+- Pod phase (Running/Pending/Failed)
+
+**Cluster-Wide Metrics:**
+- Total nodes / Ready nodes
+- Total pods / Running pods
+- Failed/Pending pods
+
+### Advanced Configuration
+
+**Custom resource limits:**
+```bash
+helm install catops catops/catops \
+  --set auth.token=YOUR_TOKEN \
+  --set resources.requests.cpu=200m \
+  --set resources.requests.memory=256Mi
+```
+
+**Run on specific nodes only:**
+```bash
+helm install catops catops/catops \
+  --set auth.token=YOUR_TOKEN \
+  --set nodeSelector.workload=monitoring
+```
+
+**For full documentation:** See [charts/catops/README.md](charts/catops/README.md)
+
+### Uninstall
+
+```bash
+helm uninstall catops -n catops-system
+kubectl delete namespace catops-system
+```
+
+---
 
 ## 📋 Available Commands
 

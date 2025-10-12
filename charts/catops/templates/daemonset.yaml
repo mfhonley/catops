@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "catops.fullname" . }}
+  labels:
+    {{- include "catops.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "catops.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    {{- toYaml .Values.daemonset.updateStrategy | nindent 4 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "catops.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "catops.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.hostNetwork }}
+      hostNetwork: true
+      {{- end }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      containers:
+      - name: catops-connector
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        # Backend configuration
+        - name: CATOPS_BACKEND_URL
+          value: {{ .Values.backend.url | quote }}
+        - name: CATOPS_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "catops.fullname" . }}
+              key: auth-token
+        # Kubernetes configuration
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Collection settings
+        - name: COLLECTION_INTERVAL
+          value: {{ .Values.collection.interval | quote }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        # Temporary directory для readonly root filesystem
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

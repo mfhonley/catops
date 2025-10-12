@@ -1,0 +1,129 @@
+# Default values for CatOps Kubernetes Connector
+# This is a YAML-formatted file.
+
+# ============================================================================
+# REQUIRED: Authentication
+# ============================================================================
+auth:
+  # Ваш CatOps auth token (получите на https://app.catops.io)
+  # ОБЯЗАТЕЛЬНО: установите это значение при установке
+  token: ""
+
+# ============================================================================
+# Backend Configuration
+# ============================================================================
+backend:
+  # URL вашего CatOps backend
+  url: "https://api.catops.io"
+
+# ============================================================================
+# Collection Settings
+# ============================================================================
+collection:
+  # Интервал сбора метрик (в секундах)
+  interval: 60
+
+# ============================================================================
+# Image Configuration
+# ============================================================================
+image:
+  repository: catops/kubernetes-connector
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+
+# ============================================================================
+# DaemonSet Configuration
+# ============================================================================
+daemonset:
+  # Update strategy для DaemonSet
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+
+# ============================================================================
+# Resource Limits
+# ============================================================================
+resources:
+  # Рекомендуемые лимиты для production
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# ============================================================================
+# RBAC Configuration
+# ============================================================================
+rbac:
+  # Создавать ли RBAC ресурсы (ServiceAccount, ClusterRole, ClusterRoleBinding)
+  create: true
+
+serviceAccount:
+  # Создавать ли ServiceAccount
+  create: true
+  # Annotations для ServiceAccount (например, для AWS IRSA, GCP Workload Identity)
+  annotations: {}
+  # Имя ServiceAccount (если не указано, будет сгенерировано)
+  name: ""
+
+# ============================================================================
+# Node Selector, Tolerations, Affinity
+# ============================================================================
+nodeSelector: {}
+  # Пример: запускать только на Linux нодах
+  # kubernetes.io/os: linux
+
+tolerations:
+  # По умолчанию запускаем на всех нодах, включая control-plane
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+
+affinity: {}
+  # Пример: anti-affinity чтобы не запускать несколько подов на одной ноде
+  # podAntiAffinity:
+  #   requiredDuringSchedulingIgnoredDuringExecution:
+  #   - labelSelector:
+  #       matchExpressions:
+  #       - key: app.kubernetes.io/name
+  #         operator: In
+  #         values:
+  #         - catops
+  #     topologyKey: kubernetes.io/hostname
+
+# ============================================================================
+# Pod Security Context
+# ============================================================================
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534  # nobody user
+  fsGroup: 65534
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+# ============================================================================
+# Additional Configuration
+# ============================================================================
+
+# Priority Class для подов (опционально)
+priorityClassName: ""
+
+# Host networking (опционально, может быть нужно для сбора network metrics)
+hostNetwork: false
+
+# DNS Policy
+dnsPolicy: ClusterFirst
+
+# Namespace для установки (по умолчанию из helm install --namespace)
+# namespace: catops-system

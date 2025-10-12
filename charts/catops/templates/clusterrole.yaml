@@ -1,0 +1,55 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "catops.fullname" . }}
+  labels:
+    {{- include "catops.labels" . | nindent 4 }}
+rules:
+# Permissions для чтения нод
+- apiGroups: [""]
+  resources:
+    - nodes
+    - nodes/stats
+    - nodes/metrics
+  verbs:
+    - get
+    - list
+    - watch
+
+# Permissions для чтения подов
+- apiGroups: [""]
+  resources:
+    - pods
+    - pods/log
+  verbs:
+    - get
+    - list
+    - watch
+
+# Permissions для чтения namespaces
+- apiGroups: [""]
+  resources:
+    - namespaces
+  verbs:
+    - get
+    - list
+
+# Permissions для Metrics API (metrics-server)
+- apiGroups: ["metrics.k8s.io"]
+  resources:
+    - nodes
+    - pods
+  verbs:
+    - get
+    - list
+
+# Permissions для чтения events (опционально)
+- apiGroups: [""]
+  resources:
+    - events
+  verbs:
+    - get
+    - list
+    - watch
+{{- end }}

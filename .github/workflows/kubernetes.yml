@@ -2,23 +2,14 @@ name: Build Kubernetes Connector
 
 on:
   push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'cmd/kubernetes/**'
-      - 'internal/k8s/**'
-      - 'internal/metrics/**'
-      - 'Dockerfile.k8s'
-      - 'charts/catops/**'
-      - '.github/workflows/kubernetes.yml'
+    tags:
+      - 'v*.*.*'  # Запускается только при создании тега версии (v0.0.3, v0.0.4 и т.д.)
   pull_request:
     paths:
       - 'cmd/kubernetes/**'
       - 'internal/k8s/**'
       - 'Dockerfile.k8s'
-  release:
-    types: [created]
+      - 'charts/catops/**'
 
 env:
   REGISTRY: ghcr.io

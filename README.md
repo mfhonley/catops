@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg)]()
 
 **CatOps** is an ultra-lightweight server monitoring tool that sends real-time alerts and live stats straight to your Telegram group in seconds. One curl command, zero setup hell.
 
@@ -21,7 +21,7 @@ git clone https://github.com/mfhonley/catops.git && cd catops && go build -o cat
 ### Core Monitoring
 - **System Metrics**: CPU, Memory, Disk, Network, I/O monitoring
 - **Advanced Metrics**: IOPS, I/O Wait, HTTPS connections, process monitoring
-- **Cross-platform Support**: Linux (systemd), macOS (launchd), Windows (Task Scheduler)
+- **Cross-platform Support**: Linux (systemd), macOS (launchd)
 - **Kubernetes Support**: Native DaemonSet monitoring for K8s clusters
 - **Ultra-Lightweight**: Minimal resource footprint (~15MB binary)
 - **Terminal UI**: Clean, color-coded terminal interface
@@ -273,23 +273,13 @@ CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect
 ### Quick Install
 
 ```bash
-# 1. Get your auth token
-# Visit https://app.catops.io → Profile → Generate Auth Token
+# 1. Get your auth token from https://app.catops.io/setup
 
-# 2. Install from GitHub (Helm chart not yet published)
-git clone https://github.com/mfhonley/catops.git
-cd catops/charts/catops
-
-# 3. Deploy to your cluster
-helm install catops . \
-  --set auth.token=YOUR_AUTH_TOKEN
-
-# Or specify custom backend URL and namespace
-helm install catops . \
-  --set auth.token=YOUR_AUTH_TOKEN \
-  --set backend.url=https://api.catops.io \
+# 2. Deploy to your cluster
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --namespace catops-system \
-  --create-namespace
+  --create-namespace \
+  --set auth.token=YOUR_AUTH_TOKEN
 ```
 
 **That's it!** 🎉 Your Kubernetes nodes will appear in the dashboard within 1 minute.

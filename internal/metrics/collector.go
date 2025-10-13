@@ -174,7 +174,7 @@ func GetIOPS() (int64, error) {
 func GetIOWait() (float64, error) {
 	// IOWait is only available on Linux
 	if runtime.GOOS != "linux" {
-		return 0.0, nil // macOS/Windows don't have IOWait metric
+		return 0.0, nil // macOS doesn't have IOWait metric
 	}
 
 	// Get CPU times (includes IOWait on Linux)
@@ -217,8 +217,6 @@ func GetOSName() (string, error) {
 		return "Linux", nil
 	case "darwin":
 		return "macOS", nil
-	case "windows":
-		return "Windows", nil
 	default:
 		return runtime.GOOS, nil
 	}

@@ -106,14 +106,6 @@ Examples:
 						ui.PrintStatus("warning", fmt.Sprintf("Failed to remove launchd plist: %v", err))
 					}
 				}
-			case "windows":
-				// Remove Task Scheduler task for Windows autostart
-				taskName := "CatOps Monitor"
-				if err := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").Run(); err != nil {
-					ui.PrintStatus("warning", "Failed to remove scheduled task (may not exist)")
-				} else {
-					ui.PrintStatus("success", "Removed autostart task from Task Scheduler")
-				}
 			}
 
 			// remove configuration directory
@@ -154,38 +146,19 @@ Examples:
 			// remove ALL CatOps binaries from PATH LAST
 			binaryPaths := []string{}
 
-			// Platform-specific binary paths
-			if runtime.GOOS == "windows" {
-				localAppData := os.Getenv("LOCALAPPDATA")
-				if localAppData != "" {
-					binaryPaths = append(binaryPaths, filepath.Join(localAppData, "catops", "catops.exe"))
-				}
-				// Windows might also have it in PATH
-				programFiles := os.Getenv("PROGRAMFILES")
-				if programFiles != "" {
-					binaryPaths = append(binaryPaths, filepath.Join(programFiles, "catops", "catops.exe"))
-				}
-			} else {
-				// Unix-like systems
-				binaryPaths = append(binaryPaths,
-					"/usr/local/bin/catops",
-					"/usr/bin/catops",
-					filepath.Join(homeDir, ".local", "bin", "catops"),
-				)
-			}
+			// Unix-like systems
+			binaryPaths = append(binaryPaths,
+				"/usr/local/bin/catops",
+				"/usr/bin/catops",
+				filepath.Join(homeDir, ".local", "bin", "catops"),
+			)
 
 			// also search for any other catops binaries in PATH
 			pathSeparator := ":"
-			if runtime.GOOS == "windows" {
-				pathSeparator = ";"
-			}
 			pathDirs := strings.Split(os.Getenv("PATH"), pathSeparator)
 			for _, dir := range pathDirs {
 				if strings.Contains(dir, "catops") || strings.Contains(dir, ".local") || strings.Contains(dir, "bin") {
 					binaryName := "catops"
-					if runtime.GOOS == "windows" {
-						binaryName = "catops.exe"
-					}
 					potentialPath := filepath.Join(dir, binaryName)
 					if _, err := os.Stat(potentialPath); err == nil {
 						binaryPaths = append(binaryPaths, potentialPath)

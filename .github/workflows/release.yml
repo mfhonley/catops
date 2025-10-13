@@ -138,70 +138,9 @@ jobs:
           path: catops-darwin-*
           retention-days: 1
 
-  build-windows:
-    name: Build Windows Binaries
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - name: Download dependencies
-        run: |
-          echo "📦 Downloading Go dependencies..."
-          go mod download
-          go mod verify
-
-      - name: Get version from tag
-        id: version
-        shell: bash
-        run: |
-          # Убираем 'v' из тега: v0.0.3 -> 0.0.3
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Building version: $VERSION"
-
-      - name: Build Windows AMD64
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        shell: bash
-        run: |
-          echo "🔨 Building Windows AMD64..."
-          GOOS=windows GOARCH=amd64 go build \
-            -ldflags "-X main.VERSION=$VERSION -s -w" \
-            -trimpath \
-            -o catops-windows-amd64.exe \
-            ./cmd/catops
-          ls -lh catops-windows-amd64.exe
-
-      - name: Build Windows 386
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        shell: bash
-        run: |
-          echo "🔨 Building Windows 386..."
-          GOOS=windows GOARCH=386 go build \
-            -ldflags "-X main.VERSION=$VERSION -s -w" \
-            -trimpath \
-            -o catops-windows-386.exe \
-            ./cmd/catops
-          ls -lh catops-windows-386.exe
-
-      - name: Upload Windows binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-binaries
-          path: catops-windows-*.exe
-          retention-days: 1
-
   release:
     name: Create Release
-    needs: [build-linux, build-macos, build-windows]
+    needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
 
     permissions:
@@ -229,11 +168,6 @@ jobs:
         with:
           name: macos-binaries
 
-      - name: Download Windows binaries
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-binaries
-
       - name: Generate checksums
         run: |
           echo "📝 Generating checksums..."
@@ -243,7 +177,7 @@ jobs:
       - name: Verify binaries
         run: |
           echo "✅ Verifying binaries exist..."
-          for binary in catops-linux-amd64 catops-linux-arm64 catops-darwin-amd64 catops-darwin-arm64 catops-windows-amd64.exe catops-windows-386.exe; do
+          for binary in catops-linux-amd64 catops-linux-arm64 catops-darwin-amd64 catops-darwin-arm64; do
             if [ -f "$binary" ]; then
               echo "  ✓ $binary ($(du -h $binary | cut -f1))"
             else
@@ -319,19 +253,10 @@ jobs:
             sudo mv catops /usr/local/bin/
             ```
 
-            **Windows (64-bit):**
-            ```powershell
-            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-windows-amd64.exe" -OutFile "catops.exe"
+            **Or use the install script:**
+            ```bash
+            curl -fsSL https://get.catops.io/install.sh | bash
             ```
-
-            **Windows (32-bit):**
-            ```powershell
-            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-windows-386.exe" -OutFile "catops.exe"
-            ```
-
-            **Or use the install scripts:**
-            - Linux/macOS: `curl -fsSL https://get.catops.io/install.sh | bash`
-            - Windows: `powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://get.catops.io/install.ps1' -UseBasicParsing | Invoke-Expression"`
             
             ### 📝 Checksums
             See `checksums.txt` for SHA256 checksums of all binaries.
@@ -345,8 +270,6 @@ jobs:
             catops-linux-arm64
             catops-darwin-amd64
             catops-darwin-arm64
-            catops-windows-amd64.exe
-            catops-windows-386.exe
             checksums.txt
           draft: false
           prerelease: false
@@ -363,8 +286,6 @@ jobs:
           echo "  • catops-linux-arm64"
           echo "  • catops-darwin-amd64"
           echo "  • catops-darwin-arm64"
-          echo "  • catops-windows-amd64.exe"
-          echo "  • catops-windows-386.exe"
           echo "  • checksums.txt"
           echo ""
           echo "🔗 Release URL:"
@@ -375,6 +296,4 @@ jobs:
           echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-linux-arm64"
           echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-amd64"
           echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-darwin-arm64"
-          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-windows-amd64.exe"
-          echo "  https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/catops-windows-386.exe"
 

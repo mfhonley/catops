@@ -87,16 +87,6 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")
 		ui.PrintStatus("success", "Launchd service created and enabled")
 		ui.PrintStatus("info", "CatOps will start automatically on boot")
 
-	case "windows":
-		// create Windows Task Scheduler task
-		if err := createWindowsTask(executable); err != nil {
-			ui.PrintStatus("error", fmt.Sprintf("Failed to create Windows task: %v", err))
-			return
-		}
-
-		ui.PrintStatus("success", "Windows Task Scheduler task created")
-		ui.PrintStatus("info", "CatOps will start automatically on boot")
-
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
 	}
@@ -127,15 +117,6 @@ func Disable() {
 
 		ui.PrintStatus("success", "Launchd service disabled and removed")
 
-	case "windows":
-		// remove Windows Task Scheduler task
-		if err := removeWindowsTask(); err != nil {
-			ui.PrintStatus("error", fmt.Sprintf("Failed to remove Windows task: %v", err))
-			return
-		}
-
-		ui.PrintStatus("success", "Windows Task Scheduler task removed")
-
 	default:
 		ui.PrintStatus("error", "Autostart not supported on this operating system")
 	}
@@ -161,15 +142,6 @@ func CheckStatus() {
 			ui.PrintStatus("success", "Autostart is enabled (launchd)")
 		} else {
 			ui.PrintStatus("info", "Autostart is disabled (launchd)")
-		}
-
-	case "windows":
-		// check Windows Task Scheduler task status
-		cmd := exec.Command("schtasks", "/Query", "/TN", "CatOpsMonitor")
-		if err := cmd.Run(); err == nil {
-			ui.PrintStatus("success", "Autostart is enabled (Task Scheduler)")
-		} else {
-			ui.PrintStatus("info", "Autostart is disabled (Task Scheduler)")
 		}
 
 	default:

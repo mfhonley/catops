@@ -262,72 +262,200 @@ catops autostart status
 
 **Monitor your entire Kubernetes cluster with one Helm command!**
 
+CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect metrics from your entire cluster.
+
 ### Prerequisites
 
-- Kubernetes 1.19+
-- Helm 3.0+
-- `metrics-server` installed ([installation guide](https://github.com/kubernetes-sigs/metrics-server#installation))
+- **Kubernetes**: 1.19+ (tested on 1.32+)
+- **Helm**: 3.0+
+- **metrics-server**: Required for pod CPU/Memory metrics ([installation guide](https://github.com/kubernetes-sigs/metrics-server#installation))
 
 ### Quick Install
 
 ```bash
-# 1. Get your auth token from https://app.catops.io/settings/integrations
+# 1. Get your auth token
+# Visit https://app.catops.io → Profile → Generate Auth Token
 
-# 2. Install CatOps Kubernetes Connector
-helm repo add catops https://charts.catops.io
-helm repo update
+# 2. Install from GitHub (Helm chart not yet published)
+git clone https://github.com/mfhonley/catops.git
+cd catops/charts/catops
 
-helm install catops catops/catops \
+# 3. Deploy to your cluster
+helm install catops . \
+  --set auth.token=YOUR_AUTH_TOKEN
+
+# Or specify custom backend URL and namespace
+helm install catops . \
   --set auth.token=YOUR_AUTH_TOKEN \
+  --set backend.url=https://api.catops.io \
   --namespace catops-system \
   --create-namespace
 ```
 
-**That's it!** 🎉 Your cluster metrics will appear in the dashboard within 1 minute.
+**That's it!** 🎉 Your Kubernetes nodes will appear in the dashboard within 1 minute.
+
+### Installation on Docker Desktop (Local Testing)
+
+```bash
+# 1. Enable Kubernetes in Docker Desktop
+# Docker Desktop → Settings → Kubernetes → Enable Kubernetes
+
+# 2. Install metrics-server (required for pod metrics)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# Patch for Docker Desktop (allows insecure TLS)
+kubectl patch deployment metrics-server -n kube-system \
+  --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+
+# 3. Install CatOps
+helm install catops ./charts/catops \
+  --set auth.token=YOUR_AUTH_TOKEN
+```
 
 ### What Gets Monitored?
 
-**Per-Node Metrics:**
-- CPU, Memory, Disk usage
-- Network I/O
-- Running pods count
+**Node-Level Metrics** (per Kubernetes node):
+- CPU, Memory, Disk usage (%)
+- Network I/O (HTTPS connections)
+- I/O operations (IOPS, I/O Wait)
+- Number of pods running on node
+- Node system info (OS, IP, uptime)
 
-**Per-Pod Metrics:**
-- CPU cores usage
+**Pod-Level Metrics** (per pod):
+- CPU cores usage (e.g., 0.5 = 500m)
 - Memory bytes usage
+- Pod phase (Running/Pending/Failed/Succeeded)
 - Restart count
-- Pod phase (Running/Pending/Failed)
+- Container count
 
-**Cluster-Wide Metrics:**
+**Cluster-Wide Metrics**:
 - Total nodes / Ready nodes
-- Total pods / Running pods
-- Failed/Pending pods
+- Total pods / Running pods / Pending / Failed
+- Cluster health percentage
+
+### How It Works
+
+1. **DaemonSet Deployment**: One pod per node collects metrics locally
+2. **Auto-Registration**: Each node automatically registers in your CatOps dashboard
+3. **Metrics Collection**: Every 60 seconds, metrics are sent to backend
+4. **Dashboard View**: Nodes appear in dashboard with ☸️ icon, labeled "Kubernetes Node"
+
+### Viewing Metrics
+
+**In Dashboard:**
+```
+Your nodes will appear with:
+- ☸️ Icon (instead of OS icon)
+- "Kubernetes Node" label
+- Region: kubernetes
+- Separate "Kubernetes Nodes" counter
+```
+
+**In ClickHouse (for advanced queries):**
+```sql
+-- Node metrics
+SELECT * FROM k8s_node_metrics ORDER BY timestamp DESC LIMIT 10;
+
+-- Pod metrics
+SELECT * FROM k8s_pod_metrics ORDER BY timestamp DESC LIMIT 10;
+
+-- Cluster health
+SELECT * FROM k8s_cluster_metrics ORDER BY timestamp DESC LIMIT 5;
+```
 
 ### Advanced Configuration
 
 **Custom resource limits:**
 ```bash
-helm install catops catops/catops \
+helm install catops ./charts/catops \
   --set auth.token=YOUR_TOKEN \
-  --set resources.requests.cpu=200m \
-  --set resources.requests.memory=256Mi
+  --set resources.limits.cpu=200m \
+  --set resources.limits.memory=256Mi \
+  --set resources.requests.cpu=100m \
+  --set resources.requests.memory=128Mi
+```
+
+**Custom collection interval:**
+```bash
+helm install catops ./charts/catops \
+  --set auth.token=YOUR_TOKEN \
+  --set collection.interval=30  # Collect every 30 seconds
 ```
 
 **Run on specific nodes only:**
 ```bash
-helm install catops catops/catops \
+helm install catops ./charts/catops \
   --set auth.token=YOUR_TOKEN \
-  --set nodeSelector.workload=monitoring
+  --set nodeSelector.monitoring=enabled
 ```
 
-**For full documentation:** See [charts/catops/README.md](charts/catops/README.md)
+**Custom backend URL (self-hosted):**
+```bash
+helm install catops ./charts/catops \
+  --set auth.token=YOUR_TOKEN \
+  --set backend.url=https://your-backend.com
+```
+
+### Verifying Installation
+
+```bash
+# Check DaemonSet status
+kubectl get daemonset catops
+
+# Check pods (should be 1 per node)
+kubectl get pods -l app.kubernetes.io/name=catops
+
+# View pod logs
+kubectl logs -l app.kubernetes.io/name=catops --tail=50
+
+# Check metrics-server is working
+kubectl top nodes
+kubectl top pods
+```
+
+### Troubleshooting
+
+**Pods in CrashLoopBackOff:**
+```bash
+# Check logs for errors
+kubectl logs -l app.kubernetes.io/name=catops
+
+# Common issue: metrics-server not installed
+kubectl get deployment metrics-server -n kube-system
+```
+
+**Metrics not appearing in dashboard:**
+```bash
+# Verify auth token is correct
+kubectl get secret catops-secret -o jsonpath='{.data.auth-token}' | base64 -d
+
+# Check pod can reach backend
+kubectl exec -it $(kubectl get pod -l app.kubernetes.io/name=catops -o name | head -1) -- wget -O- https://api.catops.io/health
+```
+
+**For full testing guide:** See [docs/KUBERNETES_TESTING.md](docs/KUBERNETES_TESTING.md)
 
 ### Uninstall
 
 ```bash
+# Remove Helm release
+helm uninstall catops
+
+# Or with custom namespace
 helm uninstall catops -n catops-system
 kubectl delete namespace catops-system
 ```
+
+### Features
+
+- ✅ **Zero-config**: Auto-detects in-cluster environment
+- ✅ **Auto-registration**: Nodes register automatically in dashboard
+- ✅ **Multi-arch**: Supports AMD64 and ARM64
+- ✅ **GDPR Compliant**: All IP addresses anonymized
+- ✅ **Secure**: Non-root user, read-only RBAC permissions
+- ✅ **Efficient**: ~50MB per pod, minimal CPU/memory footprint
+- ✅ **CI/CD Ready**: GitHub Actions builds Docker images automatically
 
 ---
 

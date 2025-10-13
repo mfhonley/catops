@@ -33,8 +33,8 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 
 # Создаем non-root пользователя
-RUN addgroup -g 65534 catops && \
-    adduser -D -u 65534 -G catops catops
+RUN addgroup -g 10001 catops && \
+    adduser -D -u 10001 -G catops catops
 
 # Создаем директорию для временных файлов
 RUN mkdir -p /tmp && chown catops:catops /tmp

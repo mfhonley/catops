@@ -17,10 +17,7 @@ Lightweight monitoring agent for Kubernetes clusters. Automatically collects met
 2. **Install via Helm:**
 
 ```bash
-helm repo add catops https://charts.catops.io
-helm repo update
-
-helm install catops catops/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set auth.token=YOUR_AUTH_TOKEN \
   --namespace catops-system \
   --create-namespace
@@ -54,7 +51,7 @@ helm install catops catops/catops \
 #### Custom Backend URL
 
 ```bash
-helm install catops catops/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set auth.token=YOUR_TOKEN \
   --set backend.url=https://custom-backend.example.com
 ```
@@ -62,7 +59,7 @@ helm install catops catops/catops \
 #### Resource Limits
 
 ```bash
-helm install catops catops/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set auth.token=YOUR_TOKEN \
   --set resources.requests.cpu=200m \
   --set resources.requests.memory=256Mi
@@ -71,7 +68,7 @@ helm install catops catops/catops \
 #### Node Selector (specific nodes only)
 
 ```bash
-helm install catops catops/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set auth.token=YOUR_TOKEN \
   --set nodeSelector.workload=monitoring
 ```
@@ -162,9 +159,9 @@ CatOps Kubernetes Connector requires the following permissions:
 ## 🔄 Updating
 
 ```bash
-helm repo update
-helm upgrade catops catops/catops \
-  --set auth.token=YOUR_TOKEN
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --set auth.token=YOUR_TOKEN \
+  --namespace catops-system
 ```
 
 ---

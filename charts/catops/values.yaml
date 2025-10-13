@@ -27,7 +27,7 @@ collection:
 # Image Configuration
 # ============================================================================
 image:
-  repository: catops/kubernetes-connector
+  repository: ghcr.io/mfhonley/catops/kubernetes-connector
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"

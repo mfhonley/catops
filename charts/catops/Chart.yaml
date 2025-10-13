@@ -2,8 +2,8 @@ apiVersion: v2
 name: catops
 description: CatOps Kubernetes Monitoring Connector - Lightweight monitoring agent for Kubernetes clusters
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 1.0.1
+appVersion: "1.0.1"
 home: https://catops.io
 sources:
   - https://github.com/catops/cli

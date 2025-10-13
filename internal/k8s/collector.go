@@ -62,6 +62,9 @@ type K8sMetrics struct {
 	// K8s-specific metrics
 	Pods      []PodMetric     `json:"pods"`
 	Cluster   *ClusterMetrics `json:"cluster"`
+
+	// JWT token для backend
+	UserToken string `json:"user_token"`
 }
 
 // PodMetric метрики пода
@@ -123,6 +126,7 @@ func (c *Collector) CollectAndSend(ctx context.Context) error {
 		Node:      nodeMetrics,
 		Pods:      podMetrics,
 		Cluster:   clusterMetrics,
+		UserToken: c.authToken,
 	}
 
 	// 5. Отправляем в backend

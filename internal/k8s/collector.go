@@ -262,6 +262,9 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 	// Устанавливаем headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
+	req.Header.Set("User-Agent", "CatOps-CLI/1.0.0")
+	req.Header.Set("X-CLI-Platform", "linux")
+	req.Header.Set("X-CLI-Version", "0.1.9")
 	req.Header.Set("X-CatOps-Source", "kubernetes")
 	req.Header.Set("X-CatOps-Version", "1.0.0")
 

@@ -58,7 +58,7 @@ func main() {
 	logger.Info("✅ Kubernetes API is healthy")
 
 	// Создаем collector
-	collector := k8s.NewCollector(k8sClient, config)
+	collector := k8s.NewCollector(k8sClient, config, Version)
 
 	// Graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

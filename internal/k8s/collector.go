@@ -19,6 +19,7 @@ type Collector struct {
 	authToken   string
 	nodeName    string
 	namespace   string
+	version     string
 }
 
 // CollectorConfig конфигурация для Collector
@@ -30,7 +31,7 @@ type CollectorConfig struct {
 }
 
 // NewCollector создает новый Collector
-func NewCollector(client *Client, config interface{}) *Collector {
+func NewCollector(client *Client, config interface{}, version string) *Collector {
 	// Type assertion для получения конфигурации
 	cfg := config.(interface {
 		GetBackendURL() string
@@ -45,6 +46,7 @@ func NewCollector(client *Client, config interface{}) *Collector {
 		authToken:  cfg.GetAuthToken(),
 		nodeName:   cfg.GetNodeName(),
 		namespace:  cfg.GetNamespace(),
+		version:    version,
 	}
 }
 
@@ -263,8 +265,8 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	req.Header.Set("User-Agent", "CatOps-CLI/1.0.0")
-	req.Header.Set("X-CLI-Platform", "linux")
-	req.Header.Set("X-CLI-Version", "0.1.9")
+	req.Header.Set("X-Platform", "linux")
+	req.Header.Set("X-Version", c.version)
 	req.Header.Set("X-CatOps-Source", "kubernetes")
 	req.Header.Set("X-CatOps-Version", "1.0.0")
 

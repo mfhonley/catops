@@ -91,10 +91,50 @@ jobs:
             --set auth.token=test-token \
             > /dev/null
 
+  helm-publish:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [build, helm-lint]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.12.0'
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and Publish Helm chart
+        run: |
+          # Package chart
+          helm package charts/catops
+
+          # Получаем версию из Chart.yaml
+          CHART_VERSION=$(grep '^version:' charts/catops/Chart.yaml | awk '{print $2}')
+          echo "📦 Publishing Helm chart version: $CHART_VERSION"
+
+          # Публикуем chart в GHCR как OCI artifact
+          helm push catops-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}/helm-charts
+
+          echo "✅ Helm chart published to: oci://ghcr.io/${{ github.repository }}/helm-charts/catops"
+
   helm-package:
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     needs: [build, helm-lint]
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -114,7 +154,20 @@ jobs:
           name: helm-chart
           path: catops-*.tgz
 
-      # Опционально: публикация в Helm repository
-      # - name: Publish to Helm repository
-      #   run: |
-      #     # Ваш код для публикации в Helm repo
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Helm chart to GHCR
+        run: |
+          # Получаем версию из Chart.yaml
+          CHART_VERSION=$(grep '^version:' charts/catops/Chart.yaml | awk '{print $2}')
+          echo "📦 Publishing Helm chart version: $CHART_VERSION"
+
+          # Публикуем chart в GHCR как OCI artifact
+          helm push catops-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository }}/helm-charts
+
+          echo "✅ Helm chart published to: oci://ghcr.io/${{ github.repository }}/helm-charts/catops:$CHART_VERSION"

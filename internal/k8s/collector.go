@@ -254,23 +254,18 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 		return fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	// Создаем HTTP request
 	url := fmt.Sprintf("%s/api/cli/kubernetes/metrics", c.backendURL)
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Устанавливаем headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	req.Header.Set("User-Agent", "CatOps-CLI/1.0.0")
 	req.Header.Set("X-Platform", "linux")
 	req.Header.Set("X-Version", c.version)
-	req.Header.Set("X-CatOps-Source", "kubernetes")
-	req.Header.Set("X-CatOps-Version", "1.0.0")
 
-	// Отправляем request
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

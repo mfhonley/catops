@@ -72,6 +72,11 @@ jobs:
         with:
           version: '3.12.0'
 
+      - name: Update Helm dependencies
+        run: |
+          cd charts/catops
+          helm dependency update
+
       - name: Lint Helm chart
         run: |
           helm lint charts/catops
@@ -107,6 +112,11 @@ jobs:
 
       - name: Package and Publish Helm chart
         run: |
+          # Update dependencies
+          cd charts/catops
+          helm dependency update
+          cd ../..
+
           # Package chart
           helm package charts/catops
 
@@ -137,6 +147,9 @@ jobs:
 
       - name: Package Helm chart
         run: |
+          cd charts/catops
+          helm dependency update
+          cd ../..
           helm package charts/catops
 
       - name: Upload Helm chart artifact

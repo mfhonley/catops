@@ -15,13 +15,13 @@ import (
 
 const (
 	// Version информация
-	Version = "1.0.0"
+	Version = "0.2.2"
 )
 
 func main() {
 	// Banner
 	fmt.Println("╔═══════════════════════════════════════╗")
-	fmt.Println("║   CatOps Kubernetes Connector v" + Version + "   ║")
+	fmt.Println("║   CatOps Kubernetes Connector v" + Version + "        ║")
 	fmt.Println("╚═══════════════════════════════════════╝")
 	fmt.Println()
 
@@ -111,6 +111,9 @@ type Config struct {
 
 	// Collection settings
 	CollectionInterval int // seconds
+
+	// Prometheus (optional)
+	PrometheusURL string
 }
 
 // Validate проверяет конфигурацию
@@ -131,10 +134,11 @@ func (c *Config) Validate() error {
 }
 
 // Interface methods для Collector
-func (c *Config) GetBackendURL() string { return c.BackendURL }
-func (c *Config) GetAuthToken() string  { return c.AuthToken }
-func (c *Config) GetNodeName() string   { return c.NodeName }
-func (c *Config) GetNamespace() string  { return c.Namespace }
+func (c *Config) GetBackendURL() string    { return c.BackendURL }
+func (c *Config) GetAuthToken() string     { return c.AuthToken }
+func (c *Config) GetNodeName() string      { return c.NodeName }
+func (c *Config) GetNamespace() string     { return c.Namespace }
+func (c *Config) GetPrometheusURL() string { return c.PrometheusURL }
 
 // loadConfig загружает конфигурацию из environment variables
 func loadConfig() (*Config, error) {
@@ -144,6 +148,7 @@ func loadConfig() (*Config, error) {
 		NodeName:           getEnv("NODE_NAME", ""),
 		Namespace:          getEnv("NAMESPACE", "default"),
 		CollectionInterval: getEnvInt("COLLECTION_INTERVAL", 60),
+		PrometheusURL:      getEnv("PROMETHEUS_URL", ""), // Optional
 	}
 
 	return config, nil

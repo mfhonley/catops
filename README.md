@@ -273,7 +273,7 @@ CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect
 ### Quick Install
 
 ```bash
-# 1. Get your auth token from https://app.catops.io/setup
+# 1. Get your auth token from https://catops.app/setup
 
 # 2. Deploy to your cluster
 helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
@@ -425,6 +425,53 @@ kubectl exec -it $(kubectl get pod -l app.kubernetes.io/name=catops -o name | he
 ```
 
 **For full testing guide:** See [docs/KUBERNETES_TESTING.md](docs/KUBERNETES_TESTING.md)
+
+### Standalone vs Kubernetes Commands
+
+| Action | Standalone Server | Kubernetes |
+|--------|------------------|------------|
+| **Install** | `curl -sSL get.catops.io \| bash` | `helm install catops ...` |
+| **Update** | `catops update` | `helm upgrade catops --reuse-values` |
+| **Version** | `catops --version` | `helm list -n catops-system` |
+| **Status** | `catops status` | `kubectl get pods -n catops-system` |
+| **Logs** | `catops logs` | `kubectl logs -n catops-system -l app.kubernetes.io/name=catops` |
+| **Restart** | `catops restart` | `kubectl rollout restart daemonset catops -n catops-system` |
+| **Uninstall** | `catops uninstall` | `helm uninstall catops -n catops-system` |
+
+**📖 Full command reference:** See [docs/STANDALONE_VS_K8S_CHEATSHEET.md](../docs/STANDALONE_VS_K8S_CHEATSHEET.md)
+
+### Updating
+
+**Update to the latest version (keeps your settings):**
+
+```bash
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values
+```
+
+**Update to a specific version:**
+
+```bash
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --version 1.1.0 \
+  --namespace catops-system \
+  --reuse-values
+```
+
+**Check current version:**
+
+```bash
+helm list -n catops-system
+```
+
+**Rollback if something goes wrong:**
+
+```bash
+helm rollback catops -n catops-system
+```
+
+**📖 For detailed update guide:** See [docs/K8S_UPDATE_GUIDE.md](../docs/K8S_UPDATE_GUIDE.md)
 
 ### Uninstall
 
@@ -663,9 +710,9 @@ CatOps automatically determines your operation mode based on `~/.catops/config.y
 
 #### **Backend API Integration**
 Cloud Mode sends data to these secure endpoints:
-- **Events API**: `https://api.catops.app/api/data/events` - Service lifecycle events
-- **Alerts API**: `https://api.catops.app/api/data/alerts` - Threshold violations
-- **Server Management**: `https://api.catops.app/api/downloads/install` - Server registration
+- **Events API**: `https://api.catops.io/api/data/events` - Service lifecycle events
+- **Alerts API**: `https://api.catops.io/api/data/alerts` - Threshold violations
+- **Server Management**: `https://api.catops.io/api/downloads/install` - Server registration
 
 #### **Data Security & Privacy**
 - **Authentication Required**: All requests include `auth_token` (permanent user_token) and `server_id`

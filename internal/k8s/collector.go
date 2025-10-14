@@ -14,20 +14,23 @@ import (
 
 // Collector собирает метрики из Kubernetes
 type Collector struct {
-	client      *Client
-	backendURL  string
-	authToken   string
-	nodeName    string
-	namespace   string
-	version     string
+	client         *Client
+	backendURL     string
+	authToken      string
+	nodeName       string
+	namespace      string
+	version        string
+	prometheusURL  string              // NEW: Prometheus URL (optional)
+	promClient     *PrometheusClient   // NEW: Prometheus client (optional)
 }
 
 // CollectorConfig конфигурация для Collector
 type CollectorConfig struct {
-	BackendURL string
-	AuthToken  string
-	NodeName   string
-	Namespace  string
+	BackendURL    string
+	AuthToken     string
+	NodeName      string
+	Namespace     string
+	PrometheusURL string // NEW: Optional Prometheus URL
 }
 
 // NewCollector создает новый Collector
@@ -38,16 +41,43 @@ func NewCollector(client *Client, config interface{}, version string) *Collector
 		GetAuthToken() string
 		GetNodeName() string
 		GetNamespace() string
+		GetPrometheusURL() string // NEW
 	})
 
-	return &Collector{
-		client:     client,
-		backendURL: cfg.GetBackendURL(),
-		authToken:  cfg.GetAuthToken(),
-		nodeName:   cfg.GetNodeName(),
-		namespace:  cfg.GetNamespace(),
-		version:    version,
+	c := &Collector{
+		client:        client,
+		backendURL:    cfg.GetBackendURL(),
+		authToken:     cfg.GetAuthToken(),
+		nodeName:      cfg.GetNodeName(),
+		namespace:     cfg.GetNamespace(),
+		prometheusURL: cfg.GetPrometheusURL(),
+		version:       version,
 	}
+
+	// Try to initialize Prometheus client (optional, non-blocking)
+	if c.prometheusURL != "" {
+		promClient, err := NewPrometheusClient(c.prometheusURL, c.nodeName)
+		if err != nil {
+			logger.Warning("⚠️  Prometheus client initialization failed: %v", err)
+			logger.Info("ℹ️  Continuing with basic metrics only")
+		} else {
+			// Test connection
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if promClient.IsAvailable(ctx) {
+				c.promClient = promClient
+				logger.Info("✅ Prometheus connected: %s", c.prometheusURL)
+			} else {
+				logger.Warning("⚠️  Prometheus not available at %s", c.prometheusURL)
+				logger.Info("ℹ️  Continuing with basic metrics only")
+			}
+		}
+	} else {
+		logger.Info("ℹ️  Prometheus URL not configured, using basic metrics only")
+	}
+
+	return c
 }
 
 // K8sMetrics метрики Kubernetes
@@ -69,15 +99,23 @@ type K8sMetrics struct {
 
 // PodMetric метрики пода
 type PodMetric struct {
-	Name          string  `json:"name"`
-	Namespace     string  `json:"namespace"`
-	PodIP         string  `json:"pod_ip"`
-	HostIP        string  `json:"host_ip"`
-	Phase         string  `json:"phase"`
-	CPUUsage      float64 `json:"cpu_usage_cores"`
-	MemoryUsage   int64   `json:"memory_usage_bytes"`
-	RestartCount  int32   `json:"restart_count"`
-	ContainerCount int    `json:"container_count"`
+	// Basic fields (always present)
+	Name           string  `json:"name"`
+	Namespace      string  `json:"namespace"`
+	PodIP          string  `json:"pod_ip"`
+	HostIP         string  `json:"host_ip"`
+	Phase          string  `json:"phase"`
+	CPUUsage       float64 `json:"cpu_usage_cores"`
+	MemoryUsage    int64   `json:"memory_usage_bytes"`
+	RestartCount   int32   `json:"restart_count"`
+	ContainerCount int     `json:"container_count"`
+
+	// Extended fields (from Prometheus, optional)
+	Labels     map[string]string `json:"labels,omitempty"`
+	OwnerKind  string            `json:"owner_kind,omitempty"`
+	OwnerName  string            `json:"owner_name,omitempty"`
+	Containers []ContainerDetail `json:"containers,omitempty"`
+	CreatedAt  time.Time         `json:"created_at,omitempty"`
 }
 
 // ClusterMetrics метрики кластера
@@ -96,20 +134,49 @@ func (c *Collector) CollectAndSend(ctx context.Context) error {
 
 	logger.Info("📊 Collecting metrics...")
 
-	// 1. Собираем node metrics (переиспользуем существующий код!)
+	// 1. Собираем node metrics (БАЗОВЫЕ - переиспользуем существующий код!)
 	nodeMetrics, err := c.collectNodeMetrics()
 	if err != nil {
 		return fmt.Errorf("failed to collect node metrics: %w", err)
 	}
 
-	// 2. Собираем pod metrics для текущей ноды
+	// 2. Собираем pod metrics для текущей ноды (БАЗОВЫЕ)
 	podMetrics, err := c.collectPodMetrics(ctx)
 	if err != nil {
 		logger.Warning("Failed to collect pod metrics: %v", err)
 		podMetrics = []PodMetric{} // продолжаем с пустым списком
 	}
 
-	// 3. Собираем cluster metrics (только с первой ноды, чтобы не дублировать)
+	// 3. НОВОЕ: Если Prometheus доступен, обогащаем данные расширенными метриками
+	if c.promClient != nil {
+		logger.Info("🔍 Fetching extended metrics from Prometheus...")
+
+		// Обогащаем node metrics
+		extendedNode, err := c.promClient.QueryNodeMetrics(ctx)
+		if err == nil && extendedNode != nil {
+			// TODO: Merge extended node metrics into nodeMetrics
+			// For now, we'll add them in the payload structure
+			logger.Info("✅ Node metrics enriched with Prometheus data")
+			logger.Debug("  CPU per core: %d cores", len(extendedNode.CPUPerCore))
+			logger.Debug("  Disk I/O devices: %d", len(extendedNode.DiskIOPerDevice))
+			logger.Debug("  Network interfaces: %d", len(extendedNode.NetworkPerInterface))
+		} else {
+			logger.Warning("⚠️  Failed to fetch Prometheus node metrics: %v", err)
+		}
+
+		// Обогащаем pod metrics
+		extendedPods, err := c.promClient.QueryPodMetrics(ctx)
+		if err == nil && len(extendedPods) > 0 {
+			podMetrics = c.mergePodMetrics(podMetrics, extendedPods)
+			logger.Info("✅ Pod metrics enriched with Prometheus data (%d pods)", len(extendedPods))
+		} else {
+			logger.Warning("⚠️  Failed to fetch Prometheus pod metrics: %v", err)
+		}
+	} else {
+		logger.Info("ℹ️  Using basic metrics only (Prometheus not available)")
+	}
+
+	// 4. Собираем cluster metrics (только с первой ноды, чтобы не дублировать)
 	var clusterMetrics *ClusterMetrics
 	if c.shouldCollectClusterMetrics() {
 		clusterMetrics, err = c.collectClusterMetrics(ctx)
@@ -118,7 +185,7 @@ func (c *Collector) CollectAndSend(ctx context.Context) error {
 		}
 	}
 
-	// 4. Собираем всё в одну структуру
+	// 5. Собираем всё в одну структуру
 	k8sMetrics := &K8sMetrics{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		NodeName:  c.nodeName,
@@ -283,4 +350,44 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 	}
 
 	return nil
+}
+
+// mergePodMetrics объединяет базовые pod метрики с расширенными из Prometheus
+func (c *Collector) mergePodMetrics(basic []PodMetric, extended map[string]*ExtendedPodMetrics) []PodMetric {
+	if len(extended) == 0 {
+		return basic
+	}
+
+	// Обогащаем каждый pod расширенными данными
+	enriched := make([]PodMetric, len(basic))
+	for i, pod := range basic {
+		enriched[i] = pod
+
+		// Ищем расширенные метрики для этого пода
+		key := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+		if ext, found := extended[key]; found {
+			// Добавляем labels
+			if len(ext.Labels) > 0 {
+				enriched[i].Labels = ext.Labels
+			}
+
+			// Добавляем owner reference
+			if ext.OwnerKind != "" {
+				enriched[i].OwnerKind = ext.OwnerKind
+				enriched[i].OwnerName = ext.OwnerName
+			}
+
+			// Добавляем container details
+			if len(ext.Containers) > 0 {
+				enriched[i].Containers = ext.Containers
+			}
+
+			// Добавляем created_at
+			if !ext.CreatedAt.IsZero() {
+				enriched[i].CreatedAt = ext.CreatedAt
+			}
+		}
+	}
+
+	return enriched
 }

@@ -6,6 +6,8 @@ toolchain go1.24.2
 
 require (
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
+	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/common v0.61.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.18.2
@@ -42,6 +44,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
+	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.7 // indirect

@@ -1,20 +1,50 @@
 apiVersion: v2
 name: catops
-description: CatOps Kubernetes Monitoring Connector - Lightweight monitoring agent for Kubernetes clusters
+description: CatOps Kubernetes Monitoring - AI-powered observability with optional Prometheus integration (200+ metrics)
 type: application
-version: 1.0.1
-appVersion: "1.0.1"
-home: https://catops.io
+version: 0.2.2
+appVersion: "0.2.2"
+home: https://catops.app
 sources:
   - https://github.com/catops/cli
 maintainers:
   - name: CatOps Team
-    email: support@catops.io
-    url: https://catops.io
+    email: support@catops.app
+    url: https://catops.app
 keywords:
   - monitoring
   - observability
   - kubernetes
   - metrics
   - catops
-icon: https://catops.io/logo.png
+  - prometheus
+  - ai-powered
+icon: https://catops.app/logo.png
+
+# ============================================================================
+# Optional Dependencies (can be enabled/disabled via values.yaml)
+# ============================================================================
+dependencies:
+  # Prometheus - Metrics collection and short-term storage
+  - name: prometheus
+    version: "25.27.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled
+    tags:
+      - monitoring
+
+  # Node Exporter - System-level metrics (CPU, Memory, Disk, Network)
+  - name: prometheus-node-exporter
+    version: "4.39.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: nodeExporter.enabled
+    tags:
+      - monitoring
+
+  # kube-state-metrics - Kubernetes cluster state
+  - name: kube-state-metrics
+    version: "5.25.1"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: kubeStateMetrics.enabled
+    tags:
+      - monitoring

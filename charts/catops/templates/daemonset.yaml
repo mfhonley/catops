@@ -58,6 +58,11 @@ spec:
         # Collection settings
         - name: COLLECTION_INTERVAL
           value: {{ .Values.collection.interval | quote }}
+        {{- if .Values.prometheus.enabled }}
+        # Prometheus integration (optional)
+        - name: PROMETHEUS_URL
+          value: {{ tpl .Values.prometheus.url . | quote }}
+        {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
         volumeMounts:

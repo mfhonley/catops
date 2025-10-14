@@ -1,11 +1,11 @@
-# Default values for CatOps Kubernetes Connector
+# Default values for CatOps Kubernetes Monitoring
 # This is a YAML-formatted file.
 
 # ============================================================================
 # REQUIRED: Authentication
 # ============================================================================
 auth:
-  # Ваш CatOps auth token (получите на https://app.catops.io)
+  # Ваш CatOps auth token (получите на https://catops.app)
   # ОБЯЗАТЕЛЬНО: установите это значение при установке
   token: ""
 
@@ -22,6 +22,66 @@ backend:
 collection:
   # Интервал сбора метрик (в секундах)
   interval: 60
+
+# ============================================================================
+# Prometheus Integration (Optional - Enhanced Monitoring)
+# ============================================================================
+# Enable Prometheus for 200+ additional metrics
+# Disable to use basic metrics only (saves ~300MB RAM)
+prometheus:
+  enabled: true  # Set to false to disable Prometheus integration
+
+  # Internal service URL (auto-configured when enabled)
+  url: "http://{{ .Release.Name }}-prometheus-server:80"
+
+  # Prometheus server configuration
+  server:
+    retention: "1h"  # Short retention (CatOps stores long-term in ClickHouse)
+
+    persistentVolume:
+      enabled: false  # Disable persistent storage (short-term only)
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # Disable components we don't need
+  alertmanager:
+    enabled: false
+
+  prometheus-pushgateway:
+    enabled: false
+
+  kube-state-metrics:
+    enabled: false  # We enable it separately below
+
+# Node Exporter - System metrics (CPU, Memory, Disk, Network)
+nodeExporter:
+  enabled: true  # Set to false to disable system metrics collection
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# kube-state-metrics - Kubernetes cluster state
+kubeStateMetrics:
+  enabled: true  # Set to false to disable K8s state metrics
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
 
 # ============================================================================
 # Image Configuration

@@ -264,7 +264,7 @@ catops autostart status
 
 CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect metrics from your entire cluster.
 
-**Current Version**: v0.2.5 (with Prometheus integration and 200+ extended metrics)
+**Current Version**: v0.2.7 (with Prometheus integration and 200+ extended metrics)
 
 ### Prerequisites
 
@@ -272,6 +272,33 @@ CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect
 - **Helm**: 3.0+
 - **metrics-server**: Required for pod CPU/Memory metrics ([installation guide](https://github.com/kubernetes-sigs/metrics-server#installation))
 - **Prometheus** (optional): For extended metrics (labels, owner info, 200+ metrics) - can be installed automatically
+
+### Pre-flight Check
+
+Before installing, verify your cluster meets requirements:
+
+```bash
+# 1. Check Kubernetes version (need 1.19+)
+kubectl version --short
+
+# 2. Check Helm is installed (need 3.0+)
+helm version --short
+
+# 3. Verify metrics-server is installed and working
+kubectl get deployment metrics-server -n kube-system
+
+# If metrics-server not found, install it:
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+
+# For Docker Desktop, patch metrics-server to allow insecure TLS:
+kubectl patch deployment metrics-server -n kube-system \
+  --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+
+# 4. Test metrics-server works
+kubectl top nodes
+# Should show CPU and memory usage for each node
+```
 
 ### Quick Install
 
@@ -286,43 +313,80 @@ helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set auth.token=YOUR_AUTH_TOKEN
 ```
 
-**Full Installation with Prometheus (Extended Metrics):**
+**Full Installation with Prometheus (Extended Metrics - Recommended):**
 ```bash
-# Install with Prometheus + kube-state-metrics + node-exporter
+# Install with Prometheus + kube-state-metrics
+# Note: nodeExporter is disabled by default (not needed for most clusters)
 helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --namespace catops-system \
   --create-namespace \
   --set auth.token=YOUR_AUTH_TOKEN \
   --set prometheus.enabled=true \
   --set kubeStateMetrics.enabled=true \
-  --set nodeExporter.enabled=true
+  --set nodeExporter.enabled=false
 ```
 
-**That's it!** 🎉 Your Kubernetes nodes will appear in the dashboard within 1 minute.
+**That's it!** Your Kubernetes nodes will appear in the dashboard within 1 minute.
+
+**Verify Installation:**
+
+```bash
+# 1. Check pods are running (should see catops, prometheus, kube-state-metrics)
+kubectl get pods -n catops-system
+
+# Expected output:
+# NAME                                                READY   STATUS    RESTARTS   AGE
+# catops-xxxxx                                        1/1     Running   0          1m
+# catops-kube-state-metrics-xxxxxxxxx-xxxxx          1/1     Running   0          1m
+# catops-prometheus-server-0                          2/2     Running   0          1m
+
+# 2. Check CatOps logs for successful connection
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=20
+
+# You should see:
+# ✅ Connected to CatOps API
+# ✅ Prometheus integration: enabled
+# ✅ Collecting extended metrics
+
+# 3. View your nodes in the dashboard
+# Open https://catops.app and you should see your Kubernetes nodes with ☸️ icon
+```
 
 ### Installation on Docker Desktop (Local Testing)
 
+Docker Desktop has a single-node Kubernetes cluster, perfect for testing CatOps locally.
+
 ```bash
 # 1. Enable Kubernetes in Docker Desktop
-# Docker Desktop → Settings → Kubernetes → Enable Kubernetes
+# Docker Desktop → Settings → Kubernetes → Enable Kubernetes → Apply & Restart
 
 # 2. Install metrics-server (required for pod metrics)
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
-# Patch for Docker Desktop (allows insecure TLS)
+# 3. Patch metrics-server for Docker Desktop (allows insecure TLS)
 kubectl patch deployment metrics-server -n kube-system \
   --type='json' \
   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
 
-# 3. Install CatOps with Prometheus
+# 4. Verify metrics-server works
+kubectl top nodes
+# Should show your docker-desktop node with CPU/memory usage
+
+# 5. Install CatOps with Prometheus (same command as production!)
 helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --namespace catops-system \
   --create-namespace \
   --set auth.token=YOUR_AUTH_TOKEN \
   --set prometheus.enabled=true \
   --set kubeStateMetrics.enabled=true \
-  --set nodeExporter.enabled=true
+  --set nodeExporter.enabled=false
+
+# 6. Verify installation
+kubectl get pods -n catops-system
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=20
 ```
+
+**Note**: `nodeExporter.enabled=false` is the default and works fine on Docker Desktop.
 
 ### What Gets Monitored?
 
@@ -608,8 +672,9 @@ kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=100 | grep
 **Version Compatibility:**
 
 - **v0.2.0-v0.2.1**: Basic metrics only (no Prometheus)
-- **v0.2.2+**: Prometheus integration support
-- **v0.2.5** (current): Full Prometheus support with pod_age_seconds
+- **v0.2.2-v0.2.5**: Prometheus integration support
+- **v0.2.6**: Fixed image tag issues and better defaults
+- **v0.2.7** (current): Added initContainer to wait for Prometheus startup (fixes race condition)
 
 **Backward Compatibility:**
 

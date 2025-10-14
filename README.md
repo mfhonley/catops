@@ -22,7 +22,7 @@ git clone https://github.com/mfhonley/catops.git && cd catops && go build -o cat
 - **System Metrics**: CPU, Memory, Disk, Network, I/O monitoring
 - **Advanced Metrics**: IOPS, I/O Wait, HTTPS connections, process monitoring
 - **Cross-platform Support**: Linux (systemd), macOS (launchd)
-- **Kubernetes Support**: Native DaemonSet monitoring for K8s clusters
+- **Kubernetes Support**: Native DaemonSet monitoring with optional Prometheus (200+ metrics)
 - **Ultra-Lightweight**: Minimal resource footprint (~15MB binary)
 - **Terminal UI**: Clean, color-coded terminal interface
 
@@ -264,14 +264,18 @@ catops autostart status
 
 CatOps Kubernetes connector deploys as a DaemonSet (one pod per node) to collect metrics from your entire cluster.
 
+**Current Version**: v0.2.5 (with Prometheus integration and 200+ extended metrics)
+
 ### Prerequisites
 
 - **Kubernetes**: 1.19+ (tested on 1.32+)
 - **Helm**: 3.0+
 - **metrics-server**: Required for pod CPU/Memory metrics ([installation guide](https://github.com/kubernetes-sigs/metrics-server#installation))
+- **Prometheus** (optional): For extended metrics (labels, owner info, 200+ metrics) - can be installed automatically
 
 ### Quick Install
 
+**Basic Installation (Core Metrics Only):**
 ```bash
 # 1. Get your auth token from https://catops.app/setup
 
@@ -280,6 +284,18 @@ helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --namespace catops-system \
   --create-namespace \
   --set auth.token=YOUR_AUTH_TOKEN
+```
+
+**Full Installation with Prometheus (Extended Metrics):**
+```bash
+# Install with Prometheus + kube-state-metrics + node-exporter
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_AUTH_TOKEN \
+  --set prometheus.enabled=true \
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=true
 ```
 
 **That's it!** 🎉 Your Kubernetes nodes will appear in the dashboard within 1 minute.
@@ -298,12 +314,19 @@ kubectl patch deployment metrics-server -n kube-system \
   --type='json' \
   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
 
-# 3. Install CatOps
-helm install catops ./charts/catops \
-  --set auth.token=YOUR_AUTH_TOKEN
+# 3. Install CatOps with Prometheus
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_AUTH_TOKEN \
+  --set prometheus.enabled=true \
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=true
 ```
 
 ### What Gets Monitored?
+
+#### **Basic Metrics (Always Available)**
 
 **Node-Level Metrics** (per Kubernetes node):
 - CPU, Memory, Disk usage (%)
@@ -312,7 +335,8 @@ helm install catops ./charts/catops \
 - Number of pods running on node
 - Node system info (OS, IP, uptime)
 
-**Pod-Level Metrics** (per pod):
+**Pod-Level Metrics** (per pod on each node):
+- Pod name, namespace, IP addresses
 - CPU cores usage (e.g., 0.5 = 500m)
 - Memory bytes usage
 - Pod phase (Running/Pending/Failed/Succeeded)
@@ -324,12 +348,98 @@ helm install catops ./charts/catops \
 - Total pods / Running pods / Pending / Failed
 - Cluster health percentage
 
+#### **Extended Metrics (v0.2.2+, with Prometheus)**
+
+When Prometheus integration is enabled, you get 200+ additional metrics:
+
+**Enhanced Pod Metrics:**
+- **Pod Labels**: All Kubernetes labels (e.g., `app`, `version`, `env`)
+- **Owner Information**:
+  - `owner_kind`: Deployment, StatefulSet, DaemonSet, Job, ReplicaSet, etc.
+  - `owner_name`: Name of the controller (e.g., `nginx-deployment`)
+- **Container Details** (per container in pod):
+  - Container name
+  - Container image (e.g., `nginx:1.21`)
+  - Ready status
+  - Status (running/waiting/terminated)
+- **Pod Age**: Age in seconds since creation
+- **Pod Creation Timestamp**: When the pod was created
+
+**Example Extended Pod Metrics:**
+```json
+{
+  "name": "nginx-abc123",
+  "namespace": "default",
+  "phase": "Running",
+  "cpu_usage_cores": 0.05,
+  "memory_usage_bytes": 52428800,
+  "labels": {
+    "app": "nginx",
+    "version": "1.21",
+    "env": "production",
+    "helm.sh/chart": "nginx-1.0.0"
+  },
+  "owner_kind": "Deployment",
+  "owner_name": "nginx-deployment",
+  "containers": [
+    {
+      "name": "nginx",
+      "image": "nginx:1.21",
+      "ready": true,
+      "status": "running"
+    }
+  ],
+  "pod_age_seconds": 3600
+}
+```
+
 ### How It Works
 
 1. **DaemonSet Deployment**: One pod per node collects metrics locally
-2. **Auto-Registration**: Each node automatically registers in your CatOps dashboard
-3. **Metrics Collection**: Every 60 seconds, metrics are sent to backend
-4. **Dashboard View**: Nodes appear in dashboard with ☸️ icon, labeled "Kubernetes Node"
+2. **Kubernetes API Integration**: Direct access to pod/node information
+3. **Prometheus Integration** (optional): Enhanced metrics from kube-state-metrics and node-exporter
+4. **Auto-Registration**: Each node automatically registers in your CatOps dashboard
+5. **Metrics Collection**: Every 60 seconds, metrics are sent to backend
+6. **Dashboard View**: Nodes appear in dashboard with ☸️ icon, labeled "Kubernetes Node"
+
+**Architecture Diagram:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                        │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   Node 1     │  │   Node 2     │  │   Node 3     │      │
+│  │              │  │              │  │              │      │
+│  │  ┌────────┐  │  │  ┌────────┐  │  │  ┌────────┐  │      │
+│  │  │CatOps  │  │  │  │CatOps  │  │  │  │CatOps  │  │      │
+│  │  │Pod     │──┼──┼──│Pod     │──┼──┼──│Pod     │  │      │
+│  │  └────────┘  │  │  └────────┘  │  │  └────────┘  │      │
+│  │      │       │  │      │       │  │      │       │      │
+│  └──────┼───────┘  └──────┼───────┘  └──────┼───────┘      │
+│         │                 │                 │              │
+│         └─────────────────┼─────────────────┘              │
+│                           │                                │
+│  ┌────────────────────────▼──────────────────────────┐     │
+│  │            Prometheus (Optional)                   │     │
+│  │  • kube-state-metrics (pod labels, owners)        │     │
+│  │  • node-exporter (node metrics)                   │     │
+│  │  • 200+ metrics collection                        │     │
+│  └────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           │ HTTPS
+                           ▼
+                ┌──────────────────────┐
+                │   CatOps Backend     │
+                │   api.catops.io      │
+                └──────────────────────┘
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │   Web Dashboard      │
+                │   catops.app         │
+                └──────────────────────┘
+```
 
 ### Viewing Metrics
 
@@ -343,22 +453,175 @@ Your nodes will appear with:
 ```
 
 **In ClickHouse (for advanced queries):**
+
+**Basic Queries:**
 ```sql
--- Node metrics
-SELECT * FROM k8s_node_metrics ORDER BY timestamp DESC LIMIT 10;
+-- View recent node metrics
+SELECT * FROM k8s_node_metrics
+ORDER BY timestamp DESC
+LIMIT 10;
 
--- Pod metrics
-SELECT * FROM k8s_pod_metrics ORDER BY timestamp DESC LIMIT 10;
+-- View recent pod metrics
+SELECT * FROM k8s_pod_metrics
+ORDER BY timestamp DESC
+LIMIT 10;
 
--- Cluster health
-SELECT * FROM k8s_cluster_metrics ORDER BY timestamp DESC LIMIT 5;
+-- View cluster health
+SELECT * FROM k8s_cluster_metrics
+ORDER BY timestamp DESC
+LIMIT 5;
 ```
+
+**Extended Metrics Queries (with Prometheus):**
+```sql
+-- View pods with labels and owner information
+SELECT
+    formatDateTime(timestamp, '%Y-%m-%d %H:%M:%S') as time,
+    pod_name,
+    namespace,
+    phase,
+    length(labels) as labels_length,
+    owner_kind,
+    owner_name,
+    pod_age_seconds,
+    pod_age_seconds / 3600 as pod_age_hours
+FROM k8s_pod_metrics
+WHERE timestamp > now() - INTERVAL 5 MINUTE
+ORDER BY timestamp DESC
+LIMIT 20;
+
+-- Count pods by owner type
+SELECT
+    owner_kind,
+    count() as pod_count
+FROM k8s_pod_metrics
+WHERE timestamp > now() - INTERVAL 5 MINUTE
+GROUP BY owner_kind
+ORDER BY pod_count DESC;
+
+-- View pods with their labels (parsed JSON)
+SELECT
+    pod_name,
+    namespace,
+    labels
+FROM k8s_pod_metrics
+WHERE labels != ''
+  AND timestamp > now() - INTERVAL 5 MINUTE
+LIMIT 10;
+
+-- Find pods with specific label
+SELECT
+    pod_name,
+    namespace,
+    labels,
+    owner_name
+FROM k8s_pod_metrics
+WHERE JSONExtractString(labels, 'app') = 'nginx'
+  AND timestamp > now() - INTERVAL 5 MINUTE;
+
+-- Pod age statistics
+SELECT
+    namespace,
+    avg(pod_age_seconds) / 3600 as avg_age_hours,
+    max(pod_age_seconds) / 3600 as max_age_hours,
+    min(pod_age_seconds) / 3600 as min_age_hours
+FROM k8s_pod_metrics
+WHERE timestamp > now() - INTERVAL 1 HOUR
+GROUP BY namespace;
+```
+
+### Prometheus Integration
+
+**What is Prometheus?**
+
+Prometheus is an optional component that provides 200+ extended metrics beyond basic Kubernetes monitoring. When enabled, you get:
+- Pod labels (for filtering and grouping)
+- Owner information (which Deployment/StatefulSet owns each pod)
+- Container details (images, status, ready state)
+- Pod age and creation timestamps
+- Enhanced resource metrics
+
+**How to Enable:**
+
+```bash
+# Enable Prometheus during installation
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_AUTH_TOKEN \
+  --set prometheus.enabled=true \
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=true
+
+# Or upgrade existing installation to enable Prometheus
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values \
+  --set prometheus.enabled=true \
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=true
+```
+
+**How to Disable:**
+
+```bash
+# Disable Prometheus (keeps basic metrics)
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values \
+  --set prometheus.enabled=false \
+  --set kubeStateMetrics.enabled=false \
+  --set nodeExporter.enabled=false
+
+# Verify Prometheus pods are being removed
+kubectl get pods -n catops-system -w
+```
+
+**Note**: After disabling Prometheus, CatOps will continue working with basic metrics only (no labels, owner info, or container details).
+
+**Verify Prometheus is Working:**
+
+```bash
+# Check Prometheus pods are running
+kubectl get pods -n catops-system | grep prometheus
+
+# Check kube-state-metrics is running
+kubectl get pods -n catops-system | grep kube-state-metrics
+
+# Check node-exporter is running
+kubectl get pods -n catops-system | grep node-exporter
+
+# Verify Prometheus can access metrics
+kubectl port-forward -n catops-system svc/catops-prometheus-server 9090:80
+# Then open http://localhost:9090 in browser
+
+# Check if CatOps can query Prometheus
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=100 | grep -i prometheus
+```
+
+**What Components Get Installed:**
+
+1. **Prometheus Server**: Time-series database and query engine
+2. **kube-state-metrics**: Exposes Kubernetes cluster state (pod labels, owners, etc.)
+3. **node-exporter**: Exposes node-level metrics (DaemonSet on each node)
+
+**Version Compatibility:**
+
+- **v0.2.0-v0.2.1**: Basic metrics only (no Prometheus)
+- **v0.2.2+**: Prometheus integration support
+- **v0.2.5** (current): Full Prometheus support with pod_age_seconds
+
+**Backward Compatibility:**
+
+CatOps is fully backward compatible. Old CLI agents (v0.2.1) will continue to work with the backend - extended fields are optional, and the backend gracefully handles missing data.
 
 ### Advanced Configuration
 
 **Custom resource limits:**
 ```bash
-helm install catops ./charts/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
   --set auth.token=YOUR_TOKEN \
   --set resources.limits.cpu=200m \
   --set resources.limits.memory=256Mi \
@@ -368,60 +631,219 @@ helm install catops ./charts/catops \
 
 **Custom collection interval:**
 ```bash
-helm install catops ./charts/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
   --set auth.token=YOUR_TOKEN \
   --set collection.interval=30  # Collect every 30 seconds
 ```
 
 **Run on specific nodes only:**
 ```bash
-helm install catops ./charts/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
   --set auth.token=YOUR_TOKEN \
   --set nodeSelector.monitoring=enabled
 ```
 
 **Custom backend URL (self-hosted):**
 ```bash
-helm install catops ./charts/catops \
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
   --set auth.token=YOUR_TOKEN \
   --set backend.url=https://your-backend.com
+```
+
+**Using custom values.yaml:**
+```bash
+# Create custom-values.yaml
+cat > custom-values.yaml <<EOF
+auth:
+  token: YOUR_AUTH_TOKEN
+
+prometheus:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+collection:
+  interval: 60
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+EOF
+
+# Install with custom values
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --values custom-values.yaml
 ```
 
 ### Verifying Installation
 
 ```bash
 # Check DaemonSet status
-kubectl get daemonset catops
+kubectl get daemonset -n catops-system catops
 
 # Check pods (should be 1 per node)
-kubectl get pods -l app.kubernetes.io/name=catops
+kubectl get pods -n catops-system -l app.kubernetes.io/name=catops
 
 # View pod logs
-kubectl logs -l app.kubernetes.io/name=catops --tail=50
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=50
 
 # Check metrics-server is working
 kubectl top nodes
-kubectl top pods
+kubectl top pods -A
+
+# Check Prometheus components (if enabled)
+kubectl get pods -n catops-system | grep -E "prometheus|kube-state-metrics|node-exporter"
+```
+
+**Expected Output:**
+```
+NAME                                                READY   STATUS    RESTARTS   AGE
+catops-6ws2l                                        1/1     Running   0          2m
+catops-kube-state-metrics-5c8b7d9f6b-abcde         1/1     Running   0          2m
+catops-prometheus-node-exporter-xyz123              1/1     Running   0          2m
+catops-prometheus-server-0                          1/1     Running   0          2m
 ```
 
 ### Troubleshooting
 
-**Pods in CrashLoopBackOff:**
+#### **Pods in CrashLoopBackOff:**
 ```bash
 # Check logs for errors
-kubectl logs -l app.kubernetes.io/name=catops
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops
 
 # Common issue: metrics-server not installed
 kubectl get deployment metrics-server -n kube-system
+
+# Install metrics-server if missing
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-**Metrics not appearing in dashboard:**
+#### **Metrics not appearing in dashboard:**
 ```bash
 # Verify auth token is correct
-kubectl get secret catops-secret -o jsonpath='{.data.auth-token}' | base64 -d
+kubectl get secret catops-secret -n catops-system -o jsonpath='{.data.auth-token}' | base64 -d
 
 # Check pod can reach backend
-kubectl exec -it $(kubectl get pod -l app.kubernetes.io/name=catops -o name | head -1) -- wget -O- https://api.catops.io/health
+kubectl exec -n catops-system -it $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- wget -O- https://api.catops.io/health
+```
+
+#### **Pod labels are empty (even with Prometheus):**
+
+**Symptom**: Labels field in ClickHouse is empty or shows `labels_len = 0`
+
+**Solution**:
+```bash
+# 1. Check kube-state-metrics is installed
+kubectl get pods -n catops-system | grep kube-state-metrics
+
+# 2. If missing, enable it
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values \
+  --set kubeStateMetrics.enabled=true
+
+# 3. Wait for pod to start
+kubectl get pods -n catops-system -w
+
+# 4. Verify kube_pod_info metric exists
+kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
+  wget -qO- "http://catops-kube-state-metrics:8080/metrics" | grep "kube_pod_info"
+
+# 5. Check CatOps logs for Prometheus queries
+kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=100 | grep -i "prometheus\|labels"
+```
+
+#### **Node-exporter pods failing on Docker Desktop:**
+
+**Symptom**: node-exporter pods in CrashLoopBackOff on Docker Desktop
+
+**Reason**: node-exporter tries to access host paths that don't exist in Docker Desktop
+
+**Solution**: Disable node-exporter for Docker Desktop (CatOps works fine without it):
+```bash
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_AUTH_TOKEN \
+  --set prometheus.enabled=true \
+  --set kubeStateMetrics.enabled=true \
+  --set nodeExporter.enabled=false  # Disable for Docker Desktop
+```
+
+#### **Prometheus not connecting:**
+
+**Symptom**: Logs show "Failed to create Prometheus client"
+
+**Solution**:
+```bash
+# Check Prometheus service exists
+kubectl get svc -n catops-system | grep prometheus
+
+# Check Prometheus is reachable from CatOps pod
+kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
+  wget -qO- "http://catops-prometheus-server:80/-/healthy"
+
+# Verify Prometheus is enabled in helm values
+helm get values catops -n catops-system | grep prometheus
+```
+
+#### **Pod age showing incorrect values:**
+
+**Symptom**: Pod age shows as 2025 years or negative values
+
+**Status**: Fixed in v0.2.5
+
+**Solution**: Upgrade to v0.2.5+
+```bash
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --version 0.2.5 \
+  --namespace catops-system \
+  --reuse-values
+```
+
+#### **Checking Data in ClickHouse:**
+
+If you have direct access to ClickHouse, you can verify data is being stored correctly:
+
+```sql
+-- Check if metrics are being received
+SELECT
+    formatDateTime(timestamp, '%Y-%m-%d %H:%M:%S') as time,
+    count() as metric_count
+FROM k8s_pod_metrics
+WHERE timestamp > now() - INTERVAL 10 MINUTE
+GROUP BY timestamp
+ORDER BY timestamp DESC
+LIMIT 10;
+
+-- Check if extended fields are populated
+SELECT
+    pod_name,
+    length(labels) as labels_len,
+    owner_kind,
+    owner_name,
+    length(containers) as containers_len,
+    pod_age_seconds
+FROM k8s_pod_metrics
+WHERE timestamp > now() - INTERVAL 5 MINUTE
+ORDER BY timestamp DESC
+LIMIT 10;
 ```
 
 **For full testing guide:** See [docs/KUBERNETES_TESTING.md](docs/KUBERNETES_TESTING.md)
@@ -454,7 +876,7 @@ helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
 
 ```bash
 helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --version 1.1.0 \
+  --version 0.2.5 \
   --namespace catops-system \
   --reuse-values
 ```
@@ -475,23 +897,53 @@ helm rollback catops -n catops-system
 
 ### Uninstall
 
-```bash
-# Remove Helm release
-helm uninstall catops
+**Complete removal from Kubernetes cluster:**
 
-# Or with custom namespace
+```bash
+# 1. Remove CatOps Helm release (removes DaemonSet, pods, Prometheus, etc.)
 helm uninstall catops -n catops-system
+
+# 2. Delete namespace (cleans up all resources)
 kubectl delete namespace catops-system
 ```
+
+**What gets removed:**
+- ✅ CatOps DaemonSet and all pods
+- ✅ Prometheus server (if enabled)
+- ✅ kube-state-metrics (if enabled)
+- ✅ node-exporter (if enabled)
+- ✅ ConfigMaps and Secrets
+- ✅ ServiceAccounts and RBAC permissions
+- ✅ Services and PersistentVolumeClaims
+
+**Verify removal:**
+```bash
+# Check that all pods are gone
+kubectl get pods -n catops-system
+
+# Should return: "No resources found in catops-system namespace." or "Error from server (NotFound): namespaces "catops-system" not found"
+```
+
+**Note**: Uninstalling from Kubernetes cluster does NOT affect:
+- Your server data in the CatOps backend/dashboard
+- Historical metrics already stored in ClickHouse
+- Your auth token and server registration
+
+**Re-installing**: You can reinstall anytime with the same auth token, and your server will reconnect to the same dashboard account.
 
 ### Features
 
 - ✅ **Zero-config**: Auto-detects in-cluster environment
 - ✅ **Auto-registration**: Nodes register automatically in dashboard
+- ✅ **Prometheus Integration** (v0.2.2+): Optional 200+ extended metrics
+- ✅ **Pod Labels & Owner Info**: Track Deployments, StatefulSets, DaemonSets
+- ✅ **Container Details**: Image names, status, ready state per container
+- ✅ **Pod Age Tracking** (v0.2.5): Age in seconds since creation
 - ✅ **Multi-arch**: Supports AMD64 and ARM64
 - ✅ **GDPR Compliant**: All IP addresses anonymized
 - ✅ **Secure**: Non-root user, read-only RBAC permissions
 - ✅ **Efficient**: ~50MB per pod, minimal CPU/memory footprint
+- ✅ **Backward Compatible**: Old agents work with new backend
 - ✅ **CI/CD Ready**: GitHub Actions builds Docker images automatically
 
 ---

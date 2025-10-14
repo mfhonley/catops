@@ -61,7 +61,7 @@ spec:
         {{- if .Values.prometheus.enabled }}
         # Prometheus integration (optional)
         - name: PROMETHEUS_URL
-          value: {{ tpl .Values.prometheus.url . | quote }}
+          value: "http://{{ .Release.Name }}-prometheus-server:80"
         {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}

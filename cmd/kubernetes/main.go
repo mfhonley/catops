@@ -25,16 +25,24 @@ func main() {
 	fmt.Println("╚═══════════════════════════════════════╝")
 	fmt.Println()
 
+	fmt.Println("DEBUG: Starting configuration load...")
+
 	// Получаем конфигурацию из environment variables
 	config, err := loadConfig()
 	if err != nil {
+		fmt.Printf("ERROR: Failed to load configuration: %v\n", err)
 		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
+	fmt.Println("DEBUG: Configuration loaded successfully")
+
+	fmt.Println("DEBUG: Starting configuration validation...")
 
 	// Валидация конфигурации
 	if err := config.Validate(); err != nil {
+		fmt.Printf("ERROR: Invalid configuration: %v\n", err)
 		log.Fatalf("❌ Invalid configuration: %v", err)
 	}
+	fmt.Println("DEBUG: Configuration validated successfully")
 
 	logger.Info("📋 Configuration loaded successfully")
 	logger.Info("   Backend URL: %s", config.BackendURL)

@@ -38,19 +38,29 @@ func Default() *Logger {
 	}
 }
 
-// write writes a log entry to the log file
+// write writes a log entry to the log file AND stdout (for Kubernetes)
 func (l *Logger) write(level Level, message string, args ...interface{}) {
-	logFile, err := os.OpenFile(l.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return // Silently fail if we can't open log file
-	}
-	defer logFile.Close()
-
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	formattedMsg := fmt.Sprintf(message, args...)
 	logEntry := fmt.Sprintf("[%s] %s: %s\n", timestamp, level, formattedMsg)
 
-	logFile.WriteString(logEntry)
+	// Check if running in Kubernetes (NODE_NAME env var is set by K8s)
+	isKubernetes := os.Getenv("NODE_NAME") != ""
+
+	if isKubernetes {
+		// In Kubernetes: write to stdout (for kubectl logs)
+		fmt.Print(logEntry)
+	} else {
+		// In standalone mode: write to file only (existing behavior)
+		if l.filePath != "" {
+			logFile, err := os.OpenFile(l.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return // Silently fail if we can't open log file
+			}
+			defer logFile.Close()
+			logFile.WriteString(logEntry)
+		}
+	}
 }
 
 // Info logs an informational message

@@ -2,8 +2,8 @@ apiVersion: v2
 name: catops
 description: CatOps Kubernetes Monitoring - AI-powered observability with optional Prometheus integration (200+ metrics)
 type: application
-version: 0.2.3
-appVersion: "0.2.3"
+version: 0.2.4
+appVersion: "0.2.4"
 home: https://catops.app
 sources:
   - https://github.com/catops/cli

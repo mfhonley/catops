@@ -282,7 +282,8 @@ func (p *PrometheusClient) QueryPodMetrics(ctx context.Context) (map[string]*Ext
 
 // queryPodLabels queries all pod labels
 func (p *PrometheusClient) queryPodLabels(ctx context.Context, extendedPods map[string]*ExtendedPodMetrics) error {
-	query := fmt.Sprintf(`kube_pod_labels{node="%s"}`, p.nodeName)
+	// Use kube_pod_info instead of kube_pod_labels (which doesn't exist in kube-state-metrics by default)
+	query := fmt.Sprintf(`kube_pod_info{node="%s"}`, p.nodeName)
 
 	result, _, err := p.api.Query(ctx, query, time.Now())
 	if err != nil {
@@ -301,13 +302,19 @@ func (p *PrometheusClient) queryPodLabels(ctx context.Context, extendedPods map[
 				}
 			}
 
-			// Extract all labels (they start with "label_")
+			// Extract Kubernetes labels from Prometheus metric labels
+			// Common label prefixes: app_, helm_, k8s_, kubernetes_
 			for k, v := range sample.Metric {
 				labelKey := string(k)
-				if len(labelKey) > 6 && labelKey[:6] == "label_" {
-					labelName := labelKey[6:]
-					extendedPods[key].Labels[labelName] = string(v)
+				// Skip internal Prometheus labels and kube_pod_info specific fields
+				if labelKey == "__name__" || labelKey == "pod" || labelKey == "namespace" ||
+				   labelKey == "node" || labelKey == "host_ip" || labelKey == "pod_ip" ||
+				   labelKey == "uid" || labelKey == "created_by_kind" || labelKey == "created_by_name" ||
+				   labelKey == "host_network" || labelKey == "instance" || labelKey == "job" || labelKey == "service" {
+					continue
 				}
+				// Store all remaining labels (these are the actual pod labels)
+				extendedPods[key].Labels[labelKey] = string(v)
 			}
 		}
 	}

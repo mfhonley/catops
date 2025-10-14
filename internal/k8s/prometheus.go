@@ -318,13 +318,6 @@ func (p *PrometheusClient) queryPodLabels(ctx context.Context, extendedPods map[
 				extendedPods[key].Labels[labelKey] = string(v)
 				labelCount++
 			}
-			// Debug: log first pod's label count
-			if len(extendedPods) == 1 {
-				fmt.Printf("DEBUG: Pod %s has %d labels extracted\n", pod, labelCount)
-				for k, v := range extendedPods[key].Labels {
-					fmt.Printf("  %s = %s\n", k, v)
-				}
-			}
 		}
 	}
 

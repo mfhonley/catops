@@ -246,6 +246,7 @@ func (c *Collector) collectPodMetrics(ctx context.Context) ([]PodMetric, error) 
 			HostIP:         pod.Status.HostIP,
 			Phase:          string(pod.Status.Phase),
 			ContainerCount: len(pod.Spec.Containers),
+			CreatedAt:      pod.CreationTimestamp.Time, // Add pod creation timestamp
 		}
 
 		// Считаем restart count

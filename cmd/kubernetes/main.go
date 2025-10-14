@@ -15,7 +15,7 @@ import (
 
 const (
 	// Version информация
-	Version = "0.2.6"
+	Version = "0.2.7"
 )
 
 func main() {

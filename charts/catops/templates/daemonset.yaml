@@ -31,6 +31,30 @@ spec:
       hostNetwork: true
       {{- end }}
       dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- if .Values.prometheus.enabled }}
+      # Wait for Prometheus to be ready before starting CatOps
+      initContainers:
+      - name: wait-for-prometheus
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for Prometheus to be ready..."
+          until wget -qO- --timeout=2 http://{{ .Release.Name }}-prometheus-server:80/-/healthy 2>/dev/null; do
+            echo "Prometheus not ready yet, waiting 5 seconds..."
+            sleep 5
+          done
+          echo "✅ Prometheus is ready!"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      {{- end }}
       containers:
       - name: catops-connector
         securityContext:

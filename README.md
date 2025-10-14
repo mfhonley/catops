@@ -960,7 +960,61 @@ helm rollback catops -n catops-system
 
 **📖 For detailed update guide:** See [docs/K8S_UPDATE_GUIDE.md](../docs/K8S_UPDATE_GUIDE.md)
 
-### Uninstall
+### Managing CatOps in Kubernetes
+
+#### **Stop CatOps (Temporary Pause)**
+
+**Option 1: Delete DaemonSet (stop all monitoring, keep configuration):**
+```bash
+# Stop all CatOps pods by deleting DaemonSet
+kubectl delete daemonset catops --namespace catops-system
+
+# Verify pods are stopped
+kubectl get pods -n catops-system
+
+# Resume monitoring later - reinstall with same config
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values
+```
+
+**What happens:**
+- ✅ All CatOps connector pods removed
+- ✅ Prometheus/kube-state-metrics continue running (if enabled)
+- ✅ Configuration preserved in ConfigMaps/Secrets
+- ✅ Helm reinstall restores everything
+
+**Option 2: Disable Prometheus (reduce resource usage by ~60%):**
+```bash
+# Disable Prometheus to save ~300-500 MB RAM per cluster
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values \
+  --set prometheus.enabled=false \
+  --set kubeStateMetrics.enabled=false \
+  --set nodeExporter.enabled=false
+
+# CatOps continues with basic metrics only
+```
+
+**What happens:**
+- ✅ Prometheus pods removed (~500 MB saved)
+- ✅ Basic metrics continue (node/pod CPU/memory)
+- ✅ Extended metrics disabled (labels, owner info)
+- ✅ Can be re-enabled anytime with `prometheus.enabled=true`
+
+**Option 3: Reduce collection frequency (lower CPU usage):**
+```bash
+# Collect metrics every 2 minutes instead of 1 minute
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values \
+  --set collection.interval=120
+
+# Reduces CPU usage by ~40%
+```
+
+#### **Uninstall CatOps**
 
 **Complete removal from Kubernetes cluster:**
 
@@ -1010,6 +1064,107 @@ kubectl get pods -n catops-system
 - ✅ **Efficient**: ~50MB per pod, minimal CPU/memory footprint
 - ✅ **Backward Compatible**: Old agents work with new backend
 - ✅ **CI/CD Ready**: GitHub Actions builds Docker images automatically
+
+### Resource Consumption
+
+Understanding resource usage helps you plan capacity and optimize costs:
+
+#### **Basic Configuration (without Prometheus)**
+
+**Per Node Resources:**
+- **CatOps Connector**:
+  - CPU: 100m request / 200m limit (~0.1-0.2 CPU cores)
+  - Memory: 128Mi request / 256Mi limit (~128-256 MB RAM)
+
+**Total for 3-node cluster:** ~300-800 MB RAM, ~0.3-0.6 CPU
+
+**Recommended for:**
+- Small clusters (1-5 nodes)
+- Docker Desktop / minikube
+- Development environments
+- Limited resource availability
+
+#### **Full Configuration (with Prometheus + Extended Metrics)**
+
+**Per Node Resources:**
+- **CatOps Connector**: 128-256 MB RAM, 0.1-0.2 CPU
+- **Node Exporter** (optional): 64-128 MB RAM, 0.05-0.2 CPU
+- **Kube-state-metrics** (1 pod per cluster): 64-128 MB RAM, 0.05-0.2 CPU
+
+**Cluster-wide Resources (1 instance):**
+- **Prometheus Server**:
+  - CPU: 100m request / 500m limit (~0.1-0.5 CPU)
+  - Memory: 256Mi request / 512Mi limit (~256-512 MB RAM)
+  - Storage: ~0 (1h retention, no persistent volume)
+
+**Total for 3-node cluster:** ~1-1.5 GB RAM, ~0.8-1.5 CPU
+
+**Recommended for:**
+- Production clusters
+- When you need pod labels and owner info
+- Monitoring Deployments/StatefulSets
+- Full observability requirements
+
+#### **Resource Optimization Tips**
+
+**1. For Small Clusters (Docker Desktop, minikube):**
+```bash
+# Install without Prometheus (saves ~500 MB)
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_TOKEN \
+  --set prometheus.enabled=false
+```
+
+**2. For Production with Limited Resources:**
+```bash
+# Enable Prometheus but reduce its resource limits
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_TOKEN \
+  --set prometheus.enabled=true \
+  --set prometheus.server.resources.limits.memory=256Mi \
+  --set prometheus.server.resources.limits.cpu=250m
+```
+
+**3. Reduce Collection Frequency:**
+```bash
+# Collect every 2 minutes instead of 1 minute
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_TOKEN \
+  --set collection.interval=120  # Reduces CPU by ~40%
+```
+
+**4. Monitor Only Specific Nodes:**
+```bash
+# Run only on nodes labeled for monitoring
+helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --create-namespace \
+  --set auth.token=YOUR_TOKEN \
+  --set nodeSelector.monitoring=enabled
+
+# Then label nodes where you want CatOps:
+kubectl label nodes node1 monitoring=enabled
+kubectl label nodes node2 monitoring=enabled
+```
+
+#### **Resource Consumption Comparison**
+
+| Configuration | Memory per Node | CPU per Node | Cluster Overhead | Total (3 nodes) |
+|--------------|-----------------|--------------|------------------|-----------------|
+| **Basic Only** | 128-256 MB | 0.1-0.2 cores | 0 MB | ~300-800 MB |
+| **With Prometheus** | 128-256 MB | 0.1-0.2 cores | 512 MB | ~1-1.5 GB |
+| **Full Stack** | 256-512 MB | 0.2-0.6 cores | 512 MB | ~1.5-2.5 GB |
+
+**Storage:**
+- No persistent storage required (Prometheus retention = 1h)
+- All long-term data stored in CatOps backend
+- Ephemeral volumes only (~10 MB per pod)
 
 ---
 

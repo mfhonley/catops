@@ -21,7 +21,7 @@ const (
 func main() {
 	// Banner
 	fmt.Println("╔═══════════════════════════════════════╗")
-	fmt.Println("║   CatOps Kubernetes Connector v" + Version + "        ║")
+	fmt.Println("║   CatOps Kubernetes Connector v" + Version + "          ║")
 	fmt.Println("╚═══════════════════════════════════════╝")
 	fmt.Println()
 

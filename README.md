@@ -964,27 +964,50 @@ helm rollback catops -n catops-system
 
 #### **Stop CatOps (Temporary Pause)**
 
-**Option 1: Delete DaemonSet (stop all monitoring, keep configuration):**
+**Option 1: Stop only CatOps connector (Prometheus continues):**
 ```bash
-# Stop all CatOps pods by deleting DaemonSet
+# Stop CatOps connector pods only
 kubectl delete daemonset catops --namespace catops-system
 
-# Verify pods are stopped
+# Verify CatOps pods are stopped (Prometheus/kube-state-metrics still running)
 kubectl get pods -n catops-system
 
-# Resume monitoring later - reinstall with same config
+# Resume monitoring later
 helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --namespace catops-system \
   --reuse-values
 ```
 
 **What happens:**
-- ✅ All CatOps connector pods removed
-- ✅ Prometheus/kube-state-metrics continue running (if enabled)
-- ✅ Configuration preserved in ConfigMaps/Secrets
-- ✅ Helm reinstall restores everything
+- ✅ CatOps connector pods removed (no data collection)
+- ⚠️ Prometheus/kube-state-metrics/node-exporter **still running** (consuming resources)
+- ✅ Configuration preserved
+- ✅ Quick restart with helm upgrade
 
-**Option 2: Disable Prometheus (reduce resource usage by ~60%):**
+**Option 2: Stop everything (full pause, keep configuration):**
+```bash
+# Stop all pods including Prometheus
+kubectl scale deployment catops-prometheus-server --replicas=0 -n catops-system
+kubectl scale deployment catops-kube-state-metrics --replicas=0 -n catops-system
+kubectl delete daemonset catops-prometheus-node-exporter -n catops-system
+kubectl delete daemonset catops -n catops-system
+
+# Verify all stopped
+kubectl get pods -n catops-system
+
+# Resume everything later
+helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
+  --namespace catops-system \
+  --reuse-values
+```
+
+**What happens:**
+- ✅ All monitoring completely stopped
+- ✅ All resources freed (~1-1.5 GB RAM)
+- ✅ Configuration preserved
+- ✅ Full restart with helm upgrade
+
+**Option 3: Disable Prometheus (reduce resource usage by ~60%):**
 ```bash
 # Disable Prometheus to save ~300-500 MB RAM per cluster
 helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
@@ -1003,7 +1026,7 @@ helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
 - ✅ Extended metrics disabled (labels, owner info)
 - ✅ Can be re-enabled anytime with `prometheus.enabled=true`
 
-**Option 3: Reduce collection frequency (lower CPU usage):**
+**Option 4: Reduce collection frequency (lower CPU usage):**
 ```bash
 # Collect metrics every 2 minutes instead of 1 minute
 helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \

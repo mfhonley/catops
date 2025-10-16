@@ -228,8 +228,9 @@ func NewDaemonCmd() *cobra.Command {
 						}
 					}
 
-					// Send regular metrics to backend if no alerts
-					if len(alertsToSend) == 0 && currentCfg.IsCloudMode() {
+					// IMPORTANT: Always send metrics to backend, regardless of alerts
+					// This ensures continuous metric collection in ClickHouse even during alert conditions
+					if currentCfg.IsCloudMode() {
 						analytics.NewSender(currentCfg, GetCurrentVersion()).SendAll("system_monitoring", currentMetrics)
 					}
 

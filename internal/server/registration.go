@@ -110,7 +110,7 @@ func RegisterServer(userToken, currentVersion string, cfg *config.Config) bool {
 
 	if result["success"] == true {
 		// Extract user_token and server_id from response
-		// New backend returns: data.user_token and data.id
+		// New backend returns: data.user_token and data.server_id
 
 		if data, ok := result["data"].(map[string]interface{}); ok {
 			// Extract permanent user_token (replaces server_token)
@@ -120,7 +120,7 @@ func RegisterServer(userToken, currentVersion string, cfg *config.Config) bool {
 			}
 
 			// Extract server_id (MongoDB ObjectId)
-			if serverID, ok := data["id"].(string); ok && serverID != "" {
+			if serverID, ok := data["server_id"].(string); ok && serverID != "" {
 				cfg.ServerID = serverID
 				logger.Info("Server ID received and saved: %s", serverID)
 			}

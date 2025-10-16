@@ -24,11 +24,15 @@ Description=CatOps System Monitor
 After=network.target
 
 [Service]
-Type=simple
-ExecStart=%s daemon
-Restart=always
-RestartSec=10
+Type=forking
+ExecStart=%s start
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=15
 Environment=PATH=%s:/usr/local/bin:/usr/bin:/bin
+
+# Prevent startup if already running
+ExecStartPre=/bin/sh -c 'pgrep -f "catops daemon" && exit 1 || exit 0'
 
 [Install]
 WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")])
@@ -58,20 +62,25 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-		<string>com.catops.monitor</string>
+	<string>com.catops.monitor</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
-		<string>daemon</string>
+		<string>start</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<true/>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
 	<key>StandardOutPath</key>
 	<string>%s</string>
 	<key>StandardErrorPath</key>
 	<string>%s</string>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
 </dict>
 </plist>`, executable, constants.LOG_FILE, constants.LOG_FILE)
 

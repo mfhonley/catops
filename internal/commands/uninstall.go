@@ -140,7 +140,7 @@ Examples:
 			}
 
 			// stop ALL catops processes (after removing config)
-			process.KillAllCatOpsProcesses()
+			process.KillAll()
 			ui.PrintStatus("success", "All processes stopped")
 
 			// remove ALL CatOps binaries from PATH LAST

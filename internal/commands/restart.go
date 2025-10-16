@@ -63,11 +63,6 @@ Examples:
 				}
 			}
 
-			// check if Telegram is configured
-			if cfg.TelegramToken != "" && cfg.ChatID != 0 {
-				ui.PrintStatus("info", "Telegram notifications enabled")
-			}
-
 			ui.PrintSectionEnd()
 		},
 	}

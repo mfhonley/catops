@@ -11,14 +11,21 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	TelegramToken string  `mapstructure:"telegram_token"`
-	ChatID        int64   `mapstructure:"chat_id"`
 	AuthToken     string  `mapstructure:"auth_token"`
 	ServerID      string  `mapstructure:"server_id"`
 	Mode          string  `mapstructure:"mode"`
 	CPUThreshold  float64 `mapstructure:"cpu_threshold"`
 	MemThreshold  float64 `mapstructure:"mem_threshold"`
 	DiskThreshold float64 `mapstructure:"disk_threshold"`
+
+	// Monitoring configuration
+	CollectionInterval     int     `mapstructure:"collection_interval"`      // in seconds, default 15
+	BufferSize             int     `mapstructure:"buffer_size"`              // default 20 (5 minutes at 15s)
+	SuddenSpikeThreshold   float64 `mapstructure:"sudden_spike_threshold"`   // default 20%
+	GradualRiseThreshold   float64 `mapstructure:"gradual_rise_threshold"`   // default 10%
+	AlertDeduplication     bool    `mapstructure:"alert_deduplication"`      // default true
+	AlertRenotifyInterval  int     `mapstructure:"alert_renotify_interval"`  // in minutes, default 60
+	AlertResolutionTimeout int     `mapstructure:"alert_resolution_timeout"` // in minutes, default 2
 }
 
 // determineMode automatically sets the operation mode based on tokens
@@ -47,10 +54,19 @@ func LoadConfig() (*Config, error) {
 	viper.AddConfigPath("$HOME" + constants.CONFIG_DIR_NAME)
 	viper.AddConfigPath(".")
 
-	// Set defaults
+	// Set defaults for thresholds
 	viper.SetDefault("cpu_threshold", constants.DEFAULT_CPU_THRESHOLD)
 	viper.SetDefault("mem_threshold", constants.DEFAULT_MEMORY_THRESHOLD)
 	viper.SetDefault("disk_threshold", constants.DEFAULT_DISK_THRESHOLD)
+
+	// Set defaults for monitoring configuration
+	viper.SetDefault("collection_interval", 15)       // 15 seconds
+	viper.SetDefault("buffer_size", 20)               // 20 points = 5 minutes at 15s
+	viper.SetDefault("sudden_spike_threshold", 20.0)  // 20% change
+	viper.SetDefault("gradual_rise_threshold", 10.0)  // 10% change over window
+	viper.SetDefault("alert_deduplication", true)     // enabled
+	viper.SetDefault("alert_renotify_interval", 60)   // 60 minutes
+	viper.SetDefault("alert_resolution_timeout", 2)   // 2 minutes
 
 	// Read config file
 	viper.ReadInConfig()
@@ -75,14 +91,6 @@ func SaveConfig(cfg *Config) error {
 
 	// Build config content with only non-empty values
 	var configLines []string
-
-	// Telegram settings (optional)
-	if cfg.TelegramToken != "" {
-		configLines = append(configLines, fmt.Sprintf("telegram_token: %s", cfg.TelegramToken))
-	}
-	if cfg.ChatID != 0 {
-		configLines = append(configLines, fmt.Sprintf("chat_id: %d", cfg.ChatID))
-	}
 
 	// Cloud mode settings
 	if cfg.AuthToken != "" {

@@ -25,10 +25,12 @@ Examples:
 			ui.PrintHeader()
 			ui.PrintSection("Cleaning Up Old Backups and Processes")
 
-			// clean up duplicate processes first
-			process.KillDuplicateProcesses()
-			process.CleanupZombieProcesses()
-			ui.PrintStatus("success", "Process cleanup completed")
+			// clean up stale lock files
+			if err := process.CleanupStale(); err != nil {
+				ui.PrintStatus("warning", fmt.Sprintf("Process cleanup: %v", err))
+			} else {
+				ui.PrintStatus("success", "Process cleanup completed")
+			}
 
 			// clean up old backup files
 			executable, err := os.Executable()

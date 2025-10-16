@@ -3,7 +3,9 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ANALYTICS_URL       = "https://api.catops.io/api/cli/alerts"
+	ALERTS_PROCESS_URL  = "https://api.catops.io/api/cli/alerts/process" // Phase 2: New spike-based alerts
+	ALERTS_HEARTBEAT_URL = "https://api.catops.io/api/cli/alerts"        // Phase 2: Base URL for heartbeat (/{fingerprint}/heartbeat)
+	ALERTS_RESOLVE_URL  = "https://api.catops.io/api/cli/alerts/resolve" // Phase 2: Alert resolution
 	EVENTS_URL          = "https://api.catops.io/api/cli/events"
 	METRICS_URL         = "https://api.catops.io/api/cli/metrics"
 	PROCESSES_URL       = "https://api.catops.io/api/cli/processes"

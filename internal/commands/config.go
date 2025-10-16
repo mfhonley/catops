@@ -44,19 +44,6 @@ Use 'catops config show' to see current settings.`,
 			arg := args[0]
 			if arg == "show" {
 				// show current configuration
-				ui.PrintSection("Telegram Bot Configuration")
-				if cfg.TelegramToken != "" {
-					ui.PrintStatus("success", fmt.Sprintf("Bot Token: %s...%s", cfg.TelegramToken[:10], cfg.TelegramToken[len(cfg.TelegramToken)-10:]))
-				} else {
-					ui.PrintStatus("warning", "Bot Token: Not configured")
-				}
-				if cfg.ChatID != 0 {
-					ui.PrintStatus("success", fmt.Sprintf("Group ID: %d", cfg.ChatID))
-				} else {
-					ui.PrintStatus("warning", "Group ID: Not configured")
-				}
-				ui.PrintSectionEnd()
-
 				ui.PrintSection("Backend Analytics Configuration")
 				if cfg.AuthToken != "" {
 					ui.PrintStatus("success", fmt.Sprintf("Auth Token: %s...%s", cfg.AuthToken[:10], cfg.AuthToken[len(cfg.AuthToken)-10:]))
@@ -93,7 +80,6 @@ Use 'catops config show' to see current settings.`,
 					ui.PrintSectionEnd()
 					return
 				}
-				cfg.TelegramToken = value
 				ui.PrintStatus("success", "Bot token updated successfully")
 
 			case "group":
@@ -103,7 +89,6 @@ Use 'catops config show' to see current settings.`,
 					ui.PrintSectionEnd()
 					return
 				}
-				cfg.ChatID = groupID
 				ui.PrintStatus("success", fmt.Sprintf("Group ID updated to: %d", groupID))
 
 			case "auth":

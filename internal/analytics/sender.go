@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	constants "catops/config"
+	"catops/internal/alerts"
 	"catops/internal/config"
 	"catops/internal/logger"
 	"catops/internal/metrics"
@@ -87,125 +87,190 @@ func (s *Sender) SendAll(eventType string, currentMetrics *metrics.Metrics) {
 	}
 }
 
-// SendAlert sends alert data to the backend for monitoring and analytics
-func (s *Sender) SendAlert(alerts []string, metrics *metrics.Metrics) {
+// ProcessAlert sends spike-based alert to backend with new Phase 2 format
+func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
 		return // Don't send if token or server_id is missing
 	}
 
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "unknown"
+	// Use alert's severity directly
+	severity := string(alert.Severity)
+	if severity == "" {
+		severity = "warning"
 	}
 
-	// Convert alert strings to AlertModel format
-	alertModels := []map[string]interface{}{}
+	// Map alert type to metric name
+	metricName := getMetricName(alert.Type)
 
-	for i, alertText := range alerts {
-		// Generate unique alert ID (use UTC timestamp)
-		alertID := fmt.Sprintf("alert_%s_%d_%d", s.cfg.ServerID, time.Now().UTC().Unix(), i)
-
-		// Parse alert text to extract metric info
-		var metricType, metricName string
-		var currentValue, thresholdValue float64
-		var level string
-
-		// Parse alert patterns like "CPU: 95.0% (limit: 90.0%)"
-		if strings.Contains(alertText, "CPU") {
-			metricType = "system"
-			metricName = "cpu_usage"
-			currentValue = metrics.CPUUsage
-			thresholdValue = s.cfg.CPUThreshold
-		} else if strings.Contains(alertText, "Memory") {
-			metricType = "system"
-			metricName = "memory_usage"
-			currentValue = metrics.MemoryUsage
-			thresholdValue = s.cfg.MemThreshold
-		} else if strings.Contains(alertText, "Disk") {
-			metricType = "system"
-			metricName = "disk_usage"
-			currentValue = metrics.DiskUsage
-			thresholdValue = s.cfg.DiskThreshold
-		} else {
-			// Default for unknown alerts
-			metricType = "system"
-			metricName = "unknown"
-			currentValue = 0
-			thresholdValue = 0
-		}
-
-		// Determine alert level based on severity
-		if currentValue >= thresholdValue*1.5 {
-			level = "critical"
-		} else if currentValue >= thresholdValue*1.2 {
-			level = "error"
-		} else if currentValue >= thresholdValue {
-			level = "warning"
-		} else {
-			level = "info"
-		}
-
-		alertModel := map[string]interface{}{
-			"timestamp":          time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-			"server_id":          s.cfg.ServerID,
-			"alert_id":           alertID,
-			"metric_type":        metricType,
-			"metric_name":        metricName,
-			"level":              level,
-			"status":             "active",
-			"title":              fmt.Sprintf("%s Threshold Exceeded", strings.Title(metricName)),
-			"message":            alertText,
-			"current_value":      currentValue,
-			"threshold_value":    thresholdValue,
-			"threshold_operator": ">=",
-			"resolved_at":        nil,
-			"tags": map[string]string{
-				"hostname":       hostname,
-				"os_type":        metrics.OSName,
-				"catops_version": s.version,
-				"alert_type":     "threshold_exceeded",
-			},
-			"metadata": fmt.Sprintf(`{"process_analytics":{"total_processes":%d,"running_processes":%d,"sleeping_processes":%d,"zombie_processes":%d}}`,
-				len(metrics.TopProcesses),
-				countProcessesByStatus(metrics.TopProcesses, "R"),
-				countProcessesByStatus(metrics.TopProcesses, "S"),
-				countProcessesByStatus(metrics.TopProcesses, "Z")),
-		}
-
-		alertModels = append(alertModels, alertModel)
+	// Get alert subtype (spike detection type)
+	alertSubtype := string(alert.SubType)
+	if alertSubtype == "" {
+		alertSubtype = "threshold" // default
 	}
 
-	// Create AlertsBatchRequest format
+	// Build alert details from existing Details field
+	details := alert.Details
+	if details == nil {
+		details = make(map[string]interface{})
+	}
+
+	// Add timestamp and fingerprint
+	details["detection_time"] = alert.Timestamp.Format(time.RFC3339)
+	details["fingerprint"] = alert.Fingerprint
+
+	// Create AlertProcessRequest payload
 	alertData := map[string]interface{}{
-		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
-		"user_token": s.cfg.AuthToken,
-		"alerts":     alertModels,
+		"user_token":    s.cfg.AuthToken,
+		"server_id":     s.cfg.ServerID,
+		"alert_type":    metricName,
+		"alert_subtype": alertSubtype,
+		"severity":      severity,
+		"title":         alert.Title,
+		"message":       alert.Message,
+		"value":         alert.Value,
+		"threshold":     alert.Threshold,
+		"metric_name":   metricName,
+		"details":       details,
 	}
 
-	jsonData, _ := json.Marshal(alertData)
+	jsonData, err := json.Marshal(alertData)
+	if err != nil {
+		logger.Error("Failed to marshal alert data: %v", err)
+		return
+	}
 
-	// Send analytics data to backend asynchronously
+	// Send alert to backend asynchronously
 	go func() {
-		// Log analytics request start
-		logger.Info("Analytics request started - Type: alert, URL: %s", constants.ANALYTICS_URL)
+		logger.Info("Processing alert - Type: %s, Subtype: %s, URL: %s", metricName, alertSubtype, constants.ALERTS_PROCESS_URL)
 
-		req, err := utils.CreateCLIRequest("POST", constants.ANALYTICS_URL, bytes.NewBuffer(jsonData), s.version)
+		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_PROCESS_URL, bytes.NewBuffer(jsonData), s.version)
 		if err != nil {
+			logger.Error("Failed to create alert request: %v", err)
 			return
 		}
 
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			// Log analytics send error
-			logger.Error("Analytics failed - Type: alert, Error: %v", err)
+			logger.Error("Failed to send alert: %v", err)
 			return
 		}
 		defer resp.Body.Close()
 
-		// Log successful analytics send
-		logger.Info("Analytics sent - Type: alert, Status: success")
+		if resp.StatusCode == 200 {
+			logger.Info("Alert processed successfully - Fingerprint: %s", alert.Fingerprint)
+		} else {
+			logger.Warning("Alert processed with non-200 status - Status: %d", resp.StatusCode)
+		}
 	}()
+}
+
+// SendHeartbeat sends heartbeat for active alert to keep it alive
+func (s *Sender) SendHeartbeat(fingerprint string) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return
+	}
+
+	// Build heartbeat URL with fingerprint
+	heartbeatURL := fmt.Sprintf("%s/%s/heartbeat", constants.ALERTS_HEARTBEAT_URL, fingerprint)
+
+	heartbeatData := map[string]interface{}{
+		"user_token": s.cfg.AuthToken,
+		"server_id":  s.cfg.ServerID,
+	}
+
+	jsonData, err := json.Marshal(heartbeatData)
+	if err != nil {
+		logger.Error("Failed to marshal heartbeat data: %v", err)
+		return
+	}
+
+	// Send heartbeat to backend asynchronously
+	go func() {
+		logger.Debug("Sending heartbeat for alert - Fingerprint: %s", fingerprint)
+
+		req, err := utils.CreateCLIRequest("PUT", heartbeatURL, bytes.NewBuffer(jsonData), s.version)
+		if err != nil {
+			logger.Error("Failed to create heartbeat request: %v", err)
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Error("Failed to send heartbeat: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			logger.Debug("Heartbeat sent successfully - Fingerprint: %s", fingerprint)
+		} else {
+			logger.Warning("Heartbeat sent with non-200 status - Status: %d", resp.StatusCode)
+		}
+	}()
+}
+
+// ResolveAlert notifies backend that alert is resolved
+func (s *Sender) ResolveAlert(fingerprint string) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return
+	}
+
+	resolveData := map[string]interface{}{
+		"user_token":  s.cfg.AuthToken,
+		"server_id":   s.cfg.ServerID,
+		"fingerprint": fingerprint,
+	}
+
+	jsonData, err := json.Marshal(resolveData)
+	if err != nil {
+		logger.Error("Failed to marshal resolve data: %v", err)
+		return
+	}
+
+	// Send resolve to backend asynchronously
+	go func() {
+		logger.Info("Resolving alert - Fingerprint: %s, URL: %s", fingerprint, constants.ALERTS_RESOLVE_URL)
+
+		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_RESOLVE_URL, bytes.NewBuffer(jsonData), s.version)
+		if err != nil {
+			logger.Error("Failed to create resolve request: %v", err)
+			return
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Error("Failed to send resolve: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			logger.Info("Alert resolved successfully - Fingerprint: %s", fingerprint)
+		} else {
+			logger.Warning("Alert resolved with non-200 status - Status: %d", resp.StatusCode)
+		}
+	}()
+}
+
+// getMetricName converts alert type to metric name for backend
+func getMetricName(alertType alerts.AlertType) string {
+	switch alertType {
+	case alerts.AlertTypeCPU:
+		return "cpu"
+	case alerts.AlertTypeMemory:
+		return "memory"
+	case alerts.AlertTypeDisk:
+		return "disk"
+	case alerts.AlertTypeProcess:
+		return "process"
+	case alerts.AlertTypeNetwork:
+		return "network"
+	default:
+		return "unknown"
+	}
 }
 
 // SendServiceEvent sends service event data to the backend for monitoring and analytics

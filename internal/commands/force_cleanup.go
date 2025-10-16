@@ -25,7 +25,11 @@ Examples:
 			ui.PrintStatus("warning", "This will kill ALL catops daemon processes!")
 
 			// kill all catops daemon processes
-			process.KillAllCatOpsProcesses()
+			if err := process.KillAll(); err != nil {
+				ui.PrintStatus("error", "Force cleanup failed")
+				ui.PrintSectionEnd()
+				return
+			}
 
 			ui.PrintStatus("success", "Force cleanup completed. All processes killed.")
 			ui.PrintStatus("info", "Run 'catops start' to start fresh monitoring service.")

@@ -147,7 +147,14 @@ func newStatusAuthCmd() *cobra.Command {
 
 			if cfg.AuthToken != "" {
 				ui.PrintStatus("success", "Authenticated")
-				ui.PrintStatus("info", "User ID: "+cfg.AuthToken)
+
+				// Show shortened token instead of full JWT
+				token := cfg.AuthToken
+				if len(token) > 30 {
+					token = token[:15] + "..." + token[len(token)-15:]
+				}
+				ui.PrintStatus("info", "Token: "+token)
+
 				ui.PrintStatus("info", "Server registered: "+func() string {
 					if cfg.ServerID != "" {
 						return "Yes"

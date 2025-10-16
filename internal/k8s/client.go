@@ -94,3 +94,27 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 
 	return nil
 }
+
+// UpdateAuthTokenSecret обновляет Secret с permanent token
+// Используется для сохранения permanent token после первого запроса к backend
+func (c *Client) UpdateAuthTokenSecret(ctx context.Context, namespace, secretName, permanentToken string) error {
+	// Get existing secret
+	secret, err := c.Clientset.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get secret %s/%s: %w", namespace, secretName, err)
+	}
+
+	// Update auth-token field
+	if secret.StringData == nil {
+		secret.StringData = make(map[string]string)
+	}
+	secret.StringData["auth-token"] = permanentToken
+
+	// Update secret in Kubernetes
+	_, err = c.Clientset.CoreV1().Secrets(namespace).Update(ctx, secret, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update secret %s/%s: %w", namespace, secretName, err)
+	}
+
+	return nil
+}

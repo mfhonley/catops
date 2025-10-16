@@ -79,6 +79,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: SECRET_NAME
+          value: {{ include "catops.fullname" . | quote }}
         # Collection settings
         - name: COLLECTION_INTERVAL
           value: {{ .Values.collection.interval | quote }}

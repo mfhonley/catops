@@ -1,0 +1,20 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "catops.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "catops.labels" . | nindent 4 }}
+rules:
+# Permissions для обновления Secret с permanent token
+- apiGroups: [""]
+  resources:
+    - secrets
+  verbs:
+    - get
+    - update
+    - patch
+  resourceNames:
+    - {{ include "catops.fullname" . }}
+{{- end }}

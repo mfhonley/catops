@@ -19,6 +19,7 @@ type Collector struct {
 	authToken      string
 	nodeName       string
 	namespace      string
+	secretName     string              // Secret name for updating permanent token
 	version        string
 	prometheusURL  string              // NEW: Prometheus URL (optional)
 	promClient     *PrometheusClient   // NEW: Prometheus client (optional)
@@ -41,6 +42,7 @@ func NewCollector(client *Client, config interface{}, version string) *Collector
 		GetAuthToken() string
 		GetNodeName() string
 		GetNamespace() string
+		GetSecretName() string    // NEW: Secret name for permanent token
 		GetPrometheusURL() string // NEW
 	})
 
@@ -50,6 +52,7 @@ func NewCollector(client *Client, config interface{}, version string) *Collector
 		authToken:     cfg.GetAuthToken(),
 		nodeName:      cfg.GetNodeName(),
 		namespace:     cfg.GetNamespace(),
+		secretName:    cfg.GetSecretName(),
 		prometheusURL: cfg.GetPrometheusURL(),
 		version:       version,
 	}
@@ -333,7 +336,6 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.authToken))
 	req.Header.Set("User-Agent", "CatOps-CLI/1.0.0")
 	req.Header.Set("X-Platform", "linux")
 	req.Header.Set("X-Version", c.version)
@@ -348,6 +350,36 @@ func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
 	// Проверяем response
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("backend returned error: %s", resp.Status)
+	}
+
+	// Parse response to check for permanent token
+	var responseData struct {
+		Success bool `json:"success"`
+		Data    struct {
+			UserToken string `json:"user_token,omitempty"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&responseData); err == nil {
+		// If backend returned permanent token, save it for future requests
+		if responseData.Data.UserToken != "" && responseData.Data.UserToken != c.authToken {
+			logger.Info("✅ Received permanent token from backend, updating...")
+
+			// Update in-memory token
+			c.authToken = responseData.Data.UserToken
+
+			// Update Kubernetes Secret for persistence across pod restarts
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			if err := c.client.UpdateAuthTokenSecret(ctx, c.namespace, c.secretName, c.authToken); err != nil {
+				logger.Warning("⚠️  Failed to update Secret with permanent token: %v", err)
+				logger.Warning("   Token will be lost after pod restart!")
+			} else {
+				logger.Info("   ✅ Secret updated with permanent token")
+				logger.Info("   Token will persist across pod restarts")
+			}
+		}
 	}
 
 	return nil

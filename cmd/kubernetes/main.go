@@ -114,8 +114,9 @@ type Config struct {
 	AuthToken  string
 
 	// Kubernetes
-	NodeName  string
-	Namespace string
+	NodeName   string
+	Namespace  string
+	SecretName string // Secret name for permanent token updates
 
 	// Collection settings
 	CollectionInterval int // seconds
@@ -146,6 +147,7 @@ func (c *Config) GetBackendURL() string    { return c.BackendURL }
 func (c *Config) GetAuthToken() string     { return c.AuthToken }
 func (c *Config) GetNodeName() string      { return c.NodeName }
 func (c *Config) GetNamespace() string     { return c.Namespace }
+func (c *Config) GetSecretName() string    { return c.SecretName }
 func (c *Config) GetPrometheusURL() string { return c.PrometheusURL }
 
 // loadConfig загружает конфигурацию из environment variables
@@ -155,6 +157,7 @@ func loadConfig() (*Config, error) {
 		AuthToken:          getEnv("CATOPS_AUTH_TOKEN", ""),
 		NodeName:           getEnv("NODE_NAME", ""),
 		Namespace:          getEnv("NAMESPACE", "default"),
+		SecretName:         getEnv("SECRET_NAME", "catops"),  // Default to "catops"
 		CollectionInterval: getEnvInt("COLLECTION_INTERVAL", 60),
 		PrometheusURL:      getEnv("PROMETHEUS_URL", ""), // Optional
 	}

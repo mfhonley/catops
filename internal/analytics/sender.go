@@ -134,6 +134,14 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 
 	// Send alert to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in ProcessAlert goroutine: %v", r)
+				logger.Error("Alert processing goroutine crashed - Fingerprint: %s", alert.Fingerprint)
+			}
+		}()
+
 		logger.Info("Processing alert - Type: %s, Subtype: %s, URL: %s", metricName, alertSubtype, constants.ALERTS_PROCESS_URL)
 
 		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_PROCESS_URL, bytes.NewBuffer(jsonData), s.version)
@@ -180,6 +188,14 @@ func (s *Sender) SendHeartbeat(fingerprint string) {
 
 	// Send heartbeat to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendHeartbeat goroutine: %v", r)
+				logger.Error("Heartbeat goroutine crashed - Fingerprint: %s", fingerprint)
+			}
+		}()
+
 		logger.Debug("Sending heartbeat for alert - Fingerprint: %s", fingerprint)
 
 		req, err := utils.CreateCLIRequest("PUT", heartbeatURL, bytes.NewBuffer(jsonData), s.version)
@@ -224,6 +240,14 @@ func (s *Sender) ResolveAlert(fingerprint string) {
 
 	// Send resolve to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in ResolveAlert goroutine: %v", r)
+				logger.Error("Resolve alert goroutine crashed - Fingerprint: %s", fingerprint)
+			}
+		}()
+
 		logger.Info("Resolving alert - Fingerprint: %s, URL: %s", fingerprint, constants.ALERTS_RESOLVE_URL)
 
 		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_RESOLVE_URL, bytes.NewBuffer(jsonData), s.version)
@@ -712,6 +736,13 @@ func (s *Sender) SendProcessMetrics(metrics *metrics.Metrics) {
 
 	// Send process metrics to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendProcessMetrics goroutine: %v", r)
+			}
+		}()
+
 		// Log process metrics request start
 		logger.Info("Process metrics request started - URL: %s", constants.PROCESSES_URL)
 
@@ -858,6 +889,13 @@ func (s *Sender) SendSystemMetrics(metrics *metrics.Metrics) {
 
 	// Send metrics to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendSystemMetrics goroutine: %v", r)
+			}
+		}()
+
 		// Log metrics request start
 		logger.Info("Metrics request started - URL: %s", constants.METRICS_URL)
 
@@ -985,6 +1023,13 @@ func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
 
 	// Send network metrics to backend asynchronously
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendNetworkMetrics goroutine: %v", r)
+			}
+		}()
+
 		// Log network metrics request start
 		logger.Info("Network metrics request started - URL: %s", constants.NETWORK_METRICS_URL)
 

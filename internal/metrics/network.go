@@ -68,6 +68,14 @@ func StartBandwidthMonitoring() {
 
 	// Start background measurement
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				// Log panic but don't crash daemon
+				// Bandwidth measurement will just stop working
+			}
+		}()
+
 		for {
 			bandwidth, err := measureBandwidth()
 			if err == nil {

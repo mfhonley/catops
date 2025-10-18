@@ -123,6 +123,14 @@ func NewDaemonCmd() *cobra.Command {
 			// Start periodic cleanup of resolved alerts (runs every 5 minutes)
 			if cfg.AlertDeduplication {
 				go func() {
+					// CRITICAL: Recover from panic to prevent daemon crash
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Error("PANIC in alert cleanup goroutine: %v", r)
+							logger.Error("Alert cleanup goroutine crashed - daemon may have memory leak")
+						}
+					}()
+
 					cleanupTicker := time.NewTicker(5 * time.Minute)
 					defer cleanupTicker.Stop()
 					for range cleanupTicker.C {
@@ -138,6 +146,14 @@ func NewDaemonCmd() *cobra.Command {
 			// Start heartbeat sender for active alerts (Phase 2B - every 2 minutes)
 			if cfg.IsCloudMode() && cfg.AlertDeduplication {
 				go func() {
+					// CRITICAL: Recover from panic to prevent daemon crash
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Error("PANIC in heartbeat sender goroutine: %v", r)
+							logger.Error("Heartbeat sender goroutine crashed - alerts may auto-resolve on backend")
+						}
+					}()
+
 					heartbeatTicker := time.NewTicker(2 * time.Minute)
 					defer heartbeatTicker.Stop()
 					for range heartbeatTicker.C {

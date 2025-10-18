@@ -152,6 +152,14 @@ func StartIOPSMonitoring() {
 
 	// Start background measurement
 	go func() {
+		// CRITICAL: Recover from panic to prevent daemon crash
+		defer func() {
+			if r := recover(); r != nil {
+				// Log panic but don't crash daemon
+				// IOPS measurement will just stop working
+			}
+		}()
+
 		for {
 			iops, err := measureIOPS()
 			if err == nil {

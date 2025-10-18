@@ -309,9 +309,9 @@ func (p *PrometheusClient) queryPodLabels(ctx context.Context, extendedPods map[
 				labelKey := string(k)
 				// Skip internal Prometheus labels and kube_pod_info specific fields
 				if labelKey == "__name__" || labelKey == "pod" || labelKey == "namespace" ||
-				   labelKey == "node" || labelKey == "host_ip" || labelKey == "pod_ip" ||
-				   labelKey == "uid" || labelKey == "created_by_kind" || labelKey == "created_by_name" ||
-				   labelKey == "host_network" || labelKey == "instance" || labelKey == "job" || labelKey == "service" {
+					labelKey == "node" || labelKey == "host_ip" || labelKey == "pod_ip" ||
+					labelKey == "uid" || labelKey == "created_by_kind" || labelKey == "created_by_name" ||
+					labelKey == "host_network" || labelKey == "instance" || labelKey == "job" || labelKey == "service" {
 					continue
 				}
 				// Store all remaining labels (these are the actual pod labels)

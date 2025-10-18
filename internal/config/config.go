@@ -60,13 +60,13 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("disk_threshold", constants.DEFAULT_DISK_THRESHOLD)
 
 	// Set defaults for monitoring configuration
-	viper.SetDefault("collection_interval", 15)       // 15 seconds
-	viper.SetDefault("buffer_size", 20)               // 20 points = 5 minutes at 15s
-	viper.SetDefault("sudden_spike_threshold", 20.0)  // 20% change
-	viper.SetDefault("gradual_rise_threshold", 10.0)  // 10% change over window
-	viper.SetDefault("alert_deduplication", true)     // enabled
-	viper.SetDefault("alert_renotify_interval", 60)   // 60 minutes
-	viper.SetDefault("alert_resolution_timeout", 2)   // 2 minutes
+	viper.SetDefault("collection_interval", 15)      // 15 seconds
+	viper.SetDefault("buffer_size", 20)              // 20 points = 5 minutes at 15s
+	viper.SetDefault("sudden_spike_threshold", 20.0) // 20% change
+	viper.SetDefault("gradual_rise_threshold", 10.0) // 10% change over window
+	viper.SetDefault("alert_deduplication", true)    // enabled
+	viper.SetDefault("alert_renotify_interval", 60)  // 60 minutes
+	viper.SetDefault("alert_resolution_timeout", 2)  // 2 minutes
 
 	// Read config file
 	viper.ReadInConfig()

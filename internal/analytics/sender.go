@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"sync"
 	"time"
 
 	constants "catops/config"
@@ -32,59 +31,53 @@ func NewSender(cfg *config.Config, version string) *Sender {
 	}
 }
 
-// SendAll sends all analytics (metrics, processes, events) synchronously with WaitGroup
+// SendAllSync sends all analytics synchronously - waits for completion
+// Use this for CLI commands (catops set, catops config) to ensure events are sent before process exits
+func (s *Sender) SendAllSync(eventType string, currentMetrics *metrics.Metrics) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return // Skip if not in cloud mode
+	}
+
+	// SIMPLE: Call blocking version for event (it's already synchronous)
+	if eventType != "" {
+		s.SendServiceEventBlocking(eventType, currentMetrics)
+	}
+
+	// For other methods, call async versions but give them time to send
+	// (they use internal goroutines for HTTP requests)
+	go s.SendSystemMetrics(currentMetrics)
+	go s.SendProcessMetrics(currentMetrics)
+	go s.SendNetworkMetrics(currentMetrics)
+
+	// Wait a bit for HTTP requests to start and complete
+	// Most HTTP requests complete in < 500ms, so 1s should be enough
+	time.Sleep(1 * time.Second)
+
+	logger.Info("SendAllSync completed - event sent, metrics queued")
+}
+
+// SendAll sends all analytics asynchronously - doesn't wait for HTTP to complete
+// Use this for daemon (long-running process) to avoid blocking
 func (s *Sender) SendAll(eventType string, currentMetrics *metrics.Metrics) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
 		return // Skip if not in cloud mode
 	}
 
-	var wg sync.WaitGroup
-
-	// Send service analytics
+	// Send service analytics (async - fire and forget)
 	if eventType != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.SendServiceEvent(eventType, currentMetrics)
-		}()
+		go s.SendServiceEvent(eventType, currentMetrics)
 	}
 
-	// Send metrics
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.SendSystemMetrics(currentMetrics)
-	}()
+	// Send metrics (async)
+	go s.SendSystemMetrics(currentMetrics)
 
-	// Send process metrics
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.SendProcessMetrics(currentMetrics)
-	}()
+	// Send process metrics (async)
+	go s.SendProcessMetrics(currentMetrics)
 
-	// Send network metrics (Phase 1 - Network Observability)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.SendNetworkMetrics(currentMetrics)
-	}()
+	// Send network metrics (async)
+	go s.SendNetworkMetrics(currentMetrics)
 
-	// Wait for all goroutines to complete (with timeout)
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	// Wait max 10 seconds for all analytics to be sent
-	select {
-	case <-done:
-		// All done successfully
-	case <-time.After(10 * time.Second):
-		// Timeout - log but don't block
-		logger.Warning("Analytics send timeout after 10 seconds")
-	}
+	// Don't wait - let them complete in background
 }
 
 // ProcessAlert sends spike-based alert to backend with new Phase 2 format
@@ -270,6 +263,137 @@ func getMetricName(alertType alerts.AlertType) string {
 		return "network"
 	default:
 		return "unknown"
+	}
+}
+
+// SendServiceEventBlocking sends service event synchronously (blocking)
+func (s *Sender) SendServiceEventBlocking(eventType string, metrics *metrics.Metrics) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	// Get process PID
+	pid := os.Getpid()
+
+	// Map CLI event types to backend EventType enum
+	var backendEventType string
+	switch eventType {
+	case "service_start":
+		backendEventType = "service_start"
+	case "service_stop":
+		backendEventType = "service_stop"
+	case "system_monitoring":
+		backendEventType = "system_monitoring"
+	case "update_installed":
+		backendEventType = "update_installed"
+	case "config_change":
+		backendEventType = "config_change"
+	case "service_restart":
+		backendEventType = "service_restart"
+	default:
+		backendEventType = "service_start"
+	}
+
+	// Determine severity based on event type
+	var severity string
+	switch eventType {
+	case "service_start", "system_monitoring", "update_installed", "service_restart":
+		severity = "info"
+	case "service_stop", "config_change":
+		severity = "warning"
+	default:
+		severity = "info"
+	}
+
+	// Create message for the event
+	var message string
+	switch eventType {
+	case "service_start":
+		message = "CatOps monitoring service started successfully"
+	case "service_stop":
+		message = "CatOps monitoring service stopped"
+	case "system_monitoring":
+		message = "CatOps monitoring service is running and collecting metrics"
+	case "update_installed":
+		message = "CatOps update installed successfully"
+	case "config_change":
+		message = "CatOps configuration changed"
+	case "service_restart":
+		message = "CatOps monitoring service restarted"
+	default:
+		message = fmt.Sprintf("CatOps service event: %s", eventType)
+	}
+
+	// Create single EventModel object
+	eventModel := map[string]interface{}{
+		"timestamp":     time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		"server_id":     s.cfg.ServerID,
+		"event_type":    backendEventType,
+		"service_name":  "catops",
+		"process_name":  "catops",
+		"pid":           pid,
+		"message":       message,
+		"severity":      severity,
+		"error_message": nil,
+		"tags": map[string]string{
+			"hostname":       hostname,
+			"os_type":        metrics.OSName,
+			"catops_version": s.version,
+			"original_event": eventType,
+		},
+		"metadata": fmt.Sprintf(`{"process_analytics":{"total_processes":%d,"running_processes":%d,"sleeping_processes":%d,"zombie_processes":%d},"metrics":{"cpu_usage":%.2f,"memory_usage":%.2f,"disk_usage":%.2f}}`,
+			len(metrics.TopProcesses),
+			countProcessesByStatus(metrics.TopProcesses, "R"),
+			countProcessesByStatus(metrics.TopProcesses, "S"),
+			countProcessesByStatus(metrics.TopProcesses, "Z"),
+			metrics.CPUUsage,
+			metrics.MemoryUsage,
+			metrics.DiskUsage),
+	}
+
+	// Create EventsBatchRequest format
+	serviceData := map[string]interface{}{
+		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
+		"user_token": s.cfg.AuthToken,
+		"events":     []map[string]interface{}{eventModel},
+	}
+
+	jsonData, _ := json.Marshal(serviceData)
+
+	// log service analytics request start
+	logger.Info("Analytics request started - Type: service_%s, URL: %s", eventType, constants.EVENTS_URL)
+
+	// Extra logging for config_change events
+	if eventType == "config_change" {
+		logger.Info("Config change event details - EventType: %s, Severity: %s, Message: %s", backendEventType, severity, message)
+		logger.Debug("Config change event payload: %s", string(jsonData))
+	}
+
+	req, err := utils.CreateCLIRequest("POST", constants.EVENTS_URL, bytes.NewBuffer(jsonData), s.version)
+	if err != nil {
+		logger.Error("Failed to create request for service_%s: %v", eventType, err)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// log analytics send error
+		logger.Error("Failed to send service analytics: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// log analytics success with status code
+	if resp.StatusCode == 200 {
+		logger.Info("Analytics sent - Type: service_%s, Status: success (HTTP %d)", eventType, resp.StatusCode)
+	} else {
+		logger.Warning("Analytics sent - Type: service_%s, Status: HTTP %d (non-200)", eventType, resp.StatusCode)
 	}
 }
 
@@ -837,21 +961,21 @@ func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
 
 	// Create the request payload according to NetworkMetricsBatchRequest schema
 	requestData := map[string]interface{}{
-		"timestamp":                 fmt.Sprintf("%d", time.Now().Unix()),
-		"user_token":                s.cfg.AuthToken,
-		"server_id":                 s.cfg.ServerID,
-		"inbound_bytes_per_sec":     networkMetrics.InboundBytesPerSec,
-		"outbound_bytes_per_sec":    networkMetrics.OutboundBytesPerSec,
-		"connections_established":   networkMetrics.ConnectionsEstablished,
-		"connections_time_wait":     networkMetrics.ConnectionsTimeWait,
-		"connections_close_wait":    networkMetrics.ConnectionsCloseWait,
-		"connections_syn_sent":      networkMetrics.ConnectionsSynSent,
-		"connections_syn_recv":      networkMetrics.ConnectionsSynRecv,
-		"connections_fin_wait1":     networkMetrics.ConnectionsFinWait1,
-		"connections_fin_wait2":     networkMetrics.ConnectionsFinWait2,
-		"connections_listen":        networkMetrics.ConnectionsListen,
-		"total_connections":         networkMetrics.TotalConnections,
-		"top_connections":           topConnectionsData,
+		"timestamp":               fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token":              s.cfg.AuthToken,
+		"server_id":               s.cfg.ServerID,
+		"inbound_bytes_per_sec":   networkMetrics.InboundBytesPerSec,
+		"outbound_bytes_per_sec":  networkMetrics.OutboundBytesPerSec,
+		"connections_established": networkMetrics.ConnectionsEstablished,
+		"connections_time_wait":   networkMetrics.ConnectionsTimeWait,
+		"connections_close_wait":  networkMetrics.ConnectionsCloseWait,
+		"connections_syn_sent":    networkMetrics.ConnectionsSynSent,
+		"connections_syn_recv":    networkMetrics.ConnectionsSynRecv,
+		"connections_fin_wait1":   networkMetrics.ConnectionsFinWait1,
+		"connections_fin_wait2":   networkMetrics.ConnectionsFinWait2,
+		"connections_listen":      networkMetrics.ConnectionsListen,
+		"total_connections":       networkMetrics.TotalConnections,
+		"top_connections":         topConnectionsData,
 	}
 
 	jsonData, err := json.Marshal(requestData)

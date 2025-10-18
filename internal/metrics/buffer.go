@@ -42,15 +42,15 @@ type MetricStatistics struct {
 
 // SpikeDetectionResult contains spike detection analysis
 type SpikeDetectionResult struct {
-	HasSuddenSpike     bool    // >20% change in one interval
-	HasGradualRise     bool    // >10% change over 5 minutes
-	HasAnomalousValue  bool    // >2 stddev from average
-	CurrentValue       float64 // Current metric value
-	PreviousValue      float64 // Previous metric value
-	PercentChange      float64 // Percent change from previous
-	ChangeOverWindow   float64 // Change over entire window
-	DeviationFromAvg   float64 // How many stddev from average
-	Stats              MetricStatistics
+	HasSuddenSpike    bool    // >20% change in one interval
+	HasGradualRise    bool    // >10% change over 5 minutes
+	HasAnomalousValue bool    // >2 stddev from average
+	CurrentValue      float64 // Current metric value
+	PreviousValue     float64 // Previous metric value
+	PercentChange     float64 // Percent change from previous
+	ChangeOverWindow  float64 // Change over entire window
+	DeviationFromAvg  float64 // How many stddev from average
+	Stats             MetricStatistics
 }
 
 // NewMetricsBuffer creates a new metrics buffer

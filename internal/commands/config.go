@@ -122,9 +122,9 @@ Use 'catops config show' to see current settings.`,
 					ui.PrintStatus("info", "Sending event without metrics...")
 					// Still send event without metrics
 					emptyMetrics := &metrics.Metrics{}
-					analytics.NewSender(cfg, GetCurrentVersion()).SendAll("config_change", emptyMetrics)
+					analytics.NewSender(cfg, GetCurrentVersion()).SendAllSync("config_change", emptyMetrics)
 				} else {
-					analytics.NewSender(cfg, GetCurrentVersion()).SendAll("config_change", currentMetrics)
+					analytics.NewSender(cfg, GetCurrentVersion()).SendAllSync("config_change", currentMetrics)
 				}
 				ui.PrintStatus("success", "Config change event sent")
 			} else {

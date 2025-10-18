@@ -102,7 +102,6 @@ func NewDaemonCmd() *cobra.Command {
 				server.UpdateServerVersion(cfg.AuthToken, GetCurrentVersion(), cfg)
 			}
 
-
 			// Initialize metrics buffer and alert manager
 			metricsBuffer := metrics.NewMetricsBuffer(cfg.BufferSize)
 			alertManager := alerts.NewAlertManager(
@@ -219,7 +218,6 @@ func NewDaemonCmd() *cobra.Command {
 								// Log alert
 								logger.Warning("ALERT [%s]: %s", decision.Reason, alert.Title)
 
-
 								// Send to backend if in cloud mode (Phase 2B)
 								// IMPORTANT: Use decision.Alert.Alert (has fingerprint set by AlertManager)
 								if currentCfg.IsCloudMode() {
@@ -281,7 +279,7 @@ func NewDaemonCmd() *cobra.Command {
 							latestVersion = strings.TrimPrefix(latestVersion, "v")
 
 							if latestVersion != currentVersion {
-							logger.Info("New version available: v%s (current: v%s)", latestVersion, currentVersion)
+								logger.Info("New version available: v%s (current: v%s)", latestVersion, currentVersion)
 							} else {
 								logger.Info("Already running latest version: v%s", currentVersion)
 							}
@@ -371,10 +369,10 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 			cpuUsage,
 			cfg.CPUThreshold,
 			map[string]interface{}{
-				"deviation":  spikeResult.DeviationFromAvg,
-				"avg_5min":   spikeResult.Stats.Avg,
-				"stddev":     spikeResult.Stats.StdDev,
-				"p95_5min":   spikeResult.Stats.P95,
+				"deviation": spikeResult.DeviationFromAvg,
+				"avg_5min":  spikeResult.Stats.Avg,
+				"stddev":    spikeResult.Stats.StdDev,
+				"p95_5min":  spikeResult.Stats.P95,
 			},
 		))
 	}
@@ -468,10 +466,10 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 			memUsage,
 			cfg.MemThreshold,
 			map[string]interface{}{
-				"deviation":  spikeResult.DeviationFromAvg,
-				"avg_5min":   spikeResult.Stats.Avg,
-				"stddev":     spikeResult.Stats.StdDev,
-				"p95_5min":   spikeResult.Stats.P95,
+				"deviation": spikeResult.DeviationFromAvg,
+				"avg_5min":  spikeResult.Stats.Avg,
+				"stddev":    spikeResult.Stats.StdDev,
+				"p95_5min":  spikeResult.Stats.P95,
 			},
 		))
 	}

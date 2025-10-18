@@ -15,7 +15,7 @@ import (
 
 // Client обертка над Kubernetes clients
 type Client struct {
-	Clientset       *kubernetes.Clientset
+	Clientset        *kubernetes.Clientset
 	MetricsClientset *metricsv.Clientset
 }
 
@@ -40,7 +40,7 @@ func NewClient() (*Client, error) {
 	}
 
 	return &Client{
-		Clientset:       clientset,
+		Clientset:        clientset,
 		MetricsClientset: metricsClientset,
 	}, nil
 }

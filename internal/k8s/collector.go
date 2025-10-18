@@ -14,15 +14,15 @@ import (
 
 // Collector собирает метрики из Kubernetes
 type Collector struct {
-	client         *Client
-	backendURL     string
-	authToken      string
-	nodeName       string
-	namespace      string
-	secretName     string              // Secret name for updating permanent token
-	version        string
-	prometheusURL  string              // NEW: Prometheus URL (optional)
-	promClient     *PrometheusClient   // NEW: Prometheus client (optional)
+	client        *Client
+	backendURL    string
+	authToken     string
+	nodeName      string
+	namespace     string
+	secretName    string // Secret name for updating permanent token
+	version       string
+	prometheusURL string            // NEW: Prometheus URL (optional)
+	promClient    *PrometheusClient // NEW: Prometheus client (optional)
 }
 
 // CollectorConfig конфигурация для Collector
@@ -85,16 +85,16 @@ func NewCollector(client *Client, config interface{}, version string) *Collector
 
 // K8sMetrics метрики Kubernetes
 type K8sMetrics struct {
-	Timestamp string        `json:"timestamp"`
-	NodeName  string        `json:"node_name"`
-	Namespace string        `json:"namespace"`
+	Timestamp string `json:"timestamp"`
+	NodeName  string `json:"node_name"`
+	Namespace string `json:"namespace"`
 
 	// Node metrics (переиспользуем существующий код)
 	Node *metrics.Metrics `json:"node_metrics"`
 
 	// K8s-specific metrics
-	Pods      []PodMetric     `json:"pods"`
-	Cluster   *ClusterMetrics `json:"cluster"`
+	Pods    []PodMetric     `json:"pods"`
+	Cluster *ClusterMetrics `json:"cluster"`
 
 	// JWT token для backend
 	UserToken string `json:"user_token"`
@@ -123,12 +123,12 @@ type PodMetric struct {
 
 // ClusterMetrics метрики кластера
 type ClusterMetrics struct {
-	TotalNodes      int `json:"total_nodes"`
-	ReadyNodes      int `json:"ready_nodes"`
-	TotalPods       int `json:"total_pods"`
-	RunningPods     int `json:"running_pods"`
-	PendingPods     int `json:"pending_pods"`
-	FailedPods      int `json:"failed_pods"`
+	TotalNodes  int `json:"total_nodes"`
+	ReadyNodes  int `json:"ready_nodes"`
+	TotalPods   int `json:"total_pods"`
+	RunningPods int `json:"running_pods"`
+	PendingPods int `json:"pending_pods"`
+	FailedPods  int `json:"failed_pods"`
 }
 
 // CollectAndSend собирает метрики и отправляет в backend

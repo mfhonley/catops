@@ -157,7 +157,7 @@ func loadConfig() (*Config, error) {
 		AuthToken:          getEnv("CATOPS_AUTH_TOKEN", ""),
 		NodeName:           getEnv("NODE_NAME", ""),
 		Namespace:          getEnv("NAMESPACE", "default"),
-		SecretName:         getEnv("SECRET_NAME", "catops"),  // Default to "catops"
+		SecretName:         getEnv("SECRET_NAME", "catops"), // Default to "catops"
 		CollectionInterval: getEnvInt("COLLECTION_INTERVAL", 60),
 		PrometheusURL:      getEnv("PROMETHEUS_URL", ""), // Optional
 	}

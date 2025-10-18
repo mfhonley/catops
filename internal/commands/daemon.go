@@ -97,6 +97,10 @@ func NewDaemonCmd() *cobra.Command {
 				time.Duration(cfg.AlertResolutionTimeout)*time.Minute,
 			)
 
+			// Start background monitoring for bandwidth and IOPS to prevent blocking
+			metrics.StartBandwidthMonitoring()
+			metrics.StartIOPSMonitoring()
+
 			logger.Info("Monitoring system initialized:")
 			logger.Info("  Collection interval: %ds", cfg.CollectionInterval)
 			logger.Info("  Buffer size: %d points", cfg.BufferSize)

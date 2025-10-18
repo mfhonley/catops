@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -13,6 +14,13 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+)
+
+// Global IOPS cache - updated by background goroutine every second
+var (
+	cachedIOPS      int64
+	iopsMutex       sync.RWMutex
+	iopsInitialized bool
 )
 
 // ProcessInfo contains detailed information about a running system process
@@ -131,8 +139,33 @@ func GetHTTPSRequests() (int64, error) {
 	return count, nil
 }
 
-// GetIOPS returns Input/Output Operations Per Second
-func GetIOPS() (int64, error) {
+// StartIOPSMonitoring starts background goroutine to measure IOPS continuously
+// This prevents blocking the main metrics collection loop
+func StartIOPSMonitoring() {
+	iopsMutex.Lock()
+	if iopsInitialized {
+		iopsMutex.Unlock()
+		return
+	}
+	iopsInitialized = true
+	iopsMutex.Unlock()
+
+	// Start background measurement
+	go func() {
+		for {
+			iops, err := measureIOPS()
+			if err == nil {
+				iopsMutex.Lock()
+				cachedIOPS = iops
+				iopsMutex.Unlock()
+			}
+			// Sleep handled inside measureIOPS, so loop continues immediately
+		}
+	}()
+}
+
+// measureIOPS measures actual IOPS over 1 second (blocking call)
+func measureIOPS() (int64, error) {
 	// Get disk I/O counters (first snapshot)
 	io1, err := disk.IOCounters()
 	if err != nil {
@@ -168,6 +201,15 @@ func GetIOPS() (int64, error) {
 	}
 
 	return totalIOPS, nil
+}
+
+// GetIOPS returns cached Input/Output Operations Per Second (non-blocking)
+func GetIOPS() (int64, error) {
+	iopsMutex.RLock()
+	iops := cachedIOPS
+	iopsMutex.RUnlock()
+
+	return iops, nil
 }
 
 // GetIOWait returns I/O Wait percentage

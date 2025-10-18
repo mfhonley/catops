@@ -4,9 +4,17 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/net"
+)
+
+// Global bandwidth cache - updated by background goroutine every second
+var (
+	cachedBandwidth      *bandwidthMeasurement
+	bandwidthMutex       sync.RWMutex
+	bandwidthInitialized bool
 )
 
 // NetworkMetrics represents network monitoring data
@@ -44,18 +52,47 @@ type NetworkConnection struct {
 	ImportanceScore int    `json:"importance_score"`
 }
 
+// StartBandwidthMonitoring starts background goroutine to measure bandwidth continuously
+// This prevents blocking the main metrics collection loop
+func StartBandwidthMonitoring() {
+	bandwidthMutex.Lock()
+	if bandwidthInitialized {
+		bandwidthMutex.Unlock()
+		return
+	}
+	bandwidthInitialized = true
+	bandwidthMutex.Unlock()
+
+	// Initialize with zero values
+	cachedBandwidth = &bandwidthMeasurement{}
+
+	// Start background measurement
+	go func() {
+		for {
+			bandwidth, err := measureBandwidth()
+			if err == nil {
+				bandwidthMutex.Lock()
+				cachedBandwidth = bandwidth
+				bandwidthMutex.Unlock()
+			}
+			// Sleep handled inside measureBandwidth, so loop continues immediately
+		}
+	}()
+}
+
 // GetNetworkMetrics collects network metrics
 func GetNetworkMetrics() (*NetworkMetrics, error) {
 	metrics := &NetworkMetrics{
 		TopConnections: []NetworkConnection{},
 	}
 
-	// Measure bandwidth over 1 second
-	bandwidth, err := measureBandwidth()
-	if err == nil {
-		metrics.InboundBytesPerSec = bandwidth.InboundBytes
-		metrics.OutboundBytesPerSec = bandwidth.OutboundBytes
+	// Get cached bandwidth (non-blocking)
+	bandwidthMutex.RLock()
+	if cachedBandwidth != nil {
+		metrics.InboundBytesPerSec = cachedBandwidth.InboundBytes
+		metrics.OutboundBytesPerSec = cachedBandwidth.OutboundBytes
 	}
+	bandwidthMutex.RUnlock()
 
 	// Get all connections
 	connections, err := net.Connections("all")

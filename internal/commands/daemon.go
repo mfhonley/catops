@@ -29,6 +29,16 @@ func NewDaemonCmd() *cobra.Command {
 		Use:    "daemon",
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Panic recovery to log crashes
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("PANIC in daemon: %v", r)
+					logger.Error("Daemon crashed unexpectedly")
+					process.ReleaseLock()
+					os.Exit(1)
+				}
+			}()
+
 			// CRITICAL: Acquire lock file FIRST (before any other operations)
 			// This prevents duplicate daemon processes from starting
 			_, err := process.AcquireLock()
@@ -37,7 +47,10 @@ func NewDaemonCmd() *cobra.Command {
 				logger.Error("Another CatOps instance may already be running")
 				os.Exit(1)
 			}
-			defer process.ReleaseLock()
+			defer func() {
+				logger.Info("Service stopping - releasing lock (PID: %d)", os.Getpid())
+				process.ReleaseLock()
+			}()
 
 			logger.Info("Service started - PID: %d (lock acquired)", os.Getpid())
 
@@ -279,9 +292,10 @@ func NewDaemonCmd() *cobra.Command {
 						logger.Error("Failed to parse version API response")
 					}
 
-				case <-sigChan:
+				case sig := <-sigChan:
 					// Graceful shutdown
 					// log service stop
+					logger.Info("Received signal %v - graceful shutdown initiated (PID: %d)", sig, os.Getpid())
 					logger.Info("Service stopped - PID: %d", os.Getpid())
 
 					// Lock will be automatically released by defer process.ReleaseLock()

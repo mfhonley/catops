@@ -374,6 +374,14 @@ func (s *Sender) SendServiceEvent(eventType string, metrics *metrics.Metrics) {
 
 	// send analytics to backend
 	go func() {
+		// Panic recovery for goroutine
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendServiceEvent goroutine: %v", r)
+				logger.Error("Event type: %s", eventType)
+			}
+		}()
+
 		// log service analytics request start
 		logger.Info("Analytics request started - Type: service_%s, URL: %s", eventType, constants.EVENTS_URL)
 

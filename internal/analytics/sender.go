@@ -377,8 +377,15 @@ func (s *Sender) SendServiceEvent(eventType string, metrics *metrics.Metrics) {
 		// log service analytics request start
 		logger.Info("Analytics request started - Type: service_%s, URL: %s", eventType, constants.EVENTS_URL)
 
+		// Extra logging for config_change events
+		if eventType == "config_change" {
+			logger.Info("Config change event details - EventType: %s, Severity: %s, Message: %s", backendEventType, severity, message)
+			logger.Debug("Config change event payload: %s", string(jsonData))
+		}
+
 		req, err := utils.CreateCLIRequest("POST", constants.EVENTS_URL, bytes.NewBuffer(jsonData), s.version)
 		if err != nil {
+			logger.Error("Failed to create request for service_%s: %v", eventType, err)
 			return
 		}
 
@@ -391,8 +398,12 @@ func (s *Sender) SendServiceEvent(eventType string, metrics *metrics.Metrics) {
 		}
 		defer resp.Body.Close()
 
-		// log analytics success
-		logger.Info("Analytics sent - Type: service_%s, Status: success", eventType)
+		// log analytics success with status code
+		if resp.StatusCode == 200 {
+			logger.Info("Analytics sent - Type: service_%s, Status: success (HTTP %d)", eventType, resp.StatusCode)
+		} else {
+			logger.Warning("Analytics sent - Type: service_%s, Status: HTTP %d (non-200)", eventType, resp.StatusCode)
+		}
 	}()
 }
 

@@ -101,9 +101,20 @@ Examples:
 
 			// Send config_change event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
-				if currentMetrics, err := metrics.GetMetrics(); err == nil {
+				ui.PrintStatus("info", "Sending config_change event to backend...")
+				currentMetrics, err := metrics.GetMetrics()
+				if err != nil {
+					ui.PrintStatus("warning", fmt.Sprintf("Failed to get metrics for event: %v", err))
+					ui.PrintStatus("info", "Sending event without metrics...")
+					// Still send event without metrics
+					emptyMetrics := &metrics.Metrics{}
+					analytics.NewSender(cfg, GetCurrentVersion()).SendAll("config_change", emptyMetrics)
+				} else {
 					analytics.NewSender(cfg, GetCurrentVersion()).SendAll("config_change", currentMetrics)
 				}
+				ui.PrintStatus("success", "Config change event sent")
+			} else {
+				ui.PrintStatus("info", "Cloud mode not configured - event not sent")
 			}
 
 			ui.PrintStatus("info", "Run 'catops restart' to apply changes")

@@ -124,24 +124,24 @@ func (mb *MetricsBuffer) GetDiskStatistics(windowMinutes int) MetricStatistics {
 }
 
 // DetectCPUSpike performs spike detection on CPU metrics
-func (mb *MetricsBuffer) DetectCPUSpike(suddenSpikeThreshold, gradualRiseThreshold float64) SpikeDetectionResult {
+func (mb *MetricsBuffer) DetectCPUSpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.cpu.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold)
+	return mb.cpu.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // DetectMemorySpike performs spike detection on Memory metrics
-func (mb *MetricsBuffer) DetectMemorySpike(suddenSpikeThreshold, gradualRiseThreshold float64) SpikeDetectionResult {
+func (mb *MetricsBuffer) DetectMemorySpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.memory.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold)
+	return mb.memory.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // DetectDiskSpike performs spike detection on Disk metrics
-func (mb *MetricsBuffer) DetectDiskSpike(suddenSpikeThreshold, gradualRiseThreshold float64) SpikeDetectionResult {
+func (mb *MetricsBuffer) DetectDiskSpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.disk.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold)
+	return mb.disk.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // getStatistics calculates statistics for a time window
@@ -187,7 +187,7 @@ func (ts *MetricTimeseries) getStatistics(windowMinutes int) MetricStatistics {
 }
 
 // detectSpike performs spike detection analysis
-func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold, gradualRiseThreshold float64) SpikeDetectionResult {
+func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	result := SpikeDetectionResult{
 		Stats: ts.getStatistics(windowMinutes),
 	}
@@ -247,8 +247,8 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 	if result.Stats.StdDev > 0 {
 		result.DeviationFromAvg = math.Abs(result.CurrentValue-result.Stats.Avg) / result.Stats.StdDev
 
-		// Anomalous: >2 standard deviations from average
-		if result.DeviationFromAvg > 2.0 {
+		// Anomalous: exceeds configured threshold (default 3.0 standard deviations)
+		if result.DeviationFromAvg > anomalyThreshold {
 			result.HasAnomalousValue = true
 		}
 	}

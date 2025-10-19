@@ -330,7 +330,7 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 	var cpuAlerts []alerts.Alert
 
 	// Detect spikes
-	spikeResult := buffer.DetectCPUSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold)
+	spikeResult := buffer.DetectCPUSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
 
 	// Sudden spike (highest priority)
 	if spikeResult.HasSuddenSpike {
@@ -427,7 +427,7 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 	var memAlerts []alerts.Alert
 
 	// Detect spikes
-	spikeResult := buffer.DetectMemorySpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold)
+	spikeResult := buffer.DetectMemorySpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
 
 	// Sudden spike (critical - possible memory leak or attack)
 	if spikeResult.HasSuddenSpike {
@@ -524,7 +524,7 @@ func checkDiskAlerts(diskUsage float64, cfg *config.Config, buffer *metrics.Metr
 	var diskAlerts []alerts.Alert
 
 	// Detect spikes
-	spikeResult := buffer.DetectDiskSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold)
+	spikeResult := buffer.DetectDiskSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
 
 	// Sudden spike (critical - disk filling rapidly)
 	if spikeResult.HasSuddenSpike {

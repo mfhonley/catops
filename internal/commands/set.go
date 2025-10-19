@@ -28,14 +28,16 @@ Supported metrics:
   • disk         - Disk usage percentage (0-100)
   • spike        - Sudden spike detection threshold (0-100)
   • gradual      - Gradual rise detection threshold (0-100)
+  • anomaly      - Statistical anomaly threshold (standard deviations, 1.0-10.0)
   • renotify     - Alert re-notification interval in minutes
 
 Examples:
   catops set cpu=90              # Set CPU threshold to 90%
   catops set mem=80 disk=85      # Set Memory to 80%, Disk to 85%
   catops set spike=30 gradual=15 # Set spike detection to 30%, gradual to 15%
+  catops set anomaly=4.0         # Alert only for 4+ std deviations (less sensitive)
   catops set renotify=120        # Re-notify every 2 hours
-  catops set cpu=70 spike=25 renotify=90  # Set multiple at once`,
+  catops set cpu=70 spike=25 anomaly=5.0  # Set multiple at once`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Configuring Alert Thresholds")
@@ -96,6 +98,13 @@ Examples:
 				case "gradual":
 					cfg.GradualRiseThreshold = value
 					ui.PrintStatus("success", fmt.Sprintf("Set gradual rise threshold to %.1f%%", value))
+				case "anomaly":
+					if value < 1.0 || value > 10.0 {
+						ui.PrintStatus("error", "Anomaly threshold must be between 1.0 and 10.0 (standard deviations)")
+						continue
+					}
+					cfg.AnomalyThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set anomaly threshold to %.1fσ (std deviations)", value))
 				case "renotify":
 					if value <= 0 {
 						ui.PrintStatus("error", "Re-notify interval must be positive")

@@ -53,8 +53,9 @@ Use 'catops auth' to manage cloud mode authentication.`,
 			ui.PrintSection("Alert Sensitivity")
 			ui.PrintStatus("info", fmt.Sprintf("Spike Detection: %.1f%%", cfg.SuddenSpikeThreshold))
 			ui.PrintStatus("info", fmt.Sprintf("Gradual Rise: %.1f%%", cfg.GradualRiseThreshold))
+			ui.PrintStatus("info", fmt.Sprintf("Anomaly Threshold: %.1fσ (std deviations)", cfg.AnomalyThreshold))
 			ui.PrintStatus("info", fmt.Sprintf("Re-notify Interval: %d minutes", cfg.AlertRenotifyInterval))
-			ui.PrintStatus("info", "Use 'catops set spike=30 gradual=15' to adjust")
+			ui.PrintStatus("info", "Use 'catops set spike=30 gradual=15 anomaly=4.0' to adjust")
 			ui.PrintSectionEnd()
 		},
 	}

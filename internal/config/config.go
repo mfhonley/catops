@@ -23,6 +23,7 @@ type Config struct {
 	BufferSize             int     `mapstructure:"buffer_size"`              // default 20 (5 minutes at 15s)
 	SuddenSpikeThreshold   float64 `mapstructure:"sudden_spike_threshold"`   // default 20%
 	GradualRiseThreshold   float64 `mapstructure:"gradual_rise_threshold"`   // default 10%
+	AnomalyThreshold       float64 `mapstructure:"anomaly_threshold"`        // default 3.0 (standard deviations)
 	AlertDeduplication     bool    `mapstructure:"alert_deduplication"`      // default true
 	AlertRenotifyInterval  int     `mapstructure:"alert_renotify_interval"`  // in minutes, default 60
 	AlertResolutionTimeout int     `mapstructure:"alert_resolution_timeout"` // in minutes, default 2
@@ -64,6 +65,7 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("buffer_size", 20)              // 20 points = 5 minutes at 15s
 	viper.SetDefault("sudden_spike_threshold", 20.0) // 20% change
 	viper.SetDefault("gradual_rise_threshold", 10.0) // 10% change over window
+	viper.SetDefault("anomaly_threshold", 3.0)       // 3.0 standard deviations
 	viper.SetDefault("alert_deduplication", true)    // enabled
 	viper.SetDefault("alert_renotify_interval", 60)  // 60 minutes
 	viper.SetDefault("alert_resolution_timeout", 2)  // 2 minutes
@@ -117,6 +119,13 @@ func SaveConfig(cfg *Config) error {
 			configLines = append(configLines, "# Alert sensitivity configuration")
 		}
 		configLines = append(configLines, fmt.Sprintf("gradual_rise_threshold: %.1f", cfg.GradualRiseThreshold))
+	}
+	if cfg.AnomalyThreshold > 0 && cfg.AnomalyThreshold != 3.0 {
+		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0) && (cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == 10.0) {
+			configLines = append(configLines, "")
+			configLines = append(configLines, "# Alert sensitivity configuration")
+		}
+		configLines = append(configLines, fmt.Sprintf("anomaly_threshold: %.1f", cfg.AnomalyThreshold))
 	}
 	if cfg.AlertRenotifyInterval > 0 && cfg.AlertRenotifyInterval != 60 {
 		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0) && (cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == 10.0) {

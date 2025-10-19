@@ -197,6 +197,7 @@ catops restart             # Restart monitoring service
 catops config show                              # Show current config
 catops set cpu=80 mem=85 disk=90                # Set alert thresholds
 catops set spike=30 gradual=15                  # Set spike detection sensitivity
+catops set anomaly=4.0                          # Set anomaly detection (std deviations)
 catops set renotify=120                         # Set re-notification interval (minutes)
 ```
 
@@ -243,7 +244,9 @@ server-prod-01
 - **Threshold** - Metric exceeded configured limit (CPU > 80%)
 - **Sudden Spike** - Rapid increase detected (5% → 40% in 15 seconds)
 - **Gradual Rise** - Sustained increase over time (15% → 32% over 5 minutes)
-- **Anomaly** - Statistical outlier (3+ standard deviations from average)
+- **Anomaly** - Statistical outlier (configurable, default: 3.0σ from average)
+  - Uses standard deviation to detect unusual values
+  - Adjust with `catops set anomaly=4.0` for less sensitivity
 - **Recovery** - Alert resolved, metrics back to normal
 
 ### Cloud Mode (Web Dashboard)
@@ -456,6 +459,7 @@ disk_threshold: 90.0
 # Alert Sensitivity (Advanced)
 sudden_spike_threshold: 30.0      # Alert on CPU/Memory changes > 30%
 gradual_rise_threshold: 15.0      # Alert on sustained increases > 15%
+anomaly_threshold: 4.0            # Alert on statistical anomalies > 4σ (std deviations)
 alert_renotify_interval: 120      # Re-notify every 2 hours (minutes)
 ```
 
@@ -465,7 +469,7 @@ alert_renotify_interval: 120      # Re-notify every 2 hours (minutes)
 catops set cpu=80 mem=85 disk=90
 
 # Configure alert sensitivity
-catops set spike=30 gradual=15 renotify=120
+catops set spike=30 gradual=15 anomaly=4.0 renotify=120
 
 # Or edit file directly
 nano ~/.catops/config.yaml
@@ -477,20 +481,148 @@ Control how often you receive alerts:
 
 **For production servers (less noise):**
 ```bash
-catops set cpu=80 spike=30 gradual=15 renotify=120
+catops set cpu=80 spike=30 gradual=15 anomaly=4.0 renotify=120
 catops restart
 ```
 
 **For critical servers (more sensitive):**
 ```bash
-catops set cpu=70 spike=20 gradual=10 renotify=60
+catops set cpu=70 spike=20 gradual=10 anomaly=2.5 renotify=60
 catops restart
 ```
 
-**Available parameters:**
-- `spike` - Sudden spike threshold (0-100%, default: 20%)
-- `gradual` - Gradual rise threshold (0-100%, default: 10%)
-- `renotify` - Re-notification interval in minutes (default: 60)
+### Understanding Alert Sensitivity Parameters
+
+#### 1. **`spike` - Sudden Spike Threshold**
+**Default:** 20% | **Range:** 0-100%
+
+Detects rapid changes in CPU/Memory usage within a short time window (15-30 seconds).
+
+**How it works:**
+- Compares current value vs 5 previous values
+- Triggers if change exceeds threshold percentage
+- Example: CPU jumps from 5% to 35% = 30% spike
+
+**When to adjust:**
+- **Too many spike alerts?** Increase to 30-40%
+- **Missing sudden issues?** Decrease to 15%
+
+**Real-world scenarios:**
+- `spike=20%`: Detects most sudden problems (memory leaks, attacks)
+- `spike=30%`: Production servers (filters minor fluctuations)
+- `spike=40%`: Dev/staging (only extreme cases)
+
+---
+
+#### 2. **`gradual` - Gradual Rise Threshold**
+**Default:** 10% | **Range:** 0-100%
+
+Detects sustained increases over a longer period (5 minutes).
+
+**How it works:**
+- Analyzes trend over 20 data points (5 minutes at 15s intervals)
+- Triggers if cumulative rise exceeds threshold
+- Example: CPU steadily climbs 15% → 20% → 25% → 30% = 15% gradual rise
+
+**When to adjust:**
+- **Too many gradual alerts?** Increase to 15-20%
+- **Want early warning?** Keep at 10%
+
+**Real-world scenarios:**
+- `gradual=10%`: Catch slow memory leaks early
+- `gradual=15%`: Production (ignore normal growth patterns)
+- `gradual=20%`: Servers with expected load variations
+
+---
+
+#### 3. **`anomaly` - Statistical Anomaly Threshold**
+**Default:** 3.0σ | **Range:** 1.0-10.0 standard deviations
+
+Detects values that are statistically unusual compared to historical average.
+
+**How it works:**
+- Calculates average (μ) and standard deviation (σ) over 5 minutes
+- Measures how many σ current value deviates from average
+- Triggers if deviation exceeds threshold
+
+**Mathematical explanation:**
+```
+Current value: 25%
+Historical avg (μ): 8%
+Std deviation (σ): 4%
+
+Deviation = |25 - 8| / 4 = 4.25σ
+If anomaly=4.0 → Alert triggered (4.25 > 4.0)
+If anomaly=5.0 → No alert (4.25 < 5.0)
+```
+
+**When to adjust:**
+- **Too many anomaly alerts for small changes?** Increase to 4.0-5.0σ
+- **Missing unusual patterns?** Decrease to 2.0-2.5σ
+- **Getting alerts like "13.2% (3.6σ)"?** Your threshold is 3.0σ, increase to 4.0σ
+
+**Statistical context:**
+- **1σ**: ~68% of values fall within ±1σ (very common)
+- **2σ**: ~95% of values fall within ±2σ (common)
+- **3σ**: ~99.7% of values fall within ±3σ (rare, default)
+- **4σ**: ~99.99% of values fall within ±4σ (very rare)
+- **5σ**: Extreme outlier (once in 1.7 million events)
+
+**Real-world scenarios:**
+- `anomaly=2.5σ`: Critical servers (catch everything unusual)
+- `anomaly=3.0σ`: Balanced default
+- `anomaly=4.0σ`: Production (reduce noise)
+- `anomaly=5.0σ`: Dev/staging (only extreme anomalies)
+
+---
+
+#### 4. **`renotify` - Re-notification Interval**
+**Default:** 60 minutes | **Range:** Any positive integer
+
+How often to resend alert if problem persists.
+
+**How it works:**
+- After initial alert, wait N minutes before sending same alert again
+- Only applies to unacknowledged, active alerts
+- Stops if alert is acknowledged or resolved
+
+**When to adjust:**
+- **Alert fatigue?** Increase to 120-240 minutes
+- **Need frequent reminders?** Keep at 60 minutes
+- **Critical systems?** Decrease to 30 minutes
+
+**Real-world scenarios:**
+- `renotify=30`: Critical infrastructure (frequent reminders)
+- `renotify=60`: Balanced default
+- `renotify=120`: Production (less spam)
+- `renotify=240`: Dev/staging (occasional reminders)
+
+---
+
+### Quick Reference Table
+
+| Scenario | spike | gradual | anomaly | renotify |
+|----------|-------|---------|---------|----------|
+| **Critical production** | 20% | 10% | 2.5σ | 60min |
+| **Standard production** | 30% | 15% | 4.0σ | 120min |
+| **Dev/Staging** | 40% | 20% | 5.0σ | 240min |
+| **High traffic (expected spikes)** | 35% | 20% | 4.5σ | 120min |
+| **Low traffic (stable)** | 25% | 12% | 3.5σ | 90min |
+
+---
+
+### How Alert Types Interact
+
+**Priority order (highest to lowest):**
+1. **Sudden Spike** - Immediate danger (memory leak, attack)
+2. **Gradual Rise** - Growing problem (slow leak, increasing load)
+3. **Anomaly** - Unusual pattern (statistical outlier)
+4. **Threshold** - Limit exceeded (only sent if NO spikes/anomalies)
+
+**Why threshold alerts might not appear:**
+- If CPU constantly fluctuates by small amounts, anomaly alerts fire
+- Increase `anomaly` threshold to reduce sensitivity
+- This allows threshold alerts to be sent when CPU > configured limit
 
 ---
 
@@ -539,11 +671,15 @@ catops auth login YOUR_NEW_TOKEN
 **Too many alerts (alert spam):**
 ```bash
 # Reduce sensitivity to avoid notifications for minor fluctuations
-catops set spike=30 gradual=15 renotify=120
+catops set spike=30 gradual=15 anomaly=4.0 renotify=120
 catops restart
 
 # For even less noise (dev/staging servers)
-catops set spike=40 gradual=20 renotify=240
+catops set spike=40 gradual=20 anomaly=5.0 renotify=240
+catops restart
+
+# If getting too many anomaly alerts for small changes:
+catops set anomaly=4.5  # Increase anomaly threshold
 catops restart
 ```
 
@@ -551,7 +687,7 @@ catops restart
 ```bash
 # Threshold alerts only send when there are NO spikes/anomalies
 # Increase spike detection thresholds to allow threshold alerts
-catops set spike=30 gradual=15
+catops set spike=30 gradual=15 anomaly=4.0
 catops restart
 ```
 

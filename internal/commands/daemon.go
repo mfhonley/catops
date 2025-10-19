@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -191,6 +192,9 @@ func NewDaemonCmd() *cobra.Command {
 			for {
 				select {
 				case <-ticker.C:
+					// GOROUTINE LEAK DETECTION: Log goroutine count every cycle
+					logger.Debug("Main loop cycle - goroutines: %d", runtime.NumGoroutine())
+
 					// reload config to get latest changes
 					currentCfg, err := config.LoadConfig()
 					if err != nil {
@@ -201,6 +205,7 @@ func NewDaemonCmd() *cobra.Command {
 					// get current metrics
 					currentMetrics, err := metrics.GetMetrics()
 					if err != nil {
+						logger.Error("Failed to get metrics: %v", err)
 						continue
 					}
 

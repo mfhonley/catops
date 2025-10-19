@@ -150,10 +150,11 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		// REDUCED TIMEOUT: 3 seconds to prevent goroutine buildup
+		client := &http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			logger.Error("Failed to send alert: %v", err)
+			logger.Warning("Failed to send alert (will retry if still active): %v", err)
 			return
 		}
 		defer resp.Body.Close()
@@ -204,7 +205,8 @@ func (s *Sender) SendHeartbeat(fingerprint string) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		// REDUCED TIMEOUT: 3 seconds to prevent goroutine buildup
+		client := &http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
 			logger.Error("Failed to send heartbeat: %v", err)
@@ -256,7 +258,7 @@ func (s *Sender) ResolveAlert(fingerprint string) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
 		resp, err := client.Do(req)
 		if err != nil {
 			logger.Error("Failed to send resolve: %v", err)
@@ -404,7 +406,7 @@ func (s *Sender) SendServiceEventBlocking(eventType string, metrics *metrics.Met
 		return
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
 	resp, err := client.Do(req)
 	if err != nil {
 		// log analytics send error
@@ -545,7 +547,7 @@ func (s *Sender) SendServiceEvent(eventType string, metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
 		resp, err := client.Do(req)
 		if err != nil {
 			// log analytics send error
@@ -752,11 +754,13 @@ func (s *Sender) SendProcessMetrics(metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		// REDUCED TIMEOUT: 3 seconds instead of 10 to prevent goroutine accumulation
+		// If backend doesn't respond in 3s, it's better to fail fast and retry next cycle
+		client := &http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			// Log process metrics send error
-			logger.Error("Failed to send process metrics: %v", err)
+			// Log process metrics send error (non-critical - will retry next cycle)
+			logger.Warning("Failed to send process metrics (will retry next cycle): %v", err)
 			return
 		}
 		defer resp.Body.Close()
@@ -905,7 +909,7 @@ func (s *Sender) SendSystemMetrics(metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
 		resp, err := client.Do(req)
 		if err != nil {
 			// Log metrics send error
@@ -1039,7 +1043,7 @@ func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 10 * time.Second}
+		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
 		resp, err := client.Do(req)
 		if err != nil {
 			// Log network metrics send error

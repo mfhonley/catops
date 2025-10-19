@@ -23,14 +23,19 @@ func NewSetCmd() *cobra.Command {
 After changing thresholds, run 'catops restart' to apply changes to the running service.
 
 Supported metrics:
-  • cpu    - CPU usage percentage (0-100)
-  • mem    - Memory usage percentage (0-100)
-  • disk   - Disk usage percentage (0-100)
+  • cpu          - CPU usage percentage (0-100)
+  • mem          - Memory usage percentage (0-100)
+  • disk         - Disk usage percentage (0-100)
+  • spike        - Sudden spike detection threshold (0-100)
+  • gradual      - Gradual rise detection threshold (0-100)
+  • renotify     - Alert re-notification interval in minutes
 
 Examples:
   catops set cpu=90              # Set CPU threshold to 90%
   catops set mem=80 disk=85      # Set Memory to 80%, Disk to 85%
-  catops set cpu=70 mem=75 disk=90  # Set all thresholds at once`,
+  catops set spike=30 gradual=15 # Set spike detection to 30%, gradual to 15%
+  catops set renotify=120        # Re-notify every 2 hours
+  catops set cpu=70 spike=25 renotify=90  # Set multiple at once`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Configuring Alert Thresholds")
@@ -49,7 +54,7 @@ Examples:
 
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: catops set cpu=90 mem=90 disk=90")
-				ui.PrintStatus("info", "Supported: cpu, mem, disk")
+				ui.PrintStatus("info", "Supported: cpu, mem, disk, spike, gradual, renotify")
 				ui.PrintSectionEnd()
 				return
 			}
@@ -69,7 +74,8 @@ Examples:
 					continue
 				}
 
-				if !utils.IsValidThreshold(value) {
+				// Validate threshold range (0-100 for percentages, any positive for renotify)
+				if metric != "renotify" && !utils.IsValidThreshold(value) {
 					ui.PrintStatus("error", fmt.Sprintf("Invalid threshold for %s: %.1f%% (must be 0-100)", metric, value))
 					continue
 				}
@@ -77,16 +83,30 @@ Examples:
 				switch metric {
 				case "cpu":
 					cfg.CPUThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set %s threshold to %.1f%%", metric, value))
 				case "mem":
 					cfg.MemThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set %s threshold to %.1f%%", metric, value))
 				case "disk":
 					cfg.DiskThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set %s threshold to %.1f%%", metric, value))
+				case "spike":
+					cfg.SuddenSpikeThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set sudden spike threshold to %.1f%%", value))
+				case "gradual":
+					cfg.GradualRiseThreshold = value
+					ui.PrintStatus("success", fmt.Sprintf("Set gradual rise threshold to %.1f%%", value))
+				case "renotify":
+					if value <= 0 {
+						ui.PrintStatus("error", "Re-notify interval must be positive")
+						continue
+					}
+					cfg.AlertRenotifyInterval = int(value)
+					ui.PrintStatus("success", fmt.Sprintf("Set re-notify interval to %d minutes", int(value)))
 				default:
 					ui.PrintStatus("error", fmt.Sprintf("Unknown metric: %s", metric))
 					continue
 				}
-
-				ui.PrintStatus("success", fmt.Sprintf("Set %s threshold to %.1f%%", metric, value))
 			}
 
 			// save configuration

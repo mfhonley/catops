@@ -105,6 +105,27 @@ func SaveConfig(cfg *Config) error {
 	configLines = append(configLines, fmt.Sprintf("mem_threshold: %.1f", cfg.MemThreshold))
 	configLines = append(configLines, fmt.Sprintf("disk_threshold: %.1f", cfg.DiskThreshold))
 
+	// Spike detection thresholds (save if non-default)
+	if cfg.SuddenSpikeThreshold > 0 && cfg.SuddenSpikeThreshold != 20.0 {
+		configLines = append(configLines, "")
+		configLines = append(configLines, "# Alert sensitivity configuration")
+		configLines = append(configLines, fmt.Sprintf("sudden_spike_threshold: %.1f", cfg.SuddenSpikeThreshold))
+	}
+	if cfg.GradualRiseThreshold > 0 && cfg.GradualRiseThreshold != 10.0 {
+		if cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0 {
+			configLines = append(configLines, "")
+			configLines = append(configLines, "# Alert sensitivity configuration")
+		}
+		configLines = append(configLines, fmt.Sprintf("gradual_rise_threshold: %.1f", cfg.GradualRiseThreshold))
+	}
+	if cfg.AlertRenotifyInterval > 0 && cfg.AlertRenotifyInterval != 60 {
+		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0) && (cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == 10.0) {
+			configLines = append(configLines, "")
+			configLines = append(configLines, "# Alert sensitivity configuration")
+		}
+		configLines = append(configLines, fmt.Sprintf("alert_renotify_interval: %d", cfg.AlertRenotifyInterval))
+	}
+
 	// Join lines with newline
 	configContent := ""
 	for i, line := range configLines {

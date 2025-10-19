@@ -50,7 +50,10 @@ curl -sfL https://get.catops.io/install.sh | bash
 **Alerting:**
 - Telegram bot integration with remote commands
 - Configurable thresholds (CPU, Memory, Disk)
-- Instant notifications
+- Intelligent spike detection (sudden spikes, gradual rises, anomalies)
+- Alert deduplication (no spam)
+- Interactive Telegram buttons (Acknowledge, Silence)
+- Instant notifications with detailed context
 
 **Management:**
 - Background service with auto-start
@@ -109,30 +112,20 @@ That's it! Your servers/nodes appear in the dashboard within 60 seconds.
 curl -sfL https://get.catops.io/install.sh | bash
 ```
 
-**With Telegram Bot:**
+**Operating Modes:**
+- **Local Mode** (default): Metrics collected locally, view with `catops status`
+- **Cloud Mode**: Telegram alerts + Web dashboard at [catops.app](https://catops.app)
 
+**Enable Cloud Mode for Telegram alerts:**
 ```bash
-curl -sfL https://get.catops.io/install.sh | \
-  BOT_TOKEN="your_bot_token" \
-  GROUP_ID="your_group_id" \
-  bash
+# 1. Install CatOps
+curl -sfL https://get.catops.io/install.sh | bash
+
+# 2. Get token from https://catops.app
+catops auth login YOUR_TOKEN
+
+# 3. Configure Telegram bot on catops.app dashboard
 ```
-
-<details>
-<summary>📖 How to get Telegram Bot credentials</summary>
-
-1. **Create Bot:**
-   - Open [@BotFather](https://t.me/botfather) in Telegram
-   - Send `/newbot` and follow instructions
-   - Save the token
-
-2. **Get Group ID:**
-   - Create a Telegram group
-   - Add your bot as administrator
-   - Add [@myidbot](https://t.me/myidbot)
-   - Send `/getid` and copy the group ID
-
-</details>
 
 **From Source (Developers):**
 
@@ -202,9 +195,9 @@ catops restart             # Restart monitoring service
 **Configuration:**
 ```bash
 catops config show                              # Show current config
-catops config token=YOUR_BOT_TOKEN              # Set Telegram bot token
-catops config group=YOUR_GROUP_ID               # Set Telegram group ID
 catops set cpu=80 mem=85 disk=90                # Set alert thresholds
+catops set spike=30 gradual=15                  # Set spike detection sensitivity
+catops set renotify=120                         # Set re-notification interval (minutes)
 ```
 
 **Service Management:**
@@ -221,23 +214,37 @@ catops uninstall           # Remove CatOps completely
 catops --version           # Show version
 ```
 
-### Telegram Bot Integration
-
-**Available Bot Commands:**
-- `/status` - Show system metrics
-- `/processes` - Display top processes
-- `/restart` - Restart monitoring service
-- `/set cpu=90` - Configure alert thresholds
-- `/help` - Show all commands
+### Telegram Alerts (Cloud Mode)
 
 **Setup:**
-1. Create bot via [@BotFather](https://t.me/botfather)
-2. Add bot to your group as admin
-3. Configure CatOps:
-   ```bash
-   catops config token=YOUR_BOT_TOKEN
-   catops config group=YOUR_GROUP_ID
-   ```
+1. Enable Cloud Mode: `catops auth login YOUR_TOKEN`
+2. Configure Telegram on [catops.app](https://catops.app) dashboard
+3. Connect your Telegram account
+4. Start receiving personal alerts
+
+**Interactive Alert Buttons:**
+
+When connected to [catops.app](https://catops.app), alerts include interactive buttons:
+
+```
+🔴 CPU Spike Detected
+
+server-prod-01
+📈 5.2% → 35.8% (+30.6% spike)
+
+[Acknowledge] [Silence ▼] [Details]
+```
+
+- **Acknowledge** - Mark alert as seen, stop re-notifications
+- **Silence** - Mute alerts for 30m/1h/2h/24h (useful for maintenance)
+- **Details** - Open web dashboard for full metrics and history
+
+**Alert Types:**
+- **Threshold** - Metric exceeded configured limit (CPU > 80%)
+- **Sudden Spike** - Rapid increase detected (5% → 40% in 15 seconds)
+- **Gradual Rise** - Sustained increase over time (15% → 32% over 5 minutes)
+- **Anomaly** - Statistical outlier (3+ standard deviations from average)
+- **Recovery** - Alert resolved, metrics back to normal
 
 ### Cloud Mode (Web Dashboard)
 
@@ -261,8 +268,8 @@ catops auth info
 - ✅ Mobile-friendly interface
 
 **Operation Modes:**
-- **Local Mode** (default): Telegram alerts only, works offline
-- **Cloud Mode**: Telegram + Web dashboard, requires internet
+- **Local Mode** (default): Metrics collected locally, no alerts, works offline
+- **Cloud Mode**: Telegram alerts + Web dashboard + Multi-server monitoring
 
 ---
 
@@ -437,10 +444,6 @@ kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernet
 
 **Example:**
 ```yaml
-# Telegram Bot (Optional)
-telegram_token: "1234567890:ABC..."
-chat_id: -1001234567890
-
 # Cloud Mode (Set automatically via 'catops auth login')
 auth_token: "your_auth_token"
 server_id: "507f1f77bcf86cd799439011"
@@ -449,18 +452,45 @@ server_id: "507f1f77bcf86cd799439011"
 cpu_threshold: 80.0
 mem_threshold: 85.0
 disk_threshold: 90.0
+
+# Alert Sensitivity (Advanced)
+sudden_spike_threshold: 30.0      # Alert on CPU/Memory changes > 30%
+gradual_rise_threshold: 15.0      # Alert on sustained increases > 15%
+alert_renotify_interval: 120      # Re-notify every 2 hours (minutes)
 ```
 
 **Edit configuration:**
 ```bash
 # Via CLI commands (recommended)
-catops config token=YOUR_BOT_TOKEN
-catops config group=YOUR_GROUP_ID
 catops set cpu=80 mem=85 disk=90
+
+# Configure alert sensitivity
+catops set spike=30 gradual=15 renotify=120
 
 # Or edit file directly
 nano ~/.catops/config.yaml
 ```
+
+### Alert Sensitivity Settings
+
+Control how often you receive alerts:
+
+**For production servers (less noise):**
+```bash
+catops set cpu=80 spike=30 gradual=15 renotify=120
+catops restart
+```
+
+**For critical servers (more sensitive):**
+```bash
+catops set cpu=70 spike=20 gradual=10 renotify=60
+catops restart
+```
+
+**Available parameters:**
+- `spike` - Sudden spike threshold (0-100%, default: 20%)
+- `gradual` - Gradual rise threshold (0-100%, default: 10%)
+- `renotify` - Re-notification interval in minutes (default: 60)
 
 ---
 
@@ -484,17 +514,15 @@ journalctl -u catops --since "10 minutes ago"
 tail -f ~/Library/Logs/catops.log
 ```
 
-**Telegram bot not responding:**
+**Telegram alerts not working:**
 ```bash
-# Verify configuration
-catops config show
+# Verify Cloud Mode is enabled
+catops auth info
 
-# Test bot token is valid
-# Send a message to the bot in Telegram
+# Check Telegram is configured on catops.app dashboard
+# Connect your Telegram account in Settings
 
-# Reconfigure
-catops config token=YOUR_BOT_TOKEN
-catops config group=YOUR_GROUP_ID
+# Restart daemon
 catops restart
 ```
 
@@ -506,6 +534,25 @@ catops auth info
 # Re-login
 catops auth logout
 catops auth login YOUR_NEW_TOKEN
+```
+
+**Too many alerts (alert spam):**
+```bash
+# Reduce sensitivity to avoid notifications for minor fluctuations
+catops set spike=30 gradual=15 renotify=120
+catops restart
+
+# For even less noise (dev/staging servers)
+catops set spike=40 gradual=20 renotify=240
+catops restart
+```
+
+**Not receiving threshold alerts:**
+```bash
+# Threshold alerts only send when there are NO spikes/anomalies
+# Increase spike detection thresholds to allow threshold alerts
+catops set spike=30 gradual=15
+catops restart
 ```
 
 ### Kubernetes Issues

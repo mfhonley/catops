@@ -361,11 +361,11 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 			alerts.AlertTypeCPU,
 			alerts.SubTypeGradualRise,
 			alerts.SeverityWarning,
-			"CPU Trending Up",
-			fmt.Sprintf("CPU increased by %.1f%% over last 5 minutes (current: %.1f%%, avg: %.1f%%)",
+			"CPU Gradually Increasing",
+			fmt.Sprintf("CPU steadily rising - increased %.1f%% over last 5 minutes (from %.1f%% to %.1f%%). May indicate resource leak.",
 				spikeResult.ChangeOverWindow,
-				spikeResult.CurrentValue,
-				spikeResult.Stats.Avg),
+				spikeResult.Stats.Avg,
+				spikeResult.CurrentValue),
 			cpuUsage,
 			cfg.CPUThreshold,
 			map[string]interface{}{
@@ -458,11 +458,11 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 			alerts.AlertTypeMemory,
 			alerts.SubTypeGradualRise,
 			alerts.SeverityWarning,
-			"Memory Leak Suspected",
-			fmt.Sprintf("Memory increased by %.1f%% over last 5 minutes (current: %.1f%%, avg: %.1f%%). Possible memory leak.",
+			"Memory Gradually Increasing",
+			fmt.Sprintf("Memory steadily rising - increased %.1f%% over last 5 minutes (from %.1f%% to %.1f%%). Possible memory leak - check application logs.",
 				spikeResult.ChangeOverWindow,
-				spikeResult.CurrentValue,
-				spikeResult.Stats.Avg),
+				spikeResult.Stats.Avg,
+				spikeResult.CurrentValue),
 			memUsage,
 			cfg.MemThreshold,
 			map[string]interface{}{
@@ -607,9 +607,9 @@ func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, al
 			if decision := alertMgr.CheckResolved(alerts.AlertTypeCPU, subType); decision != nil {
 				logger.Info("RESOLVED: CPU alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
 
-				// Send resolve notification to backend (Phase 2B)
+				// Send resolve notification to backend (Phase 2B) with current value
 				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint)
+					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.CPUUsage)
 				}
 			}
 		}
@@ -626,9 +626,9 @@ func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, al
 			if decision := alertMgr.CheckResolved(alerts.AlertTypeMemory, subType); decision != nil {
 				logger.Info("RESOLVED: Memory alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
 
-				// Send resolve notification to backend (Phase 2B)
+				// Send resolve notification to backend (Phase 2B) with current value
 				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint)
+					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.MemoryUsage)
 				}
 			}
 		}
@@ -644,9 +644,9 @@ func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, al
 			if decision := alertMgr.CheckResolved(alerts.AlertTypeDisk, subType); decision != nil {
 				logger.Info("RESOLVED: Disk alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
 
-				// Send resolve notification to backend (Phase 2B)
+				// Send resolve notification to backend (Phase 2B) with current value
 				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint)
+					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.DiskUsage)
 				}
 			}
 		}

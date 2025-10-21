@@ -223,15 +223,16 @@ func (s *Sender) SendHeartbeat(fingerprint string) {
 }
 
 // ResolveAlert notifies backend that alert is resolved
-func (s *Sender) ResolveAlert(fingerprint string) {
+func (s *Sender) ResolveAlert(fingerprint string, currentValue float64) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
 		return
 	}
 
 	resolveData := map[string]interface{}{
-		"user_token":  s.cfg.AuthToken,
-		"server_id":   s.cfg.ServerID,
-		"fingerprint": fingerprint,
+		"user_token":    s.cfg.AuthToken,
+		"server_id":     s.cfg.ServerID,
+		"fingerprint":   fingerprint,
+		"current_value": currentValue, // NEW: Send final value when resolved
 	}
 
 	jsonData, err := json.Marshal(resolveData)
@@ -250,7 +251,7 @@ func (s *Sender) ResolveAlert(fingerprint string) {
 			}
 		}()
 
-		logger.Info("Resolving alert - Fingerprint: %s, URL: %s", fingerprint, constants.ALERTS_RESOLVE_URL)
+		logger.Info("Resolving alert - Fingerprint: %s, Current value: %.1f%%, URL: %s", fingerprint, currentValue, constants.ALERTS_RESOLVE_URL)
 
 		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_RESOLVE_URL, bytes.NewBuffer(jsonData), s.version)
 		if err != nil {

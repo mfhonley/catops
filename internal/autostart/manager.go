@@ -24,15 +24,12 @@ Description=CatOps System Monitor
 After=network.target
 
 [Service]
-Type=forking
-ExecStart=%s start
-Restart=on-failure
+Type=simple
+ExecStart=%s daemon
+Restart=always
 RestartSec=30
 TimeoutStopSec=15
 Environment=PATH=%s:/usr/local/bin:/usr/bin:/bin
-
-# Prevent startup if already running
-ExecStartPre=/bin/sh -c 'pgrep -f "catops daemon" && exit 1 || exit 0'
 
 [Install]
 WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")])
@@ -66,15 +63,12 @@ WantedBy=default.target`, executable, executable[:len(executable)-len("/catops")
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
-		<string>start</string>
+		<string>daemon</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
-	<dict>
-		<key>SuccessfulExit</key>
-		<false/>
-	</dict>
+	<true/>
 	<key>StandardOutPath</key>
 	<string>%s</string>
 	<key>StandardErrorPath</key>

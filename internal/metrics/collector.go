@@ -21,6 +21,7 @@ var (
 	cachedIOPS      int64
 	iopsMutex       sync.RWMutex
 	iopsInitialized bool
+	iopsStopChan    chan struct{} // Channel for graceful shutdown
 )
 
 // ProcessInfo contains detailed information about a running system process
@@ -148,60 +149,80 @@ func StartIOPSMonitoring() {
 		return
 	}
 	iopsInitialized = true
+	iopsStopChan = make(chan struct{})
 	iopsMutex.Unlock()
 
-	// Start background measurement
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
-				// Log panic but don't crash daemon
-				// IOPS measurement will just stop working
+				iopsMutex.Lock()
+				iopsInitialized = false
+				iopsMutex.Unlock()
 			}
 		}()
 
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
 		for {
-			iops, err := measureIOPS()
-			if err == nil {
-				iopsMutex.Lock()
-				cachedIOPS = iops
-				iopsMutex.Unlock()
+			select {
+			case <-ticker.C:
+				iops, err := measureIOPS()
+				if err == nil {
+					iopsMutex.Lock()
+					cachedIOPS = iops
+					iopsMutex.Unlock()
+				}
+			case <-iopsStopChan:
+				return
 			}
-			// Sleep handled inside measureIOPS, so loop continues immediately
 		}
 	}()
 }
 
-// measureIOPS measures actual IOPS over 1 second (blocking call)
+// StopIOPSMonitoring gracefully stops the IOPS monitoring goroutine
+func StopIOPSMonitoring() {
+	iopsMutex.Lock()
+	defer iopsMutex.Unlock()
+
+	if iopsInitialized && iopsStopChan != nil {
+		close(iopsStopChan)
+		iopsInitialized = false
+	}
+}
+
+var prevIOCounters map[string]disk.IOCountersStat
+var prevIOMutex sync.RWMutex
+
+// measureIOPS calculates IOPS from delta between measurements
 func measureIOPS() (int64, error) {
-	// Get disk I/O counters (first snapshot)
-	io1, err := disk.IOCounters()
+	currentIO, err := disk.IOCounters()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get IO counters: %w", err)
 	}
 
-	// Wait 1 second to measure IOPS
-	time.Sleep(1 * time.Second)
+	prevIOMutex.Lock()
+	defer prevIOMutex.Unlock()
 
-	// Get disk I/O counters (second snapshot)
-	io2, err := disk.IOCounters()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get IO counters: %w", err)
+	if prevIOCounters == nil {
+		prevIOCounters = currentIO
+		return 0, nil
 	}
 
-	// Calculate IOPS = (read operations + write operations) per second
+	io1 := prevIOCounters
+	io2 := currentIO
+	prevIOCounters = currentIO
+
 	var totalIOPS int64
 	for device, stats2 := range io2 {
 		if stats1, ok := io1[device]; ok {
-			// Skip loop devices, partitions, and virtual devices
 			if strings.HasPrefix(device, "loop") ||
 				strings.Contains(device, "dm-") ||
 				strings.Contains(device, "sr") ||
-				len(device) > 20 { // Skip very long device names (usually virtual)
+				len(device) > 20 {
 				continue
 			}
 
-			// Calculate read and write operations difference
 			readOps := stats2.ReadCount - stats1.ReadCount
 			writeOps := stats2.WriteCount - stats1.WriteCount
 			totalIOPS += int64(readOps + writeOps)
@@ -467,6 +488,14 @@ func GetDetailedDiskUsage() (ResourceUsage, error) {
 	return usage, nil
 }
 
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 // GetTopProcesses returns top processes by resource usage
 func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 	var processes []ProcessInfo
@@ -483,66 +512,54 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		totalCores = 1 // fallback
 	}
 
-	// Collect process information
+	processes = make([]ProcessInfo, 0, min(len(allProcesses), limit*3))
+
 	for _, proc := range allProcesses {
-		// Get basic process info
 		name, _ := proc.Name()
 		cpuPercent, _ := proc.CPUPercent()
 		memoryPercent, _ := proc.MemoryPercent()
 		memoryInfo, _ := proc.MemoryInfo()
 
-		// Get process status
 		status, _ := proc.Status()
 		createTime, _ := proc.CreateTime()
 		numThreads, _ := proc.NumThreads()
 
-		// Get user info (simplified - use PID as fallback)
 		username := "unknown"
 		if uids, err := proc.Uids(); err == nil && len(uids) > 0 {
-			username = fmt.Sprintf("%d", uids[0]) // Use UID as string
+			username = fmt.Sprintf("%d", uids[0])
 		}
 
-		// Get terminal info
 		terminal, _ := proc.Terminal()
-
-		// Normalize CPU percentage to total system capacity
 		normalizedCPU := cpuPercent / float64(totalCores)
 
-		// Get command (simplified)
+		if normalizedCPU < 0.01 && memoryPercent < 0.01 {
+			continue
+		}
+
 		command := name
 		if len(command) > 50 {
 			command = command[:47] + "..."
 		}
 
-		// Get memory in KB
 		var memoryKB int64
 		if memoryInfo != nil {
-			memoryKB = int64(memoryInfo.RSS / 1024) // Convert bytes to KB
+			memoryKB = int64(memoryInfo.RSS / 1024)
 		}
 
-		// Get virtual memory in KB
 		var virtualMem int64
 		if memoryInfo != nil {
-			virtualMem = int64(memoryInfo.VMS / 1024) // Convert bytes to KB
+			virtualMem = int64(memoryInfo.VMS / 1024)
 		}
 
-		// Get process status character
-		statusChar := "R" // default to running
+		statusChar := "R"
 		if len(status) > 0 {
 			statusChar = string(status[0])
 		}
 
-		// Get start time (convert from milliseconds to seconds)
 		startTime := createTime / 1000
-
-		// Get thread count
 		threadCount := int(numThreads)
-
-		// Priority and Nice (simplified - use defaults)
 		priority := 20
 		nice := 0
-
-		// Get CPU number (simplified - use 0)
 		cpuNum := 0
 
 		process := ProcessInfo{

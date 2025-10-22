@@ -17,101 +17,93 @@ import (
 	"catops/pkg/utils"
 )
 
+// Shared HTTP client prevents connection pool exhaustion
+var sharedHTTPClient = &http.Client{
+	Timeout: 3 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableKeepAlives:   false,
+		DisableCompression:  false,
+	},
+}
+
 // Sender handles sending analytics data to the backend
 type Sender struct {
-	cfg     *config.Config
-	version string
+	cfg        *config.Config
+	version    string
+	httpClient *http.Client
 }
 
 // NewSender creates a new analytics sender
 func NewSender(cfg *config.Config, version string) *Sender {
 	return &Sender{
-		cfg:     cfg,
-		version: version,
+		cfg:        cfg,
+		version:    version,
+		httpClient: sharedHTTPClient,
 	}
 }
 
-// SendAllSync sends all analytics synchronously - waits for completion
-// Use this for CLI commands (catops set, catops config) to ensure events are sent before process exits
+// SendAllSync sends analytics synchronously for CLI commands
 func (s *Sender) SendAllSync(eventType string, currentMetrics *metrics.Metrics) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
-		return // Skip if not in cloud mode
+		return
 	}
 
-	// SIMPLE: Call blocking version for event (it's already synchronous)
 	if eventType != "" {
 		s.SendServiceEventBlocking(eventType, currentMetrics)
 	}
 
-	// For other methods, call async versions but give them time to send
-	// (they use internal goroutines for HTTP requests)
 	go s.SendSystemMetrics(currentMetrics)
 	go s.SendProcessMetrics(currentMetrics)
 	go s.SendNetworkMetrics(currentMetrics)
 
-	// Wait a bit for HTTP requests to start and complete
-	// Most HTTP requests complete in < 500ms, so 1s should be enough
 	time.Sleep(1 * time.Second)
 
 	logger.Info("SendAllSync completed - event sent, metrics queued")
 }
 
-// SendAll sends all analytics asynchronously - doesn't wait for HTTP to complete
-// Use this for daemon (long-running process) to avoid blocking
+// SendAll sends analytics asynchronously for daemon
 func (s *Sender) SendAll(eventType string, currentMetrics *metrics.Metrics) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
-		return // Skip if not in cloud mode
+		return
 	}
 
-	// Send service analytics (async - fire and forget)
 	if eventType != "" {
 		go s.SendServiceEvent(eventType, currentMetrics)
 	}
 
-	// Send metrics (async)
 	go s.SendSystemMetrics(currentMetrics)
-
-	// Send process metrics (async)
 	go s.SendProcessMetrics(currentMetrics)
-
-	// Send network metrics (async)
 	go s.SendNetworkMetrics(currentMetrics)
-
-	// Don't wait - let them complete in background
 }
 
-// ProcessAlert sends spike-based alert to backend with new Phase 2 format
+// ProcessAlert sends alert to backend
 func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
-		return // Don't send if token or server_id is missing
+		return
 	}
 
-	// Use alert's severity directly
 	severity := string(alert.Severity)
 	if severity == "" {
 		severity = "warning"
 	}
 
-	// Map alert type to metric name
 	metricName := getMetricName(alert.Type)
 
-	// Get alert subtype (spike detection type)
 	alertSubtype := string(alert.SubType)
 	if alertSubtype == "" {
-		alertSubtype = "threshold" // default
+		alertSubtype = "threshold"
 	}
 
-	// Build alert details from existing Details field
 	details := alert.Details
 	if details == nil {
 		details = make(map[string]interface{})
 	}
 
-	// Add timestamp and fingerprint
 	details["detection_time"] = alert.Timestamp.Format(time.RFC3339)
 	details["fingerprint"] = alert.Fingerprint
-
-	// Create AlertProcessRequest payload
 	alertData := map[string]interface{}{
 		"user_token":    s.cfg.AuthToken,
 		"server_id":     s.cfg.ServerID,
@@ -132,9 +124,7 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 		return
 	}
 
-	// Send alert to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in ProcessAlert goroutine: %v", r)
@@ -150,9 +140,7 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 			return
 		}
 
-		// REDUCED TIMEOUT: 3 seconds to prevent goroutine buildup
-		client := &http.Client{Timeout: 3 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			logger.Warning("Failed to send alert (will retry if still active): %v", err)
 			return
@@ -167,13 +155,12 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 	}()
 }
 
-// SendHeartbeat sends heartbeat for active alert to keep it alive
+// SendHeartbeat sends heartbeat for active alert
 func (s *Sender) SendHeartbeat(fingerprint string) {
 	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
 		return
 	}
 
-	// Build heartbeat URL with fingerprint
 	heartbeatURL := fmt.Sprintf("%s/%s/heartbeat", constants.ALERTS_HEARTBEAT_URL, fingerprint)
 
 	heartbeatData := map[string]interface{}{
@@ -187,9 +174,7 @@ func (s *Sender) SendHeartbeat(fingerprint string) {
 		return
 	}
 
-	// Send heartbeat to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in SendHeartbeat goroutine: %v", r)
@@ -205,9 +190,7 @@ func (s *Sender) SendHeartbeat(fingerprint string) {
 			return
 		}
 
-		// REDUCED TIMEOUT: 3 seconds to prevent goroutine buildup
-		client := &http.Client{Timeout: 3 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			logger.Error("Failed to send heartbeat: %v", err)
 			return
@@ -232,7 +215,7 @@ func (s *Sender) ResolveAlert(fingerprint string, currentValue float64) {
 		"user_token":    s.cfg.AuthToken,
 		"server_id":     s.cfg.ServerID,
 		"fingerprint":   fingerprint,
-		"current_value": currentValue, // NEW: Send final value when resolved
+		"current_value": currentValue,
 	}
 
 	jsonData, err := json.Marshal(resolveData)
@@ -241,9 +224,7 @@ func (s *Sender) ResolveAlert(fingerprint string, currentValue float64) {
 		return
 	}
 
-	// Send resolve to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in ResolveAlert goroutine: %v", r)
@@ -259,8 +240,7 @@ func (s *Sender) ResolveAlert(fingerprint string, currentValue float64) {
 			return
 		}
 
-		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			logger.Error("Failed to send resolve: %v", err)
 			return
@@ -407,8 +387,8 @@ func (s *Sender) SendServiceEventBlocking(eventType string, metrics *metrics.Met
 		return
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
-	resp, err := client.Do(req)
+	// Use shared HTTP client with connection pooling
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		// log analytics send error
 		logger.Error("Failed to send service analytics: %v", err)
@@ -548,8 +528,7 @@ func (s *Sender) SendServiceEvent(eventType string, metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			// log analytics send error
 			logger.Error("Failed to send service analytics: %v", err)
@@ -739,7 +718,6 @@ func (s *Sender) SendProcessMetrics(metrics *metrics.Metrics) {
 
 	// Send process metrics to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in SendProcessMetrics goroutine: %v", r)
@@ -755,18 +733,13 @@ func (s *Sender) SendProcessMetrics(metrics *metrics.Metrics) {
 			return
 		}
 
-		// REDUCED TIMEOUT: 3 seconds instead of 10 to prevent goroutine accumulation
-		// If backend doesn't respond in 3s, it's better to fail fast and retry next cycle
-		client := &http.Client{Timeout: 3 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
-			// Log process metrics send error (non-critical - will retry next cycle)
 			logger.Warning("Failed to send process metrics (will retry next cycle): %v", err)
 			return
 		}
 		defer resp.Body.Close()
 
-		// Log process metrics success
 		if resp.StatusCode == 200 {
 			logger.Info("Process metrics sent successfully - Status: %d", resp.StatusCode)
 		} else {
@@ -894,7 +867,6 @@ func (s *Sender) SendSystemMetrics(metrics *metrics.Metrics) {
 
 	// Send metrics to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in SendSystemMetrics goroutine: %v", r)
@@ -910,8 +882,7 @@ func (s *Sender) SendSystemMetrics(metrics *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			// Log metrics send error
 			logger.Error("Failed to send metrics: %v", err)
@@ -1028,7 +999,6 @@ func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
 
 	// Send network metrics to backend asynchronously
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("PANIC in SendNetworkMetrics goroutine: %v", r)
@@ -1044,8 +1014,7 @@ func (s *Sender) SendNetworkMetrics(metricsData *metrics.Metrics) {
 			return
 		}
 
-		client := &http.Client{Timeout: 3 * time.Second} // REDUCED: prevent goroutine buildup
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			// Log network metrics send error
 			logger.Error("Failed to send network metrics: %v", err)

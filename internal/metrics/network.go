@@ -10,20 +10,18 @@ import (
 	"github.com/shirou/gopsutil/v3/net"
 )
 
-// Global bandwidth cache - updated by background goroutine every second
 var (
 	cachedBandwidth      *bandwidthMeasurement
 	bandwidthMutex       sync.RWMutex
 	bandwidthInitialized bool
+	bandwidthStopChan    chan struct{}
 )
 
 // NetworkMetrics represents network monitoring data
 type NetworkMetrics struct {
-	// Bandwidth (measured over 1 second interval)
 	InboundBytesPerSec  int64 `json:"inbound_bytes_per_sec"`
 	OutboundBytesPerSec int64 `json:"outbound_bytes_per_sec"`
 
-	// Connection states
 	ConnectionsEstablished int `json:"connections_established"`
 	ConnectionsTimeWait    int `json:"connections_time_wait"`
 	ConnectionsCloseWait   int `json:"connections_close_wait"`
@@ -33,11 +31,8 @@ type NetworkMetrics struct {
 	ConnectionsFinWait2    int `json:"connections_fin_wait2"`
 	ConnectionsListen      int `json:"connections_listen"`
 
-	// Total connections
-	TotalConnections int `json:"total_connections"`
-
-	// Top connections (by bytes transferred)
-	TopConnections []NetworkConnection `json:"top_connections"`
+	TotalConnections int                   `json:"total_connections"`
+	TopConnections   []NetworkConnection `json:"top_connections"`
 }
 
 // NetworkConnection represents a single network connection
@@ -61,31 +56,48 @@ func StartBandwidthMonitoring() {
 		return
 	}
 	bandwidthInitialized = true
+	bandwidthStopChan = make(chan struct{})
 	bandwidthMutex.Unlock()
 
-	// Initialize with zero values
 	cachedBandwidth = &bandwidthMeasurement{}
 
-	// Start background measurement
 	go func() {
-		// CRITICAL: Recover from panic to prevent daemon crash
 		defer func() {
 			if r := recover(); r != nil {
-				// Log panic but don't crash daemon
-				// Bandwidth measurement will just stop working
+				bandwidthMutex.Lock()
+				bandwidthInitialized = false
+				bandwidthMutex.Unlock()
 			}
 		}()
 
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
 		for {
-			bandwidth, err := measureBandwidth()
-			if err == nil {
-				bandwidthMutex.Lock()
-				cachedBandwidth = bandwidth
-				bandwidthMutex.Unlock()
+			select {
+			case <-ticker.C:
+				bandwidth, err := measureBandwidth()
+				if err == nil {
+					bandwidthMutex.Lock()
+					cachedBandwidth = bandwidth
+					bandwidthMutex.Unlock()
+				}
+			case <-bandwidthStopChan:
+				return
 			}
-			// Sleep handled inside measureBandwidth, so loop continues immediately
 		}
 	}()
+}
+
+// StopBandwidthMonitoring gracefully stops the bandwidth monitoring goroutine
+func StopBandwidthMonitoring() {
+	bandwidthMutex.Lock()
+	defer bandwidthMutex.Unlock()
+
+	if bandwidthInitialized && bandwidthStopChan != nil {
+		close(bandwidthStopChan)
+		bandwidthInitialized = false
+	}
 }
 
 // GetNetworkMetrics collects network metrics
@@ -145,34 +157,31 @@ type bandwidthMeasurement struct {
 	OutboundBytes int64
 }
 
-// measureBandwidth measures network bandwidth over 1 second interval
+var prevNetIOCounters []net.IOCountersStat
+var prevNetIOMutex sync.RWMutex
+
+// measureBandwidth calculates bandwidth from delta between measurements
 func measureBandwidth() (*bandwidthMeasurement, error) {
-	// Get initial counters
-	io1, err := net.IOCounters(false)
+	currentIO, err := net.IOCounters(false)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(io1) == 0 {
+	if len(currentIO) == 0 {
 		return &bandwidthMeasurement{}, nil
 	}
 
-	// Wait 1 second
-	time.Sleep(1 * time.Second)
+	prevNetIOMutex.Lock()
+	defer prevNetIOMutex.Unlock()
 
-	// Get counters again
-	io2, err := net.IOCounters(false)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(io2) == 0 {
+	if len(prevNetIOCounters) == 0 {
+		prevNetIOCounters = currentIO
 		return &bandwidthMeasurement{}, nil
 	}
 
-	// Calculate bytes per second
-	inboundBytes := int64(io2[0].BytesRecv - io1[0].BytesRecv)
-	outboundBytes := int64(io2[0].BytesSent - io1[0].BytesSent)
+	inboundBytes := int64(currentIO[0].BytesRecv - prevNetIOCounters[0].BytesRecv)
+	outboundBytes := int64(currentIO[0].BytesSent - prevNetIOCounters[0].BytesSent)
+	prevNetIOCounters = currentIO
 
 	return &bandwidthMeasurement{
 		InboundBytes:  inboundBytes,

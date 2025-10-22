@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	constants "catops/config"
@@ -22,44 +23,51 @@ const (
 // Logger handles centralized logging to file
 type Logger struct {
 	filePath string
+	logFile  *os.File
+	mu       sync.Mutex
 }
 
 // New creates a new logger instance
 func New(filePath string) *Logger {
-	return &Logger{
-		filePath: filePath,
+	logger := &Logger{filePath: filePath}
+
+	isKubernetes := os.Getenv("NODE_NAME") != ""
+	if filePath != "" && !isKubernetes {
+		logFile, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			logger.logFile = logFile
+		}
 	}
+
+	return logger
 }
 
 // Default returns a logger with default settings
 func Default() *Logger {
-	return &Logger{
-		filePath: constants.LOG_FILE,
-	}
+	return New(constants.LOG_FILE)
 }
 
-// write writes a log entry to the log file AND stdout (for Kubernetes)
 func (l *Logger) write(level Level, message string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	formattedMsg := fmt.Sprintf(message, args...)
 	logEntry := fmt.Sprintf("[%s] %s: %s\n", timestamp, level, formattedMsg)
 
-	// Check if running in Kubernetes (NODE_NAME env var is set by K8s)
 	isKubernetes := os.Getenv("NODE_NAME") != ""
 
 	if isKubernetes {
-		// In Kubernetes: write to stdout (for kubectl logs)
 		fmt.Print(logEntry)
-	} else {
-		// In standalone mode: write to file only (existing behavior)
-		if l.filePath != "" {
-			logFile, err := os.OpenFile(l.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				return // Silently fail if we can't open log file
-			}
-			defer logFile.Close()
-			logFile.WriteString(logEntry)
-		}
+	} else if l.logFile != nil {
+		l.mu.Lock()
+		l.logFile.WriteString(logEntry)
+		l.mu.Unlock()
+	}
+}
+
+// Close closes the log file
+func (l *Logger) Close() {
+	if l.logFile != nil {
+		l.logFile.Close()
+		l.logFile = nil
 	}
 }
 

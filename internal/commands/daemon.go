@@ -312,12 +312,13 @@ func NewDaemonCmd() *cobra.Command {
 					}
 
 				case sig := <-sigChan:
-					// Graceful shutdown
-					// log service stop
 					logger.Info("Received signal %v - graceful shutdown initiated (PID: %d)", sig, os.Getpid())
-					logger.Info("Service stopped - PID: %d", os.Getpid())
 
-					// Lock will be automatically released by defer process.ReleaseLock()
+					metrics.StopIOPSMonitoring()
+					metrics.StopBandwidthMonitoring()
+					time.Sleep(100 * time.Millisecond)
+
+					logger.Info("Service stopped gracefully - PID: %d", os.Getpid())
 					return
 				}
 			}

@@ -59,6 +59,7 @@ func (l *Logger) write(level Level, message string, args ...interface{}) {
 	} else if l.logFile != nil {
 		l.mu.Lock()
 		l.logFile.WriteString(logEntry)
+		l.logFile.Sync() // Force write to disk immediately
 		l.mu.Unlock()
 	}
 }

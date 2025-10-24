@@ -30,11 +30,23 @@ func NewDaemonCmd() *cobra.Command {
 		Use:    "daemon",
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Panic recovery to log crashes
+			// Log ALL exits - catches external kills, panics, and normal shutdowns
+			defer func() {
+				logger.Info("=== DAEMON EXITING - PID: %d, Goroutines: %d ===", os.Getpid(), runtime.NumGoroutine())
+			}()
+
+			// Panic recovery to log crashes with stack trace
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Error("PANIC in daemon: %v", r)
-					logger.Error("Daemon crashed unexpectedly")
+					logger.Error("=== PANIC DETECTED ===")
+					logger.Error("Panic value: %v", r)
+					logger.Error("PID: %d, Goroutines: %d", os.Getpid(), runtime.NumGoroutine())
+
+					// Print stack trace
+					buf := make([]byte, 4096)
+					n := runtime.Stack(buf, false)
+					logger.Error("Stack trace:\n%s", string(buf[:n]))
+
 					process.ReleaseLock()
 					os.Exit(1)
 				}
@@ -49,11 +61,13 @@ func NewDaemonCmd() *cobra.Command {
 				os.Exit(1)
 			}
 			defer func() {
-				logger.Info("Service stopping - releasing lock (PID: %d)", os.Getpid())
+				logger.Info("Releasing lock file (PID: %d)", os.Getpid())
 				process.ReleaseLock()
 			}()
 
-			logger.Info("Service started - PID: %d (lock acquired)", os.Getpid())
+			logger.Info("========================================")
+			logger.Info("=== DAEMON STARTING - PID: %d ===", os.Getpid())
+			logger.Info("========================================")
 
 			// Load configuration
 			cfg, err := config.LoadConfig()
@@ -192,8 +206,12 @@ func NewDaemonCmd() *cobra.Command {
 			for {
 				select {
 				case <-ticker.C:
-					// GOROUTINE LEAK DETECTION: Log goroutine count every cycle
-					logger.Debug("Main loop cycle - goroutines: %d", runtime.NumGoroutine())
+					// Monitor daemon health - goroutines and memory
+					var memStats runtime.MemStats
+					runtime.ReadMemStats(&memStats)
+					logger.Debug("Main loop cycle - goroutines: %d, memory: %.1f MB",
+						runtime.NumGoroutine(),
+						float64(memStats.Alloc)/1024/1024)
 
 					// reload config to get latest changes
 					currentCfg, err := config.LoadConfig()
@@ -312,13 +330,16 @@ func NewDaemonCmd() *cobra.Command {
 					}
 
 				case sig := <-sigChan:
-					logger.Info("Received signal %v - graceful shutdown initiated (PID: %d)", sig, os.Getpid())
+					logger.Info("========================================")
+					logger.Info("=== SIGNAL RECEIVED: %v (PID: %d) ===", sig, os.Getpid())
+					logger.Info("Initiating graceful shutdown...")
+					logger.Info("========================================")
 
 					metrics.StopIOPSMonitoring()
 					metrics.StopBandwidthMonitoring()
 					time.Sleep(100 * time.Millisecond)
 
-					logger.Info("Service stopped gracefully - PID: %d", os.Getpid())
+					logger.Info("Graceful shutdown completed successfully")
 					return
 				}
 			}

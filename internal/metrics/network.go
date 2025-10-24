@@ -66,6 +66,10 @@ func StartBandwidthMonitoring() {
 			if r := recover(); r != nil {
 				bandwidthMutex.Lock()
 				bandwidthInitialized = false
+				if bandwidthStopChan != nil {
+					close(bandwidthStopChan)
+					bandwidthStopChan = nil
+				}
 				bandwidthMutex.Unlock()
 			}
 		}()
@@ -95,7 +99,12 @@ func StopBandwidthMonitoring() {
 	defer bandwidthMutex.Unlock()
 
 	if bandwidthInitialized && bandwidthStopChan != nil {
-		close(bandwidthStopChan)
+		select {
+		case <-bandwidthStopChan:
+		default:
+			close(bandwidthStopChan)
+		}
+		bandwidthStopChan = nil
 		bandwidthInitialized = false
 	}
 }

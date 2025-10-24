@@ -157,6 +157,10 @@ func StartIOPSMonitoring() {
 			if r := recover(); r != nil {
 				iopsMutex.Lock()
 				iopsInitialized = false
+				if iopsStopChan != nil {
+					close(iopsStopChan)
+					iopsStopChan = nil
+				}
 				iopsMutex.Unlock()
 			}
 		}()
@@ -186,7 +190,12 @@ func StopIOPSMonitoring() {
 	defer iopsMutex.Unlock()
 
 	if iopsInitialized && iopsStopChan != nil {
-		close(iopsStopChan)
+		select {
+		case <-iopsStopChan:
+		default:
+			close(iopsStopChan)
+		}
+		iopsStopChan = nil
 		iopsInitialized = false
 	}
 }

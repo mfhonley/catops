@@ -99,13 +99,21 @@ func StartProcess() error {
 
 	logger.Info("Starting catops daemon in background")
 
-	// Start the process in background using nohup
-	// The daemon itself will acquire the lockfile
-	cmd := exec.Command("bash", "-c", "nohup catops daemon > /dev/null 2>&1 &")
+	// Start the process in background
+	// Security: Using exec.Command directly (no shell) to prevent command injection
+	cmd := exec.Command("catops", "daemon")
+	cmd.Stdout = nil  // Discard output (equivalent to > /dev/null)
+	cmd.Stderr = nil  // Discard errors (equivalent to 2>&1)
+
 	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
+
+	// Detach the process (it will continue running after parent exits)
+	go func() {
+		_ = cmd.Wait()  // Clean up zombie process
+	}()
 
 	// Wait a moment for daemon to start and acquire lock
 	time.Sleep(500 * time.Millisecond)

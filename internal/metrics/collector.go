@@ -18,10 +18,11 @@ import (
 
 // Global IOPS cache - updated by background goroutine every second
 var (
-	cachedIOPS      int64
-	iopsMutex       sync.RWMutex
-	iopsInitialized bool
-	iopsStopChan    chan struct{} // Channel for graceful shutdown
+	cachedIOPS   int64
+	iopsMutex    sync.RWMutex
+	iopsOnce     sync.Once     // Ensures initialization happens only once
+	iopsStopChan chan struct{} // Channel for graceful shutdown
+	iopsStopOnce sync.Once     // Ensures channel is closed only once
 )
 
 // ProcessInfo contains detailed information about a running system process
@@ -142,62 +143,48 @@ func GetHTTPSRequests() (int64, error) {
 
 // StartIOPSMonitoring starts background goroutine to measure IOPS continuously
 // This prevents blocking the main metrics collection loop
+// Thread-safe: Uses sync.Once to ensure initialization happens only once
 func StartIOPSMonitoring() {
-	iopsMutex.Lock()
-	if iopsInitialized {
-		iopsMutex.Unlock()
-		return
-	}
-	iopsInitialized = true
-	iopsStopChan = make(chan struct{})
-	iopsMutex.Unlock()
+	iopsOnce.Do(func() {
+		// Initialize stop channel
+		iopsStopChan = make(chan struct{})
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				iopsMutex.Lock()
-				iopsInitialized = false
-				if iopsStopChan != nil {
-					close(iopsStopChan)
-					iopsStopChan = nil
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic but don't try to close channel - let StopIOPSMonitoring handle it
+					// This prevents double-close panics
 				}
-				iopsMutex.Unlock()
+			}()
+
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					iops, err := measureIOPS()
+					if err == nil {
+						iopsMutex.Lock()
+						cachedIOPS = iops
+						iopsMutex.Unlock()
+					}
+				case <-iopsStopChan:
+					return
+				}
 			}
 		}()
-
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				iops, err := measureIOPS()
-				if err == nil {
-					iopsMutex.Lock()
-					cachedIOPS = iops
-					iopsMutex.Unlock()
-				}
-			case <-iopsStopChan:
-				return
-			}
-		}
-	}()
+	})
 }
 
 // StopIOPSMonitoring gracefully stops the IOPS monitoring goroutine
+// Thread-safe: Uses sync.Once to ensure channel is closed only once
 func StopIOPSMonitoring() {
-	iopsMutex.Lock()
-	defer iopsMutex.Unlock()
-
-	if iopsInitialized && iopsStopChan != nil {
-		select {
-		case <-iopsStopChan:
-		default:
+	iopsStopOnce.Do(func() {
+		if iopsStopChan != nil {
 			close(iopsStopChan)
 		}
-		iopsStopChan = nil
-		iopsInitialized = false
-	}
+	})
 }
 
 var prevIOCounters map[string]disk.IOCountersStat
@@ -545,9 +532,15 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 			continue
 		}
 
+		// Get full command line instead of just process name
 		command := name
-		if len(command) > 50 {
-			command = command[:47] + "..."
+		if cmdline, err := proc.Cmdline(); err == nil && cmdline != "" {
+			command = cmdline
+		}
+
+		// Increase command length limit from 50 to 200 chars for better AI context
+		if len(command) > 200 {
+			command = command[:197] + "..."
 		}
 
 		var memoryKB int64

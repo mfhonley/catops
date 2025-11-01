@@ -11,10 +11,11 @@ import (
 )
 
 var (
-	cachedBandwidth      *bandwidthMeasurement
-	bandwidthMutex       sync.RWMutex
-	bandwidthInitialized bool
-	bandwidthStopChan    chan struct{}
+	cachedBandwidth   *bandwidthMeasurement
+	bandwidthMutex    sync.RWMutex
+	bandwidthOnce     sync.Once     // Ensures initialization happens only once
+	bandwidthStopChan chan struct{} // Channel for graceful shutdown
+	bandwidthStopOnce sync.Once     // Ensures channel is closed only once
 )
 
 // NetworkMetrics represents network monitoring data
@@ -49,64 +50,49 @@ type NetworkConnection struct {
 
 // StartBandwidthMonitoring starts background goroutine to measure bandwidth continuously
 // This prevents blocking the main metrics collection loop
+// Thread-safe: Uses sync.Once to ensure initialization happens only once
 func StartBandwidthMonitoring() {
-	bandwidthMutex.Lock()
-	if bandwidthInitialized {
-		bandwidthMutex.Unlock()
-		return
-	}
-	bandwidthInitialized = true
-	bandwidthStopChan = make(chan struct{})
-	bandwidthMutex.Unlock()
+	bandwidthOnce.Do(func() {
+		// Initialize stop channel and cached bandwidth
+		bandwidthStopChan = make(chan struct{})
+		cachedBandwidth = &bandwidthMeasurement{}
 
-	cachedBandwidth = &bandwidthMeasurement{}
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				bandwidthMutex.Lock()
-				bandwidthInitialized = false
-				if bandwidthStopChan != nil {
-					close(bandwidthStopChan)
-					bandwidthStopChan = nil
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Log panic but don't try to close channel - let StopBandwidthMonitoring handle it
+					// This prevents double-close panics
 				}
-				bandwidthMutex.Unlock()
+			}()
+
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					bandwidth, err := measureBandwidth()
+					if err == nil {
+						bandwidthMutex.Lock()
+						cachedBandwidth = bandwidth
+						bandwidthMutex.Unlock()
+					}
+				case <-bandwidthStopChan:
+					return
+				}
 			}
 		}()
-
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ticker.C:
-				bandwidth, err := measureBandwidth()
-				if err == nil {
-					bandwidthMutex.Lock()
-					cachedBandwidth = bandwidth
-					bandwidthMutex.Unlock()
-				}
-			case <-bandwidthStopChan:
-				return
-			}
-		}
-	}()
+	})
 }
 
 // StopBandwidthMonitoring gracefully stops the bandwidth monitoring goroutine
+// Thread-safe: Uses sync.Once to ensure channel is closed only once
 func StopBandwidthMonitoring() {
-	bandwidthMutex.Lock()
-	defer bandwidthMutex.Unlock()
-
-	if bandwidthInitialized && bandwidthStopChan != nil {
-		select {
-		case <-bandwidthStopChan:
-		default:
+	bandwidthStopOnce.Do(func() {
+		if bandwidthStopChan != nil {
 			close(bandwidthStopChan)
 		}
-		bandwidthStopChan = nil
-		bandwidthInitialized = false
-	}
+	})
 }
 
 // GetNetworkMetrics collects network metrics

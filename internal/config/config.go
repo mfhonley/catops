@@ -144,9 +144,9 @@ func SaveConfig(cfg *Config) error {
 		}
 	}
 
-	// Write to file
+	// Write to file with secure permissions (0600 - only owner can read/write)
 	configFile := configDir + "/config.yaml"
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0600)
 	if err != nil {
 		return err
 	}

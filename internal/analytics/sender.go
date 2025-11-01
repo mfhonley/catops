@@ -34,14 +34,38 @@ type Sender struct {
 	cfg        *config.Config
 	version    string
 	httpClient *http.Client
+	alertQueue chan func() // Worker pool queue for alert processing
 }
 
 // NewSender creates a new analytics sender
+// Initializes a worker pool with max 10 concurrent alert processing goroutines
 func NewSender(cfg *config.Config, version string) *Sender {
-	return &Sender{
+	s := &Sender{
 		cfg:        cfg,
 		version:    version,
 		httpClient: sharedHTTPClient,
+		alertQueue: make(chan func(), 100), // Buffer up to 100 alerts
+	}
+
+	// Start worker pool (max 10 concurrent goroutines)
+	for i := 0; i < 10; i++ {
+		go s.alertWorker()
+	}
+
+	return s
+}
+
+// alertWorker processes alerts from the queue
+func (s *Sender) alertWorker() {
+	for task := range s.alertQueue {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("PANIC in alert worker: %v", r)
+				}
+			}()
+			task()
+		}()
 	}
 }
 
@@ -124,14 +148,9 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 		return
 	}
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Error("PANIC in ProcessAlert goroutine: %v", r)
-				logger.Error("Alert processing goroutine crashed - Fingerprint: %s", alert.Fingerprint)
-			}
-		}()
-
+	// Queue alert processing task (non-blocking if queue is full, drops oldest)
+	select {
+	case s.alertQueue <- func() {
 		logger.Info("Processing alert - Type: %s, Subtype: %s, URL: %s", metricName, alertSubtype, constants.ALERTS_PROCESS_URL)
 
 		req, err := utils.CreateCLIRequest("POST", constants.ALERTS_PROCESS_URL, bytes.NewBuffer(jsonData), s.version)
@@ -152,7 +171,12 @@ func (s *Sender) ProcessAlert(alert *alerts.Alert, metrics *metrics.Metrics) {
 		} else {
 			logger.Warning("Alert processed with non-200 status - Status: %d", resp.StatusCode)
 		}
-	}()
+	}:
+		// Queued successfully
+	default:
+		// Queue full, log warning but don't block
+		logger.Warning("Alert queue full, dropping alert - Fingerprint: %s", alert.Fingerprint)
+	}
 }
 
 // SendHeartbeat sends heartbeat for active alert

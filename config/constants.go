@@ -60,6 +60,7 @@ const (
 	DEFAULT_ALERT_DEDUPLICATION       = true // enable deduplication
 	DEFAULT_ALERT_RENOTIFY_INTERVAL   = 120  // minutes (2 hours)
 	DEFAULT_ALERT_RESOLUTION_TIMEOUT  = 5    // minutes
+	DETECTION_WINDOW_MINUTES          = 5    // fixed window for gradual rise and anomaly detection
 )
 
 // File paths

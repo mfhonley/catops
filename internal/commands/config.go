@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	constants "catops/config"
 	"catops/internal/config"
 	"catops/internal/ui"
 )
@@ -55,7 +56,14 @@ Use 'catops auth' to manage cloud mode authentication.`,
 			ui.PrintStatus("info", fmt.Sprintf("Gradual Rise: %.1f%%", cfg.GradualRiseThreshold))
 			ui.PrintStatus("info", fmt.Sprintf("Anomaly Threshold: %.1fσ (std deviations)", cfg.AnomalyThreshold))
 			ui.PrintStatus("info", fmt.Sprintf("Re-notify Interval: %d minutes", cfg.AlertRenotifyInterval))
-			ui.PrintStatus("info", "Use 'catops set spike=30 gradual=15 anomaly=4.0' to adjust")
+			ui.PrintStatus("info", fmt.Sprintf("Use 'catops set spike=%.0f gradual=%.0f anomaly=%.1f' to adjust", constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD, constants.DEFAULT_GRADUAL_RISE_THRESHOLD, constants.DEFAULT_ANOMALY_THRESHOLD))
+			ui.PrintSectionEnd()
+
+			ui.PrintSection("Monitoring Configuration")
+			ui.PrintStatus("info", fmt.Sprintf("Collection Interval: %d seconds", cfg.CollectionInterval))
+			ui.PrintStatus("info", fmt.Sprintf("Buffer Size: %d data points", cfg.BufferSize))
+			ui.PrintStatus("info", fmt.Sprintf("Alert Resolution Timeout: %d minutes", cfg.AlertResolutionTimeout))
+			ui.PrintStatus("info", "Use 'catops set interval=30 buffer=40 resolution=10' to adjust")
 			ui.PrintSectionEnd()
 		},
 	}

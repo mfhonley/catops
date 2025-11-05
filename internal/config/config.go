@@ -21,12 +21,12 @@ type Config struct {
 	// Monitoring configuration
 	CollectionInterval     int     `mapstructure:"collection_interval"`      // in seconds, default 15
 	BufferSize             int     `mapstructure:"buffer_size"`              // default 20 (5 minutes at 15s)
-	SuddenSpikeThreshold   float64 `mapstructure:"sudden_spike_threshold"`   // default 20%
-	GradualRiseThreshold   float64 `mapstructure:"gradual_rise_threshold"`   // default 10%
-	AnomalyThreshold       float64 `mapstructure:"anomaly_threshold"`        // default 3.0 (standard deviations)
+	SuddenSpikeThreshold   float64 `mapstructure:"sudden_spike_threshold"`   // default 30.0%
+	GradualRiseThreshold   float64 `mapstructure:"gradual_rise_threshold"`   // default 15.0%
+	AnomalyThreshold       float64 `mapstructure:"anomaly_threshold"`        // default 4.0 (standard deviations)
 	AlertDeduplication     bool    `mapstructure:"alert_deduplication"`      // default true
-	AlertRenotifyInterval  int     `mapstructure:"alert_renotify_interval"`  // in minutes, default 60
-	AlertResolutionTimeout int     `mapstructure:"alert_resolution_timeout"` // in minutes, default 2
+	AlertRenotifyInterval  int     `mapstructure:"alert_renotify_interval"`  // in minutes, default 120
+	AlertResolutionTimeout int     `mapstructure:"alert_resolution_timeout"` // in minutes, default 5
 }
 
 // determineMode automatically sets the operation mode based on tokens
@@ -106,6 +106,28 @@ func SaveConfig(cfg *Config) error {
 	configLines = append(configLines, fmt.Sprintf("cpu_threshold: %.1f", cfg.CPUThreshold))
 	configLines = append(configLines, fmt.Sprintf("mem_threshold: %.1f", cfg.MemThreshold))
 	configLines = append(configLines, fmt.Sprintf("disk_threshold: %.1f", cfg.DiskThreshold))
+
+	// Monitoring configuration (save if non-default)
+	if cfg.CollectionInterval > 0 && cfg.CollectionInterval != constants.DEFAULT_COLLECTION_INTERVAL {
+		configLines = append(configLines, "")
+		configLines = append(configLines, "# Monitoring configuration")
+		configLines = append(configLines, fmt.Sprintf("collection_interval: %d", cfg.CollectionInterval))
+	}
+	if cfg.BufferSize > 0 && cfg.BufferSize != constants.DEFAULT_BUFFER_SIZE {
+		if cfg.CollectionInterval == 0 || cfg.CollectionInterval == constants.DEFAULT_COLLECTION_INTERVAL {
+			configLines = append(configLines, "")
+			configLines = append(configLines, "# Monitoring configuration")
+		}
+		configLines = append(configLines, fmt.Sprintf("buffer_size: %d", cfg.BufferSize))
+	}
+	if cfg.AlertResolutionTimeout > 0 && cfg.AlertResolutionTimeout != constants.DEFAULT_ALERT_RESOLUTION_TIMEOUT {
+		if (cfg.CollectionInterval == 0 || cfg.CollectionInterval == constants.DEFAULT_COLLECTION_INTERVAL) &&
+			(cfg.BufferSize == 0 || cfg.BufferSize == constants.DEFAULT_BUFFER_SIZE) {
+			configLines = append(configLines, "")
+			configLines = append(configLines, "# Monitoring configuration")
+		}
+		configLines = append(configLines, fmt.Sprintf("alert_resolution_timeout: %d", cfg.AlertResolutionTimeout))
+	}
 
 	// Spike detection thresholds (save if non-default)
 	if cfg.SuddenSpikeThreshold > 0 && cfg.SuddenSpikeThreshold != constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD {

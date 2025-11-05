@@ -30,6 +30,9 @@ Supported metrics:
   • gradual      - Gradual rise detection threshold (0-100)
   • anomaly      - Statistical anomaly threshold (standard deviations, 1.0-10.0)
   • renotify     - Alert re-notification interval in minutes
+  • interval     - Metrics collection interval in seconds (10-300)
+  • buffer       - Historical data buffer size in data points (10-100)
+  • resolution   - Alert resolution timeout in minutes (1-60)
 
 Examples:
   catops set cpu=90              # Set CPU threshold to 90%
@@ -37,6 +40,9 @@ Examples:
   catops set spike=30 gradual=15 # Set spike detection to 30%, gradual to 15%
   catops set anomaly=4.0         # Alert only for 4+ std deviations (less sensitive)
   catops set renotify=120        # Re-notify every 2 hours
+  catops set interval=30         # Collect metrics every 30 seconds
+  catops set buffer=40           # Store 40 data points in history
+  catops set resolution=10       # Mark alerts as resolved after 10 minutes
   catops set cpu=70 spike=25 anomaly=5.0  # Set multiple at once`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
@@ -56,7 +62,7 @@ Examples:
 
 			if len(args) == 0 {
 				ui.PrintStatus("error", "Usage: catops set cpu=90 mem=90 disk=90")
-				ui.PrintStatus("info", "Supported: cpu, mem, disk, spike, gradual, renotify")
+				ui.PrintStatus("info", "Supported: cpu, mem, disk, spike, gradual, anomaly, renotify, interval, buffer, resolution")
 				ui.PrintSectionEnd()
 				return
 			}
@@ -112,6 +118,27 @@ Examples:
 					}
 					cfg.AlertRenotifyInterval = int(value)
 					ui.PrintStatus("success", fmt.Sprintf("Set re-notify interval to %d minutes", int(value)))
+				case "interval":
+					if value < 10 || value > 300 {
+						ui.PrintStatus("error", "Collection interval must be between 10 and 300 seconds")
+						continue
+					}
+					cfg.CollectionInterval = int(value)
+					ui.PrintStatus("success", fmt.Sprintf("Set collection interval to %d seconds", int(value)))
+				case "buffer":
+					if value < 10 || value > 100 {
+						ui.PrintStatus("error", "Buffer size must be between 10 and 100 data points")
+						continue
+					}
+					cfg.BufferSize = int(value)
+					ui.PrintStatus("success", fmt.Sprintf("Set buffer size to %d data points", int(value)))
+				case "resolution":
+					if value < 1 || value > 60 {
+						ui.PrintStatus("error", "Alert resolution timeout must be between 1 and 60 minutes")
+						continue
+					}
+					cfg.AlertResolutionTimeout = int(value)
+					ui.PrintStatus("success", fmt.Sprintf("Set alert resolution timeout to %d minutes", int(value)))
 				default:
 					ui.PrintStatus("error", fmt.Sprintf("Unknown metric: %s", metric))
 					continue

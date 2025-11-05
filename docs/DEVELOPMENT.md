@@ -274,7 +274,7 @@ X-Server-ID: {server_id}
   "alert_type": "cpu_high",
   "severity": "warning",
   "value": 95.5,
-  "threshold": 80.0,
+  "threshold": 85.0,
   "timestamp": 1640000000
 }
 ```

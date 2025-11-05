@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	constants "catops/config"
 )
 
 // MetricsBuffer stores historical metrics for analysis
@@ -42,9 +44,9 @@ type MetricStatistics struct {
 
 // SpikeDetectionResult contains spike detection analysis
 type SpikeDetectionResult struct {
-	HasSuddenSpike    bool    // >20% change in one interval
-	HasGradualRise    bool    // >10% change over 5 minutes
-	HasAnomalousValue bool    // >2 stddev from average
+	HasSuddenSpike    bool    // Rapid change in one interval (configurable via sudden_spike_threshold)
+	HasGradualRise    bool    // Sustained increase over 5-minute window (configurable via gradual_rise_threshold)
+	HasAnomalousValue bool    // Statistical anomaly (configurable via anomaly_threshold in standard deviations)
 	CurrentValue      float64 // Current metric value
 	PreviousValue     float64 // Previous metric value
 	PercentChange     float64 // Percent change from previous
@@ -127,21 +129,21 @@ func (mb *MetricsBuffer) GetDiskStatistics(windowMinutes int) MetricStatistics {
 func (mb *MetricsBuffer) DetectCPUSpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.cpu.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
+	return mb.cpu.detectSpike(constants.DETECTION_WINDOW_MINUTES, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // DetectMemorySpike performs spike detection on Memory metrics
 func (mb *MetricsBuffer) DetectMemorySpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.memory.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
+	return mb.memory.detectSpike(constants.DETECTION_WINDOW_MINUTES, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // DetectDiskSpike performs spike detection on Disk metrics
 func (mb *MetricsBuffer) DetectDiskSpike(suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	return mb.disk.detectSpike(5, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
+	return mb.disk.detectSpike(constants.DETECTION_WINDOW_MINUTES, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
 // getStatistics calculates statistics for a time window
@@ -247,7 +249,7 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 	if result.Stats.StdDev > 0 {
 		result.DeviationFromAvg = math.Abs(result.CurrentValue-result.Stats.Avg) / result.Stats.StdDev
 
-		// Anomalous: exceeds configured threshold (default 3.0 standard deviations)
+		// Anomalous: exceeds configured threshold (configurable via anomaly_threshold)
 		if result.DeviationFromAvg > anomalyThreshold {
 			result.HasAnomalousValue = true
 		}

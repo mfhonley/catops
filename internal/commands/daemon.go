@@ -234,7 +234,6 @@ func NewDaemonCmd() *cobra.Command {
 
 					// Detect alerts with spike detection
 					alertsToSend := []alerts.Alert{}
-					hostname, _ := os.Hostname()
 
 					// CPU alerts
 					cpuAlerts := checkCPUAlerts(currentMetrics.CPUUsage, currentCfg, metricsBuffer)
@@ -266,7 +265,7 @@ func NewDaemonCmd() *cobra.Command {
 						}
 
 						// Check for resolved alerts
-						checkResolvedAlerts(currentMetrics, currentCfg, alertManager, hostname)
+						checkResolvedAlerts(currentMetrics, currentCfg, alertManager)
 					} else if len(alertsToSend) > 0 {
 						// No deduplication - send all alerts immediately (legacy mode)
 						logger.Warning("ALERT: %d alerts detected", len(alertsToSend))
@@ -384,8 +383,9 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 			alerts.SubTypeGradualRise,
 			alerts.SeverityWarning,
 			"CPU Gradually Increasing",
-			fmt.Sprintf("CPU steadily rising - increased %.1f%% over last 5 minutes (from %.1f%% to %.1f%%). May indicate resource leak.",
+			fmt.Sprintf("CPU steadily rising - increased %.1f%% over last %d minutes (from %.1f%% to %.1f%%). May indicate resource leak.",
 				spikeResult.ChangeOverWindow,
+				constants.DETECTION_WINDOW_MINUTES,
 				spikeResult.Stats.Avg,
 				spikeResult.CurrentValue),
 			cpuUsage,
@@ -481,8 +481,9 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 			alerts.SubTypeGradualRise,
 			alerts.SeverityWarning,
 			"Memory Gradually Increasing",
-			fmt.Sprintf("Memory steadily rising - increased %.1f%% over last 5 minutes (from %.1f%% to %.1f%%). Possible memory leak - check application logs.",
+			fmt.Sprintf("Memory steadily rising - increased %.1f%% over last %d minutes (from %.1f%% to %.1f%%). Possible memory leak - check application logs.",
 				spikeResult.ChangeOverWindow,
+				constants.DETECTION_WINDOW_MINUTES,
 				spikeResult.Stats.Avg,
 				spikeResult.CurrentValue),
 			memUsage,
@@ -578,8 +579,9 @@ func checkDiskAlerts(diskUsage float64, cfg *config.Config, buffer *metrics.Metr
 			alerts.SubTypeGradualRise,
 			alerts.SeverityWarning,
 			"Disk Filling Steadily",
-			fmt.Sprintf("Disk usage increased by %.1f%% over last 5 minutes (current: %.1f%%, avg: %.1f%%)",
+			fmt.Sprintf("Disk usage increased by %.1f%% over last %d minutes (current: %.1f%%, avg: %.1f%%)",
 				spikeResult.ChangeOverWindow,
+				constants.DETECTION_WINDOW_MINUTES,
 				spikeResult.CurrentValue,
 				spikeResult.Stats.Avg),
 			diskUsage,
@@ -617,7 +619,7 @@ func checkDiskAlerts(diskUsage float64, cfg *config.Config, buffer *metrics.Metr
 }
 
 // checkResolvedAlerts checks if any active alerts have been resolved
-func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, alertMgr *alerts.AlertManager, hostname string) {
+func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, alertMgr *alerts.AlertManager) {
 	// Check if CPU alerts resolved
 	if currentMetrics.CPUUsage < cfg.CPUThreshold {
 		for _, subType := range []alerts.AlertSubType{
@@ -672,19 +674,5 @@ func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, al
 				}
 			}
 		}
-	}
-}
-
-// getSeverityEmoji returns emoji for alert severity
-func getSeverityEmoji(severity alerts.AlertSeverity) string {
-	switch severity {
-	case alerts.SeverityCritical:
-		return "🔴"
-	case alerts.SeverityWarning:
-		return "🟡"
-	case alerts.SeverityInfo:
-		return "🔵"
-	default:
-		return "⚪"
 	}
 }

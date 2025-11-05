@@ -61,14 +61,14 @@ func LoadConfig() (*Config, error) {
 	viper.SetDefault("disk_threshold", constants.DEFAULT_DISK_THRESHOLD)
 
 	// Set defaults for monitoring configuration
-	viper.SetDefault("collection_interval", 15)      // 15 seconds
-	viper.SetDefault("buffer_size", 20)              // 20 points = 5 minutes at 15s
-	viper.SetDefault("sudden_spike_threshold", 20.0) // 20% change
-	viper.SetDefault("gradual_rise_threshold", 10.0) // 10% change over window
-	viper.SetDefault("anomaly_threshold", 3.0)       // 3.0 standard deviations
-	viper.SetDefault("alert_deduplication", true)    // enabled
-	viper.SetDefault("alert_renotify_interval", 60)  // 60 minutes
-	viper.SetDefault("alert_resolution_timeout", 2)  // 2 minutes
+	viper.SetDefault("collection_interval", constants.DEFAULT_COLLECTION_INTERVAL)
+	viper.SetDefault("buffer_size", constants.DEFAULT_BUFFER_SIZE)
+	viper.SetDefault("sudden_spike_threshold", constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD)
+	viper.SetDefault("gradual_rise_threshold", constants.DEFAULT_GRADUAL_RISE_THRESHOLD)
+	viper.SetDefault("anomaly_threshold", constants.DEFAULT_ANOMALY_THRESHOLD)
+	viper.SetDefault("alert_deduplication", constants.DEFAULT_ALERT_DEDUPLICATION)
+	viper.SetDefault("alert_renotify_interval", constants.DEFAULT_ALERT_RENOTIFY_INTERVAL)
+	viper.SetDefault("alert_resolution_timeout", constants.DEFAULT_ALERT_RESOLUTION_TIMEOUT)
 
 	// Read config file
 	viper.ReadInConfig()
@@ -108,27 +108,29 @@ func SaveConfig(cfg *Config) error {
 	configLines = append(configLines, fmt.Sprintf("disk_threshold: %.1f", cfg.DiskThreshold))
 
 	// Spike detection thresholds (save if non-default)
-	if cfg.SuddenSpikeThreshold > 0 && cfg.SuddenSpikeThreshold != 20.0 {
+	if cfg.SuddenSpikeThreshold > 0 && cfg.SuddenSpikeThreshold != constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD {
 		configLines = append(configLines, "")
 		configLines = append(configLines, "# Alert sensitivity configuration")
 		configLines = append(configLines, fmt.Sprintf("sudden_spike_threshold: %.1f", cfg.SuddenSpikeThreshold))
 	}
-	if cfg.GradualRiseThreshold > 0 && cfg.GradualRiseThreshold != 10.0 {
-		if cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0 {
+	if cfg.GradualRiseThreshold > 0 && cfg.GradualRiseThreshold != constants.DEFAULT_GRADUAL_RISE_THRESHOLD {
+		if cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD {
 			configLines = append(configLines, "")
 			configLines = append(configLines, "# Alert sensitivity configuration")
 		}
 		configLines = append(configLines, fmt.Sprintf("gradual_rise_threshold: %.1f", cfg.GradualRiseThreshold))
 	}
-	if cfg.AnomalyThreshold > 0 && cfg.AnomalyThreshold != 3.0 {
-		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0) && (cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == 10.0) {
+	if cfg.AnomalyThreshold > 0 && cfg.AnomalyThreshold != constants.DEFAULT_ANOMALY_THRESHOLD {
+		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD) &&
+			(cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == constants.DEFAULT_GRADUAL_RISE_THRESHOLD) {
 			configLines = append(configLines, "")
 			configLines = append(configLines, "# Alert sensitivity configuration")
 		}
 		configLines = append(configLines, fmt.Sprintf("anomaly_threshold: %.1f", cfg.AnomalyThreshold))
 	}
-	if cfg.AlertRenotifyInterval > 0 && cfg.AlertRenotifyInterval != 60 {
-		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == 20.0) && (cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == 10.0) {
+	if cfg.AlertRenotifyInterval > 0 && cfg.AlertRenotifyInterval != constants.DEFAULT_ALERT_RENOTIFY_INTERVAL {
+		if (cfg.SuddenSpikeThreshold == 0 || cfg.SuddenSpikeThreshold == constants.DEFAULT_SUDDEN_SPIKE_THRESHOLD) &&
+			(cfg.GradualRiseThreshold == 0 || cfg.GradualRiseThreshold == constants.DEFAULT_GRADUAL_RISE_THRESHOLD) {
 			configLines = append(configLines, "")
 			configLines = append(configLines, "# Alert sensitivity configuration")
 		}

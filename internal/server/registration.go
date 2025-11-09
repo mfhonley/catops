@@ -139,10 +139,18 @@ func RegisterServer(userToken, currentVersion string, cfg *config.Config) bool {
 
 // SendUninstallNotification sends uninstall notification to backend
 func SendUninstallNotification(authToken, serverID, currentVersion string) bool {
-	// ServerUninstallRequest format - only needs timestamp and user_token
+	// Get hostname for better server identification
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Warning("Could not get hostname: %v", err)
+		hostname = "" // Backend will fall back to IP-based search
+	}
+
+	// ServerUninstallRequest format - timestamp, user_token, and hostname
 	uninstallData := map[string]interface{}{
 		"timestamp":  fmt.Sprintf("%d", time.Now().UTC().Unix()),
 		"user_token": authToken,
+		"hostname":   hostname,
 	}
 
 	jsonData, _ := json.Marshal(uninstallData)

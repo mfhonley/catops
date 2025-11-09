@@ -35,6 +35,7 @@ const (
 const (
 	TELEGRAM_API_URL = "https://api.telegram.org/bot%s/sendMessage"
 	CATOPS_WEBSITE   = "https://catops.io"
+	CATOPS_API_URL   = "https://api.catops.io"
 )
 
 // Operation modes

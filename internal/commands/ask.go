@@ -121,7 +121,7 @@ func runAsk(question string) {
 	}
 
 	// Send to backend
-	url := constants.CATOPS_WEBSITE + "/api/ai/ask-cli"
+	url := constants.CATOPS_API_URL + "/api/ai/ask-cli"
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		showOfflineHelp(question)
@@ -216,7 +216,7 @@ func showOfflineHelp(question string) {
 	}
 
 	fmt.Println()
-	fmt.Println("  For help: https://docs.catops.io")
+	fmt.Println("  For help: https://catops.io")
 	fmt.Println()
 }
 

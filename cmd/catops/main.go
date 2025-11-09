@@ -98,6 +98,7 @@ Need help? Telegram: @mfhonley`,
 			ui.PrintSection("Commands")
 			commandsData := map[string]string{
 				"status":  "Show system metrics",
+				"ask":     "Ask AI about your server",
 				"start":   "Start monitoring service",
 				"restart": "Restart monitoring service",
 				"set":     "Set alert thresholds",
@@ -130,6 +131,7 @@ Need help? Telegram: @mfhonley`,
 	configCmd := commands.NewConfigCmd()
 	autostartCmd := commands.NewAutostartCmd()
 	authCmd := commands.NewAuthCmd()
+	askCmd := commands.NewAskCmd()
 
 	// add commands to root
 	rootCmd.AddCommand(statusCmd)
@@ -145,6 +147,7 @@ Need help? Telegram: @mfhonley`,
 	rootCmd.AddCommand(forceCleanupCmd)
 	rootCmd.AddCommand(autostartCmd)
 	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(askCmd)
 
 	// execute
 	if err := rootCmd.Execute(); err != nil {

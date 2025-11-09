@@ -212,8 +212,11 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 			result.PercentChange = 0
 		}
 
-		// Sudden spike: >suddenSpikeThreshold% increase in one interval
-		if result.PercentChange > suddenSpikeThreshold {
+		// Sudden spike: требуется И относительное И абсолютное изменение
+		// Игнорируем малые значения (< 10%) чтобы избежать "1% → 2% = +100%"
+		// Также требуем абсолютное изменение > 5% для фильтрации шума
+		absoluteChange := result.CurrentValue - result.PreviousValue
+		if result.PercentChange > suddenSpikeThreshold && result.CurrentValue > 10.0 && absoluteChange > 5.0 {
 			result.HasSuddenSpike = true
 		}
 	}
@@ -234,12 +237,14 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 
 		// Gradual rise: >gradualRiseThreshold% increase over window
 		// Calculate percent change to compare with threshold correctly
+		// Также проверяем абсолютное значение и изменение для фильтрации шума
 		if oldestInWindow.Value > 0 {
 			percentChange := (result.ChangeOverWindow / oldestInWindow.Value) * 100
-			if percentChange > gradualRiseThreshold {
+			// Требуем: относительное изменение > порога И текущее значение > 10% И абсолютное изменение > 5%
+			if percentChange > gradualRiseThreshold && result.CurrentValue > 10.0 && result.ChangeOverWindow > 5.0 {
 				result.HasGradualRise = true
 			}
-		} else if result.ChangeOverWindow > gradualRiseThreshold {
+		} else if result.ChangeOverWindow > gradualRiseThreshold && result.ChangeOverWindow > 5.0 {
 			// Fallback: if oldestInWindow.Value is 0, compare absolute change
 			result.HasGradualRise = true
 		}
@@ -250,7 +255,8 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 		result.DeviationFromAvg = math.Abs(result.CurrentValue-result.Stats.Avg) / result.Stats.StdDev
 
 		// Anomalous: exceeds configured threshold (configurable via anomaly_threshold)
-		if result.DeviationFromAvg > anomalyThreshold {
+		// Также проверяем абсолютное значение > 10% для фильтрации шума на малых значениях
+		if result.DeviationFromAvg > anomalyThreshold && result.CurrentValue > 10.0 {
 			result.HasAnomalousValue = true
 		}
 	}

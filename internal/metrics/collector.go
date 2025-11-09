@@ -502,12 +502,6 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		return processes, fmt.Errorf("failed to get processes: %w", err)
 	}
 
-	// Get total CPU cores for normalization
-	totalCores, err := cpu.Counts(false)
-	if err != nil {
-		totalCores = 1 // fallback
-	}
-
 	processes = make([]ProcessInfo, 0, min(len(allProcesses), limit*3))
 
 	for _, proc := range allProcesses {
@@ -526,9 +520,10 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		}
 
 		terminal, _ := proc.Terminal()
-		normalizedCPU := cpuPercent / float64(totalCores)
 
-		if normalizedCPU < 0.01 && memoryPercent < 0.01 {
+		// cpuPercent is already normalized (0-100%), no need to divide by cores
+		// Skip only processes with very low resource usage to reduce noise
+		if cpuPercent < 0.1 && memoryPercent < 0.1 {
 			continue
 		}
 
@@ -567,7 +562,7 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 		process := ProcessInfo{
 			PID:         int(proc.Pid),
 			Name:        name,
-			CPUUsage:    normalizedCPU,
+			CPUUsage:    cpuPercent,
 			MemoryUsage: float64(memoryPercent),
 			MemoryKB:    memoryKB,
 			Command:     command,

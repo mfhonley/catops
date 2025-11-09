@@ -27,8 +27,6 @@ func NewStatusCmd() *cobra.Command {
 Examples:
   catops status          # Show all system information`,
 		Run: func(cmd *cobra.Command, args []string) {
-			ui.PrintHeader()
-
 			// Load configuration
 			cfg, err := config.LoadConfig()
 			if err != nil {
@@ -43,7 +41,8 @@ Examples:
 
 			// get system information
 			hostname, _ := os.Hostname()
-			metrics, err := metrics.GetMetrics()
+			// Use cached metrics for faster response (avoids 1-second CPU measurement delay)
+			currentMetrics, err := metrics.GetMetricsWithCache()
 			if err != nil {
 				ui.PrintStatus("error", fmt.Sprintf("Error getting metrics: %v", err))
 				return
@@ -53,9 +52,9 @@ Examples:
 			ui.PrintSection("System Information")
 			systemData := map[string]string{
 				"Hostname": hostname,
-				"OS":       metrics.OSName,
-				"IP":       metrics.IPAddress,
-				"Uptime":   metrics.Uptime,
+				"OS":       currentMetrics.OSName,
+				"IP":       currentMetrics.IPAddress,
+				"Uptime":   currentMetrics.Uptime,
 			}
 			fmt.Print(ui.CreateBeautifulList(systemData))
 			ui.PrintSectionEnd()
@@ -63,7 +62,7 @@ Examples:
 			// timestamp section
 			ui.PrintSection("Timestamp")
 			timestampData := map[string]string{
-				"Current Time": metrics.Timestamp,
+				"Current Time": currentMetrics.Timestamp,
 			}
 			fmt.Print(ui.CreateBeautifulList(timestampData))
 			ui.PrintSectionEnd()
@@ -71,12 +70,12 @@ Examples:
 			// metrics section
 			ui.PrintSection("Current Metrics")
 			metricsData := map[string]string{
-				"CPU Usage":         fmt.Sprintf("%s (%d cores, %d active)", utils.FormatPercentage(metrics.CPUUsage), metrics.CPUDetails.Total, metrics.CPUDetails.Used),
-				"Memory Usage":      fmt.Sprintf("%s (%s / %s)", utils.FormatPercentage(metrics.MemoryUsage), utils.FormatBytes(metrics.MemoryDetails.Used*1024), utils.FormatBytes(metrics.MemoryDetails.Total*1024)),
-				"Disk Usage":        fmt.Sprintf("%s (%s / %s)", utils.FormatPercentage(metrics.DiskUsage), utils.FormatBytes(metrics.DiskDetails.Used*1024), utils.FormatBytes(metrics.DiskDetails.Total*1024)),
-				"HTTPS Connections": utils.FormatNumber(metrics.HTTPSRequests),
-				"IOPS":              utils.FormatNumber(metrics.IOPS),
-				"I/O Wait":          utils.FormatPercentage(metrics.IOWait),
+				"CPU Usage":         fmt.Sprintf("%s (%d cores, %d active)", utils.FormatPercentage(currentMetrics.CPUUsage), currentMetrics.CPUDetails.Total, currentMetrics.CPUDetails.Used),
+				"Memory Usage":      fmt.Sprintf("%s (%s / %s)", utils.FormatPercentage(currentMetrics.MemoryUsage), utils.FormatBytes(currentMetrics.MemoryDetails.Used*1024), utils.FormatBytes(currentMetrics.MemoryDetails.Total*1024)),
+				"Disk Usage":        fmt.Sprintf("%s (%s / %s)", utils.FormatPercentage(currentMetrics.DiskUsage), utils.FormatBytes(currentMetrics.DiskDetails.Used*1024), utils.FormatBytes(currentMetrics.DiskDetails.Total*1024)),
+				"HTTPS Connections": utils.FormatNumber(currentMetrics.HTTPSRequests),
+				"IOPS":              utils.FormatNumber(currentMetrics.IOPS),
+				"I/O Wait":          utils.FormatPercentage(currentMetrics.IOWait),
 			}
 			fmt.Print(ui.CreateBeautifulList(metricsData))
 			ui.PrintSectionEnd()

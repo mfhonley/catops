@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -227,6 +228,9 @@ func NewDaemonCmd() *cobra.Command {
 						continue
 					}
 
+					// Save metrics to cache for fast status command (ignore errors - not critical)
+					_ = metrics.SaveMetricsToCache(currentMetrics)
+
 					// Add metrics to buffer
 					metricsBuffer.AddCPUPoint(currentMetrics.CPUUsage)
 					metricsBuffer.AddMemoryPoint(currentMetrics.MemoryUsage)
@@ -236,11 +240,11 @@ func NewDaemonCmd() *cobra.Command {
 					alertsToSend := []alerts.Alert{}
 
 					// CPU alerts
-					cpuAlerts := checkCPUAlerts(currentMetrics.CPUUsage, currentCfg, metricsBuffer)
+					cpuAlerts := checkCPUAlerts(currentMetrics.CPUUsage, currentCfg, metricsBuffer, currentMetrics)
 					alertsToSend = append(alertsToSend, cpuAlerts...)
 
 					// Memory alerts
-					memoryAlerts := checkMemoryAlerts(currentMetrics.MemoryUsage, currentCfg, metricsBuffer)
+					memoryAlerts := checkMemoryAlerts(currentMetrics.MemoryUsage, currentCfg, metricsBuffer, currentMetrics)
 					alertsToSend = append(alertsToSend, memoryAlerts...)
 
 					// Disk alerts
@@ -347,7 +351,7 @@ func NewDaemonCmd() *cobra.Command {
 }
 
 // checkCPUAlerts checks for CPU-related alerts with spike detection
-func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer) []alerts.Alert {
+func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer, currentMetrics *metrics.Metrics) []alerts.Alert {
 	var cpuAlerts []alerts.Alert
 
 	// Detect spikes
@@ -372,6 +376,7 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 				"change_percent": spikeResult.PercentChange,
 				"avg_5min":       spikeResult.Stats.Avg,
 				"p95_5min":       spikeResult.Stats.P95,
+				"top_processes":  getTop5ProcessesByCPU(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -394,6 +399,7 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 				"change_over_window": spikeResult.ChangeOverWindow,
 				"avg_5min":           spikeResult.Stats.Avg,
 				"p95_5min":           spikeResult.Stats.P95,
+				"top_processes":      getTop5ProcessesByCPU(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -412,10 +418,11 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 			cpuUsage,
 			cfg.CPUThreshold,
 			map[string]interface{}{
-				"deviation": spikeResult.DeviationFromAvg,
-				"avg_5min":  spikeResult.Stats.Avg,
-				"stddev":    spikeResult.Stats.StdDev,
-				"p95_5min":  spikeResult.Stats.P95,
+				"deviation":     spikeResult.DeviationFromAvg,
+				"avg_5min":      spikeResult.Stats.Avg,
+				"stddev":        spikeResult.Stats.StdDev,
+				"p95_5min":      spikeResult.Stats.P95,
+				"top_processes": getTop5ProcessesByCPU(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -435,8 +442,9 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 			cpuUsage,
 			cfg.CPUThreshold,
 			map[string]interface{}{
-				"avg_5min": spikeResult.Stats.Avg,
-				"p95_5min": spikeResult.Stats.P95,
+				"avg_5min":      spikeResult.Stats.Avg,
+				"p95_5min":      spikeResult.Stats.P95,
+				"top_processes": getTop5ProcessesByCPU(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -445,7 +453,7 @@ func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.Metric
 }
 
 // checkMemoryAlerts checks for Memory-related alerts with spike detection
-func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer) []alerts.Alert {
+func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer, currentMetrics *metrics.Metrics) []alerts.Alert {
 	var memAlerts []alerts.Alert
 
 	// Detect spikes
@@ -470,6 +478,7 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 				"change_percent": spikeResult.PercentChange,
 				"avg_5min":       spikeResult.Stats.Avg,
 				"p95_5min":       spikeResult.Stats.P95,
+				"top_processes":  getTop5ProcessesByMemory(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -492,6 +501,7 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 				"change_over_window": spikeResult.ChangeOverWindow,
 				"avg_5min":           spikeResult.Stats.Avg,
 				"p95_5min":           spikeResult.Stats.P95,
+				"top_processes":      getTop5ProcessesByMemory(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -510,10 +520,11 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 			memUsage,
 			cfg.MemThreshold,
 			map[string]interface{}{
-				"deviation": spikeResult.DeviationFromAvg,
-				"avg_5min":  spikeResult.Stats.Avg,
-				"stddev":    spikeResult.Stats.StdDev,
-				"p95_5min":  spikeResult.Stats.P95,
+				"deviation":     spikeResult.DeviationFromAvg,
+				"avg_5min":      spikeResult.Stats.Avg,
+				"stddev":        spikeResult.Stats.StdDev,
+				"p95_5min":      spikeResult.Stats.P95,
+				"top_processes": getTop5ProcessesByMemory(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -533,8 +544,9 @@ func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.Met
 			memUsage,
 			cfg.MemThreshold,
 			map[string]interface{}{
-				"avg_5min": spikeResult.Stats.Avg,
-				"p95_5min": spikeResult.Stats.P95,
+				"avg_5min":      spikeResult.Stats.Avg,
+				"p95_5min":      spikeResult.Stats.P95,
+				"top_processes": getTop5ProcessesByMemory(currentMetrics.TopProcesses),
 			},
 		))
 	}
@@ -675,4 +687,70 @@ func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, al
 			}
 		}
 	}
+}
+
+// getTop5ProcessesByCPU возвращает топ-5 процессов по CPU для включения в алерт
+func getTop5ProcessesByCPU(processes []metrics.ProcessInfo) []map[string]interface{} {
+	if len(processes) == 0 {
+		return []map[string]interface{}{}
+	}
+
+	// Сортируем по CPU usage
+	sorted := make([]metrics.ProcessInfo, len(processes))
+	copy(sorted, processes)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].CPUUsage > sorted[j].CPUUsage
+	})
+
+	// Берём топ 5
+	limit := 5
+	if len(sorted) < limit {
+		limit = len(sorted)
+	}
+
+	result := make([]map[string]interface{}, limit)
+	for i := 0; i < limit; i++ {
+		p := sorted[i]
+		result[i] = map[string]interface{}{
+			"name":       p.Name,
+			"pid":        p.PID,
+			"cpu_usage":  p.CPUUsage,
+			"memory_kb":  p.MemoryKB,
+			"command":    p.Command,
+		}
+	}
+	return result
+}
+
+// getTop5ProcessesByMemory возвращает топ-5 процессов по памяти для включения в алерт
+func getTop5ProcessesByMemory(processes []metrics.ProcessInfo) []map[string]interface{} {
+	if len(processes) == 0 {
+		return []map[string]interface{}{}
+	}
+
+	// Сортируем по Memory usage
+	sorted := make([]metrics.ProcessInfo, len(processes))
+	copy(sorted, processes)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].MemoryUsage > sorted[j].MemoryUsage
+	})
+
+	// Берём топ 5
+	limit := 5
+	if len(sorted) < limit {
+		limit = len(sorted)
+	}
+
+	result := make([]map[string]interface{}, limit)
+	for i := 0; i < limit; i++ {
+		p := sorted[i]
+		result[i] = map[string]interface{}{
+			"name":       p.Name,
+			"pid":        p.PID,
+			"cpu_usage":  p.CPUUsage,
+			"memory_kb":  p.MemoryKB,
+			"command":    p.Command,
+		}
+	}
+	return result
 }

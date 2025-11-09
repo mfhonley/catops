@@ -68,6 +68,7 @@ type AlertManager struct {
 	mutex             sync.RWMutex
 	renotifyInterval  time.Duration // How often to re-send still-active alerts
 	resolutionTimeout time.Duration // How long to wait before considering alert resolved
+	maxAlerts         int           // Maximum number of active alerts (prevents memory leak)
 }
 
 // NotificationDecision indicates whether to send notification and why
@@ -84,6 +85,7 @@ func NewAlertManager(renotifyInterval, resolutionTimeout time.Duration) *AlertMa
 		active:            make(map[string]*ActiveAlert),
 		renotifyInterval:  renotifyInterval,
 		resolutionTimeout: resolutionTimeout,
+		maxAlerts:         100, // Limit to 100 active alerts to prevent memory leak
 	}
 }
 
@@ -98,6 +100,22 @@ func (am *AlertManager) ProcessAlert(alert Alert) NotificationDecision {
 	existing, exists := am.active[fingerprint]
 
 	if !exists {
+		// Check if we've hit the max alerts limit (memory leak prevention)
+		if len(am.active) >= am.maxAlerts {
+			// Clear oldest alerts to make room (FIFO eviction)
+			oldestFingerprint := ""
+			oldestTime := time.Now()
+			for fp, a := range am.active {
+				if a.FirstSeen.Before(oldestTime) {
+					oldestTime = a.FirstSeen
+					oldestFingerprint = fp
+				}
+			}
+			if oldestFingerprint != "" {
+				delete(am.active, oldestFingerprint)
+			}
+		}
+
 		// New alert
 		activeAlert := &ActiveAlert{
 			Fingerprint: fingerprint,

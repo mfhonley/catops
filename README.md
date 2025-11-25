@@ -10,7 +10,7 @@ Monitor standalone servers or entire Kubernetes clusters with Telegram alerts an
 
 ```bash
 # Install in seconds
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 ```
 
 ---
@@ -69,7 +69,7 @@ curl -sfL https://get.catops.io/install.sh | bash
 
 ```bash
 # 1. Install
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 
 # 2. Check status
 catops status
@@ -109,7 +109,7 @@ That's it! Your servers/nodes appear in the dashboard within 60 seconds.
 **One-Command Install:**
 
 ```bash
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 ```
 
 **Operating Modes:**
@@ -119,7 +119,7 @@ curl -sfL https://get.catops.io/install.sh | bash
 **Enable Cloud Mode for Telegram alerts:**
 ```bash
 # 1. Install CatOps
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 
 # 2. Get token from https://catops.app
 catops auth login YOUR_TOKEN
@@ -435,7 +435,7 @@ kubectl get secret catops -n catops-system -o jsonpath='{.data.auth-token}' | ba
 
 # Check network connectivity
 kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
-  wget -O- https://api.catops.io/health
+  wget -O- https://api.catops.app/health
 ```
 
 📖 **Advanced Kubernetes topics:** See [docs/KUBERNETES_ADVANCED.md](docs/KUBERNETES_ADVANCED.md)

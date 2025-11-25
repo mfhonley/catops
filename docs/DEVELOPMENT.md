@@ -160,7 +160,7 @@ catops/
     ┌──────────┐      ┌─────────────┐    ┌──────────────┐
     │  Linux/  │      │  Telegram   │    │   CatOps     │
     │  macOS   │      │   Servers   │    │   Backend    │
-    │  System  │      │             │    │ api.catops.io│
+    │  System  │      │             │    │ api.catops.app│
     └──────────┘      └─────────────┘    └──────────────┘
 ```
 
@@ -228,7 +228,7 @@ CatOps operates in two modes:
 
 **1. Server Registration**
 ```
-POST https://api.catops.io/api/downloads/install
+POST https://api.catops.app/api/downloads/install
 Content-Type: application/json
 
 {
@@ -247,7 +247,7 @@ Response:
 
 **2. Events API** (Service lifecycle)
 ```
-POST https://api.catops.io/api/data/events
+POST https://api.catops.app/api/data/events
 Content-Type: application/json
 Authorization: Bearer {auth_token}
 X-Server-ID: {server_id}
@@ -265,7 +265,7 @@ X-Server-ID: {server_id}
 
 **3. Alerts API** (Threshold violations)
 ```
-POST https://api.catops.io/api/data/alerts
+POST https://api.catops.app/api/data/alerts
 Content-Type: application/json
 Authorization: Bearer {auth_token}
 X-Server-ID: {server_id}

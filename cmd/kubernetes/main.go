@@ -153,7 +153,7 @@ func (c *Config) GetPrometheusURL() string { return c.PrometheusURL }
 // loadConfig загружает конфигурацию из environment variables
 func loadConfig() (*Config, error) {
 	config := &Config{
-		BackendURL:         getEnv("CATOPS_BACKEND_URL", "https://api.catops.io"),
+		BackendURL:         getEnv("CATOPS_BACKEND_URL", "https://api.catops.app"),
 		AuthToken:          getEnv("CATOPS_AUTH_TOKEN", ""),
 		NodeName:           getEnv("NODE_NAME", ""),
 		Namespace:          getEnv("NAMESPACE", "default"),

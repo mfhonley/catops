@@ -3,25 +3,25 @@ package constants
 // API Endpoints (used only in cloud mode)
 const (
 	// Analytics and data endpoints
-	ALERTS_PROCESS_URL   = "https://api.catops.io/api/cli/alerts/process" // Phase 2: New spike-based alerts
-	ALERTS_HEARTBEAT_URL = "https://api.catops.io/api/cli/alerts"         // Phase 2: Base URL for heartbeat (/{fingerprint}/heartbeat)
-	ALERTS_RESOLVE_URL   = "https://api.catops.io/api/cli/alerts/resolve" // Phase 2: Alert resolution
-	EVENTS_URL           = "https://api.catops.io/api/cli/events"
-	METRICS_URL          = "https://api.catops.io/api/cli/metrics"
-	PROCESSES_URL        = "https://api.catops.io/api/cli/processes"
-	NETWORK_METRICS_URL  = "https://api.catops.io/api/cli/network" // Network observability metrics
+	ALERTS_PROCESS_URL   = "https://api.catops.app/api/cli/alerts/process" // Phase 2: New spike-based alerts
+	ALERTS_HEARTBEAT_URL = "https://api.catops.app/api/cli/alerts"         // Phase 2: Base URL for heartbeat (/{fingerprint}/heartbeat)
+	ALERTS_RESOLVE_URL   = "https://api.catops.app/api/cli/alerts/resolve" // Phase 2: Alert resolution
+	EVENTS_URL           = "https://api.catops.app/api/cli/events"
+	METRICS_URL          = "https://api.catops.app/api/cli/metrics"
+	PROCESSES_URL        = "https://api.catops.app/api/cli/processes"
+	NETWORK_METRICS_URL  = "https://api.catops.app/api/cli/network" // Network observability metrics
 
 	// Server management endpoints
-	SERVERS_URL   = "https://api.catops.io/api/cli/servers/change-owner"
-	INSTALL_URL   = "https://api.catops.io/api/cli/install"
-	UNINSTALL_URL = "https://api.catops.io/api/cli/uninstall"
+	SERVERS_URL   = "https://api.catops.app/api/cli/servers/change-owner"
+	INSTALL_URL   = "https://api.catops.app/api/cli/install"
+	UNINSTALL_URL = "https://api.catops.app/api/cli/uninstall"
 
 	// Version and update endpoints
-	VERSIONS_BASE_URL = "https://api.catops.io/api/versions"
-	VERSIONS_URL      = "https://api.catops.io/api/versions/check"
+	VERSIONS_BASE_URL = "https://api.catops.app/api/versions"
+	VERSIONS_URL      = "https://api.catops.app/api/versions/check"
 
 	// Download endpoints
-	GET_CATOPS_URL = "https://get.catops.io"
+	GET_CATOPS_URL = "https://get.catops.app"
 )
 
 // HTTP headers required by new backend
@@ -34,8 +34,8 @@ const (
 // External services
 const (
 	TELEGRAM_API_URL = "https://api.telegram.org/bot%s/sendMessage"
-	CATOPS_WEBSITE   = "https://catops.io"
-	CATOPS_API_URL   = "https://api.catops.io"
+	CATOPS_WEBSITE   = "https://catops.app"
+	CATOPS_API_URL   = "https://api.catops.app"
 )
 
 // Operation modes

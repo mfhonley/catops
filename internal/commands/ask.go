@@ -216,7 +216,7 @@ func showOfflineHelp(question string) {
 	}
 
 	fmt.Println()
-	fmt.Println("  For help: https://catops.io")
+	fmt.Println("  For help: https://catops.app")
 	fmt.Println()
 }
 

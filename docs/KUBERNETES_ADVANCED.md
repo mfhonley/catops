@@ -290,7 +290,7 @@ helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
                            ▼
                 ┌──────────────────────┐
                 │   CatOps Backend     │
-                │   api.catops.io      │
+                │   api.catops.app      │
                 └──────────────────────┘
                            │
                            ▼
@@ -321,7 +321,7 @@ helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
    - Enriches pod data with metadata
 
 3. **Data Transmission**:
-   - CatOps pod sends metrics to `api.catops.io/api/kubernetes/*`
+   - CatOps pod sends metrics to `api.catops.app/api/kubernetes/*`
    - Authenticated with `auth_token` (from `auth.token`)
    - Metrics stored in ClickHouse database
    - Available immediately in web dashboard

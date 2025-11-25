@@ -73,7 +73,7 @@ chmod 600 ~/.catops/config.yaml
 **4. Reinstall:**
 ```bash
 catops uninstall
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 ```
 
 ### Binary Not Found / Command Not Available
@@ -104,7 +104,7 @@ source ~/.zshrc
 
 **3. Reinstall to proper location:**
 ```bash
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 ```
 
 ### High CPU Usage
@@ -322,7 +322,7 @@ kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=50 | grep 
 
 # Check network connectivity to backend
 kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
-  wget -O- --timeout=5 https://api.catops.io/health
+  wget -O- --timeout=5 https://api.catops.app/health
 ```
 
 **Solutions:**
@@ -343,7 +343,7 @@ helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
 ```bash
 # Test from inside pod
 kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
-  sh -c 'wget -O- --timeout=5 https://api.catops.io/health || echo "Connection failed"'
+  sh -c 'wget -O- --timeout=5 https://api.catops.app/health || echo "Connection failed"'
 ```
 
 **3. Verify NetworkPolicy (if using):**
@@ -619,7 +619,7 @@ catops restart
 **2. Check internet connectivity:**
 ```bash
 # Test backend connectivity
-curl -I https://api.catops.io/health
+curl -I https://api.catops.app/health
 
 # If fails, check firewall/proxy settings
 ```
@@ -628,7 +628,7 @@ curl -I https://api.catops.io/health
 ```bash
 catops auth logout
 rm ~/.catops/config.yaml
-curl -sfL https://get.catops.io/install.sh | bash
+curl -sfL https://get.catops.app/install.sh | bash
 catops auth login YOUR_TOKEN
 ```
 
@@ -698,7 +698,7 @@ catops restart
 **2. Verify network connectivity:**
 ```bash
 # Test backend connection
-curl -v https://api.catops.io/health
+curl -v https://api.catops.app/health
 
 # Check for proxy/firewall blocking
 ```

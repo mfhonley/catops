@@ -194,7 +194,7 @@ jobs:
           if [ -n "$CATOPS_API_TOKEN" ]; then
             echo "📡 Registering version $VERSION in database..."
             
-            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.catops.io/api/versions/new" \
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "https://api.catops.app/api/versions/new" \
               -H "Content-Type: application/json" \
               -H "Authorization: Bearer $CATOPS_API_TOKEN" \
               -d "{\"version\":\"$VERSION\",\"changelog\":\"See GitHub release notes at https://github.com/${{ github.repository }}/releases/tag/v$VERSION\"}")
@@ -255,15 +255,15 @@ jobs:
 
             **Or use the install script:**
             ```bash
-            curl -fsSL https://get.catops.io/install.sh | bash
+            curl -fsSL https://get.catops.app/install.sh | bash
             ```
             
             ### 📝 Checksums
             See `checksums.txt` for SHA256 checksums of all binaries.
             
             ### 🔗 Links
-            - 📖 [Documentation](https://catops.io/docs)
-            - 🌐 [Website](https://catops.io)
+            - 📖 [Documentation](https://catops.app/docs)
+            - 🌐 [Website](https://catops.app)
             - 💬 [Support](https://t.me/catops)
           files: |
             catops-linux-amd64

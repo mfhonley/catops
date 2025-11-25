@@ -4,9 +4,9 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Kubernetes-lightgrey.svg)]()
 
-**Ultra-lightweight server monitoring with real-time alerts.** One command to install, zero configuration needed.
+**Fast and convenient monitoring with AI.** One command to install, zero configuration needed.
 
-Monitor standalone servers or entire Kubernetes clusters with Telegram alerts and optional web dashboard at [catops.app](https://catops.app).
+Set up in 5 minutes. Get a beautiful dashboard. AI helps you troubleshoot. Monitor standalone servers or entire Kubernetes clusters with Telegram alerts and web dashboard at [catops.app](https://catops.app).
 
 ```bash
 # Install in seconds
@@ -39,9 +39,9 @@ curl -sfL https://get.catops.app/install.sh | bash
 - System metrics (CPU, Memory, Disk, Network, I/O)
 - Process monitoring with resource usage
 - Real-time Telegram alerts
-- Optional web dashboard
+- Beautiful web dashboard
 - Cross-platform (Linux, macOS, Kubernetes)
-- Ultra-lightweight (~15MB binary, ~128MB RAM)
+- AI assistant for troubleshooting
 
 **Deployment Options:**
 - **Standalone**: Monitor individual servers (Linux/macOS)
@@ -402,17 +402,16 @@ kubectl delete namespace catops-system
 ### Resource Consumption
 
 **Basic Configuration (without Prometheus):**
-- Per node: 128-256 MB RAM, 0.1-0.2 CPU
-- 3-node cluster: ~300-800 MB RAM total
+- Minimal resource footprint per node
+- Perfect for small clusters and development environments
 
 **With Prometheus:**
-- Per node: 128-256 MB RAM, 0.1-0.2 CPU
-- Prometheus server: 256-512 MB RAM, 0.1-0.5 CPU
-- 3-node cluster: ~1-1.5 GB RAM total
+- Enhanced metrics with labels and owner information
+- Recommended for production environments needing full observability
 
-**Recommended for:**
-- Basic: Small clusters, Docker Desktop, dev environments
-- With Prometheus: Production, full observability, when you need labels/owner info
+**Best suited for:**
+- Basic: Small clusters, Docker Desktop, dev/staging
+- With Prometheus: Production clusters, comprehensive monitoring
 
 ### Common Kubernetes Issues
 

@@ -77,8 +77,9 @@ type Metrics struct {
 	MemoryDetails ResourceUsage `json:"memory_details"` // Memory allocation and availability
 	DiskDetails   ResourceUsage `json:"disk_details"`   // Disk space and usage details
 
-	// Process monitoring and analysis
-	TopProcesses []ProcessInfo `json:"top_processes"` // Top processes by resource consumption
+	// Process monitoring - collected on-demand, not stored between iterations
+	// Reduced from 100 to 30 to save memory (~70% reduction)
+	TopProcesses []ProcessInfo `json:"top_processes"`
 
 	// Network monitoring (Phase 1 - Network Observability)
 	NetworkMetrics *NetworkMetrics `json:"network_metrics,omitempty"` // Network bandwidth, connections, top connections
@@ -389,8 +390,9 @@ func GetMetrics() (*Metrics, error) {
 	memoryDetails, _ := GetDetailedMemoryUsage()
 	diskDetails, _ := GetDetailedDiskUsage()
 
-	// Get top processes (increased from 10 to 100 to capture more system resource usage)
-	topProcesses, _ := GetTopProcesses(100)
+	// Get top processes - reduced from 100 to 30 for memory optimization
+	// 30 is enough for top CPU (30) + top Memory (30) with overlap
+	topProcesses, _ := GetTopProcesses(30)
 
 	// Get network metrics (non-critical - don't fail if error occurs)
 	networkMetrics, err := GetNetworkMetrics()
@@ -411,7 +413,7 @@ func GetMetrics() (*Metrics, error) {
 		Uptime:        uptime,
 		Timestamp:     time.Now().UTC().Format("2006-01-02 15:04:05"),
 
-		// New detailed resource fields
+		// Detailed resource fields
 		CPUDetails:    cpuDetails,
 		MemoryDetails: memoryDetails,
 		DiskDetails:   diskDetails,

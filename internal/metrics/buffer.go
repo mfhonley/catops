@@ -18,10 +18,13 @@ type MetricsBuffer struct {
 	mutex   sync.RWMutex
 }
 
-// MetricTimeseries stores a timeseries of metric values
+// MetricTimeseries stores a timeseries of metric values using a ring buffer
+// for O(1) insert/remove instead of O(n) slice operations
 type MetricTimeseries struct {
 	points []MetricPoint
 	max    int // Maximum points to store
+	head   int // Index of oldest element
+	count  int // Current number of elements
 }
 
 // MetricPoint represents a single metric measurement
@@ -68,8 +71,10 @@ func NewMetricsBuffer(maxSize int) *MetricsBuffer {
 
 func newMetricTimeseries(max int) *MetricTimeseries {
 	return &MetricTimeseries{
-		points: make([]MetricPoint, 0, max),
+		points: make([]MetricPoint, max), // Pre-allocate full size for ring buffer
 		max:    max,
+		head:   0,
+		count:  0,
 	}
 }
 
@@ -94,13 +99,18 @@ func (mb *MetricsBuffer) AddDiskPoint(value float64) {
 	mb.disk.addPoint(MetricPoint{Timestamp: time.Now(), Value: value})
 }
 
-// addPoint adds a point and removes oldest if buffer is full
+// addPoint adds a point using ring buffer - O(1) instead of O(n)
 func (ts *MetricTimeseries) addPoint(point MetricPoint) {
-	ts.points = append(ts.points, point)
+	// Calculate insertion index
+	insertIdx := (ts.head + ts.count) % ts.max
 
-	// Remove oldest point if buffer is full
-	if len(ts.points) > ts.max {
-		ts.points = ts.points[1:]
+	ts.points[insertIdx] = point
+
+	if ts.count < ts.max {
+		ts.count++
+	} else {
+		// Buffer is full, move head forward (overwrite oldest)
+		ts.head = (ts.head + 1) % ts.max
 	}
 }
 
@@ -146,25 +156,32 @@ func (mb *MetricsBuffer) DetectDiskSpike(suddenSpikeThreshold, gradualRiseThresh
 	return mb.disk.detectSpike(constants.DETECTION_WINDOW_MINUTES, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold)
 }
 
-// getStatistics calculates statistics for a time window
+// getStatistics calculates statistics for a time window (ring buffer aware)
 func (ts *MetricTimeseries) getStatistics(windowMinutes int) MetricStatistics {
-	if len(ts.points) == 0 {
+	if ts.count == 0 {
 		return MetricStatistics{}
 	}
 
-	// Get points within time window
+	// Get points within time window from ring buffer
 	cutoff := time.Now().Add(-time.Duration(windowMinutes) * time.Minute)
-	var values []float64
+	values := make([]float64, 0, ts.count)
 
-	for _, p := range ts.points {
+	// Iterate through ring buffer in order (oldest to newest)
+	for i := 0; i < ts.count; i++ {
+		idx := (ts.head + i) % ts.max
+		p := ts.points[idx]
 		if p.Timestamp.After(cutoff) {
 			values = append(values, p.Value)
 		}
 	}
 
+	// Get current (newest) value
+	newestIdx := (ts.head + ts.count - 1) % ts.max
+	currentValue := ts.points[newestIdx].Value
+
 	if len(values) == 0 {
 		return MetricStatistics{
-			Current: ts.points[len(ts.points)-1].Value,
+			Current: currentValue,
 		}
 	}
 
@@ -175,7 +192,7 @@ func (ts *MetricTimeseries) getStatistics(windowMinutes int) MetricStatistics {
 
 	// Calculate statistics
 	stats := MetricStatistics{
-		Current: ts.points[len(ts.points)-1].Value,
+		Current: currentValue,
 		Min:     sorted[0],
 		Max:     sorted[len(sorted)-1],
 		Avg:     average(values),
@@ -188,21 +205,24 @@ func (ts *MetricTimeseries) getStatistics(windowMinutes int) MetricStatistics {
 	return stats
 }
 
-// detectSpike performs spike detection analysis
+// detectSpike performs spike detection analysis (ring buffer aware)
 func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold, gradualRiseThreshold, anomalyThreshold float64) SpikeDetectionResult {
 	result := SpikeDetectionResult{
 		Stats: ts.getStatistics(windowMinutes),
 	}
 
-	if len(ts.points) == 0 {
+	if ts.count == 0 {
 		return result
 	}
 
-	result.CurrentValue = ts.points[len(ts.points)-1].Value
+	// Get current (newest) value from ring buffer
+	newestIdx := (ts.head + ts.count - 1) % ts.max
+	result.CurrentValue = ts.points[newestIdx].Value
 
 	// Check for sudden spike (comparison with previous point)
-	if len(ts.points) >= 2 {
-		previous := ts.points[len(ts.points)-2]
+	if ts.count >= 2 {
+		prevIdx := (ts.head + ts.count - 2) % ts.max
+		previous := ts.points[prevIdx]
 		result.PreviousValue = previous.Value
 
 		// Calculate percent change
@@ -225,9 +245,11 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 	cutoff := time.Now().Add(-time.Duration(windowMinutes) * time.Minute)
 	var oldestInWindow *MetricPoint
 
-	for i := range ts.points {
-		if ts.points[i].Timestamp.After(cutoff) {
-			oldestInWindow = &ts.points[i]
+	// Iterate through ring buffer in order (oldest to newest)
+	for i := 0; i < ts.count; i++ {
+		idx := (ts.head + i) % ts.max
+		if ts.points[idx].Timestamp.After(cutoff) {
+			oldestInWindow = &ts.points[idx]
 			break
 		}
 	}
@@ -264,31 +286,38 @@ func (ts *MetricTimeseries) detectSpike(windowMinutes int, suddenSpikeThreshold,
 	return result
 }
 
+// getOrderedPoints returns ring buffer points in order (oldest to newest)
+func (ts *MetricTimeseries) getOrderedPoints() []MetricPoint {
+	if ts.count == 0 {
+		return []MetricPoint{}
+	}
+	result := make([]MetricPoint, ts.count)
+	for i := 0; i < ts.count; i++ {
+		idx := (ts.head + i) % ts.max
+		result[i] = ts.points[idx]
+	}
+	return result
+}
+
 // GetCPUHistory returns CPU history points (for debugging/testing)
 func (mb *MetricsBuffer) GetCPUHistory() []MetricPoint {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	result := make([]MetricPoint, len(mb.cpu.points))
-	copy(result, mb.cpu.points)
-	return result
+	return mb.cpu.getOrderedPoints()
 }
 
 // GetMemoryHistory returns Memory history points (for debugging/testing)
 func (mb *MetricsBuffer) GetMemoryHistory() []MetricPoint {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	result := make([]MetricPoint, len(mb.memory.points))
-	copy(result, mb.memory.points)
-	return result
+	return mb.memory.getOrderedPoints()
 }
 
 // GetDiskHistory returns Disk history points (for debugging/testing)
 func (mb *MetricsBuffer) GetDiskHistory() []MetricPoint {
 	mb.mutex.RLock()
 	defer mb.mutex.RUnlock()
-	result := make([]MetricPoint, len(mb.disk.points))
-	copy(result, mb.disk.points)
-	return result
+	return mb.disk.getOrderedPoints()
 }
 
 // Helper functions for statistics

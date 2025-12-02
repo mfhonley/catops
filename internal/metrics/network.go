@@ -192,26 +192,55 @@ type connectionWithScore struct {
 
 // getTopConnections returns top N connections by importance
 // Priority: ESTABLISHED > SYN_* > TIME_WAIT > others
+// Memory optimized: keeps only top N in memory instead of all connections
 func getTopConnections(connections []net.ConnectionStat, limit int) []NetworkConnection {
-	// Score connections by importance
-	scored := make([]connectionWithScore, 0, len(connections))
+	// Keep only top N scored connections in memory (avoid allocating for all connections)
+	topScored := make([]connectionWithScore, 0, limit+1)
+	minScore := 0
+
 	for _, conn := range connections {
 		score := getConnectionScore(conn)
-		if score > 0 { // Only include scored connections
-			scored = append(scored, connectionWithScore{conn: conn, score: score})
+		if score == 0 {
+			continue
+		}
+
+		// If we haven't filled the buffer yet, or this score beats the minimum
+		if len(topScored) < limit || score > minScore {
+			topScored = append(topScored, connectionWithScore{conn: conn, score: score})
+
+			// If buffer exceeded, remove the lowest scored one
+			if len(topScored) > limit {
+				// Find and remove minimum
+				minIdx := 0
+				for i := 1; i < len(topScored); i++ {
+					if topScored[i].score < topScored[minIdx].score {
+						minIdx = i
+					}
+				}
+				// Remove by swapping with last and truncating
+				topScored[minIdx] = topScored[len(topScored)-1]
+				topScored = topScored[:len(topScored)-1]
+
+				// Update minScore
+				minScore = topScored[0].score
+				for i := 1; i < len(topScored); i++ {
+					if topScored[i].score < minScore {
+						minScore = topScored[i].score
+					}
+				}
+			}
 		}
 	}
 
-	// Sort by score (descending)
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].score > scored[j].score
+	// Sort the top N by score (descending)
+	sort.Slice(topScored, func(i, j int) bool {
+		return topScored[i].score > topScored[j].score
 	})
 
-	// Convert to NetworkConnection and limit
-	result := make([]NetworkConnection, 0, limit)
-	for i := 0; i < len(scored) && i < limit; i++ {
-		conn := scored[i].conn
-		score := scored[i].score
+	// Convert to NetworkConnection
+	result := make([]NetworkConnection, 0, len(topScored))
+	for _, scored := range topScored {
+		conn := scored.conn
 
 		// Determine protocol
 		protocol := "TCP"
@@ -233,7 +262,7 @@ func getTopConnections(connections []net.ConnectionStat, limit int) []NetworkCon
 			State:           conn.Status,
 			PID:             conn.Pid,
 			Family:          family,
-			ImportanceScore: score,
+			ImportanceScore: scored.score,
 		})
 	}
 

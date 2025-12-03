@@ -529,6 +529,11 @@ func GetTopProcesses(limit int) ([]ProcessInfo, error) {
 			continue
 		}
 
+		// Skip CatOps CLI processes to avoid self-monitoring noise and false alerts
+		if name == "catops" || strings.HasPrefix(name, "catops-") {
+			continue
+		}
+
 		// Get full command line instead of just process name
 		command := name
 		if cmdline, err := proc.Cmdline(); err == nil && cmdline != "" {

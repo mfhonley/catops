@@ -4,7 +4,11 @@
 # ============================================================================
 # Build stage
 # ============================================================================
-FROM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 # Установка необходимых build dependencies
 RUN apk add --no-cache git ca-certificates
@@ -19,7 +23,7 @@ RUN go mod download
 COPY . .
 
 # Собираем бинарник (статически линкуем для alpine)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
     -o catops-k8s \
     ./cmd/kubernetes
@@ -27,7 +31,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # ============================================================================
 # Runtime stage
 # ============================================================================
-FROM alpine:latest
+FROM alpine:3.19
 
 # Установка CA certificates (для HTTPS запросов)
 RUN apk --no-cache add ca-certificates

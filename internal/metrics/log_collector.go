@@ -3,6 +3,7 @@ package metrics
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -39,7 +40,11 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	// If running in Docker container, use docker logs
 	if service.IsContainer && service.ContainerID != "" {
 		logs, err := lc.collectDockerLogs(service.ContainerID)
-		if err == nil && len(logs) > 0 {
+		if err != nil {
+			fmt.Printf("[LogCollector] Docker logs error for %s (container %s): %v\n", service.ServiceName, service.ContainerID, err)
+		}
+		if len(logs) > 0 {
+			fmt.Printf("[LogCollector] Collected %d logs from docker for %s\n", len(logs), service.ServiceName)
 			return logs, "docker"
 		}
 	}
@@ -47,9 +52,20 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	// Try journald for system services
 	if lc.isSystemService(service.ServiceType) {
 		logs, err := lc.collectJournaldLogs(service.ServiceType)
-		if err == nil && len(logs) > 0 {
+		if err != nil {
+			fmt.Printf("[LogCollector] Journald logs error for %s: %v\n", service.ServiceName, err)
+		}
+		if len(logs) > 0 {
+			fmt.Printf("[LogCollector] Collected %d logs from journald for %s\n", len(logs), service.ServiceName)
 			return logs, "journald"
 		}
+	}
+
+	// Try journald by PID for any service
+	logs, err := lc.collectJournaldByPID(service.PID)
+	if err == nil && len(logs) > 0 {
+		fmt.Printf("[LogCollector] Collected %d logs from journald (by PID) for %s\n", len(logs), service.ServiceName)
+		return logs, "journald"
 	}
 
 	return nil, ""
@@ -82,6 +98,21 @@ func (lc *LogCollector) collectJournaldLogs(serviceType ServiceType) ([]string, 
 
 	// Get last 100 lines from journald
 	cmd := exec.CommandContext(ctx, "journalctl", "-u", unitName, "-n", "100", "--no-pager", "-o", "short-iso")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, err
+	}
+
+	return lc.filterLogLines(string(output)), nil
+}
+
+// collectJournaldByPID collects recent logs from journald by process PID
+func (lc *LogCollector) collectJournaldByPID(pid int) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
+	defer cancel()
+
+	// Get logs by PID - useful for apps that write to stdout/stderr
+	cmd := exec.CommandContext(ctx, "journalctl", "_PID="+fmt.Sprintf("%d", pid), "-n", "100", "--no-pager", "-o", "short-iso")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err

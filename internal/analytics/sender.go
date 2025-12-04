@@ -1003,6 +1003,8 @@ func (s *Sender) SendServiceMetrics(metricsData *metrics.Metrics) {
 			"threads":      svc.Threads,
 			"is_container": svc.IsContainer,
 			"container_id": svc.ContainerID,
+			"recent_logs":  svc.RecentLogs,
+			"log_source":   svc.LogSource,
 		})
 	}
 

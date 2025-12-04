@@ -413,5 +413,14 @@ func (d *ServiceDetector) detectContainer(pid int) (bool, string) {
 // GetServices is a convenience function to detect services
 func GetServices() ([]ServiceInfo, error) {
 	detector := NewServiceDetector()
-	return detector.DetectServices()
+	services, err := detector.DetectServices()
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect logs for each service
+	logCollector := NewLogCollector()
+	services = logCollector.GetAllServiceLogs(services)
+
+	return services, nil
 }

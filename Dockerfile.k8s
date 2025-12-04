@@ -34,7 +34,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 FROM alpine:3.19
 
 # Установка CA certificates (для HTTPS запросов)
-RUN apk --no-cache add ca-certificates
+RUN apk update && apk --no-cache add ca-certificates && rm -rf /var/cache/apk/*
 
 # Создаем non-root пользователя
 RUN addgroup -g 10001 catops && \

@@ -57,12 +57,14 @@ type ServiceInfo struct {
 	CPUUsage    float64     `json:"cpu_usage"`
 	MemoryUsage float64     `json:"memory_usage"`
 	MemoryKB    int64       `json:"memory_kb"`
-	Status      string      `json:"status"`      // Process status (R, S, D, Z, T)
-	User        string      `json:"user"`        // Process owner
-	StartTime   int64       `json:"start_time"`  // Unix timestamp
-	Threads     int         `json:"threads"`     // Thread count
+	Status      string      `json:"status"`       // Process status (R, S, D, Z, T)
+	User        string      `json:"user"`         // Process owner
+	StartTime   int64       `json:"start_time"`   // Unix timestamp
+	Threads     int         `json:"threads"`      // Thread count
 	IsContainer bool        `json:"is_container"` // Running in Docker/container
 	ContainerID string      `json:"container_id"` // Container ID if applicable
+	RecentLogs  []string    `json:"recent_logs"`  // Last N log lines (errors/warnings)
+	LogSource   string      `json:"log_source"`   // Where logs come from: "docker", "journald", "file"
 }
 
 // ProcessInfo contains detailed information about a running system process

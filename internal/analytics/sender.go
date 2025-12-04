@@ -82,6 +82,7 @@ func (s *Sender) SendAllSync(eventType string, currentMetrics *metrics.Metrics) 
 	go s.SendSystemMetrics(currentMetrics)
 	go s.SendProcessMetrics(currentMetrics)
 	go s.SendNetworkMetrics(currentMetrics)
+	go s.SendServiceMetrics(currentMetrics)
 
 	time.Sleep(1 * time.Second)
 
@@ -101,6 +102,7 @@ func (s *Sender) SendAll(eventType string, currentMetrics *metrics.Metrics) {
 	go s.SendSystemMetrics(currentMetrics)
 	go s.SendProcessMetrics(currentMetrics)
 	go s.SendNetworkMetrics(currentMetrics)
+	go s.SendServiceMetrics(currentMetrics)
 }
 
 // ProcessAlert sends alert to backend
@@ -962,6 +964,95 @@ func getTopProcessesByMemory(processes []metrics.ProcessInfo, limit int) []metri
 		return sorted[:limit]
 	}
 	return sorted
+}
+
+// SendServiceMetrics sends detected services to the backend services endpoint
+func (s *Sender) SendServiceMetrics(metricsData *metrics.Metrics) {
+	if s.cfg.AuthToken == "" || s.cfg.ServerID == "" {
+		return // Don't send if token or server_id is missing
+	}
+
+	// Skip if no services detected
+	if len(metricsData.Services) == 0 {
+		return
+	}
+
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "unknown"
+	}
+
+	// Convert services to request format
+	servicesData := make([]map[string]interface{}, 0, len(metricsData.Services))
+	for _, svc := range metricsData.Services {
+		servicesData = append(servicesData, map[string]interface{}{
+			"pid":          svc.PID,
+			"service_type": string(svc.ServiceType),
+			"service_name": svc.ServiceName,
+			"framework":    svc.Framework,
+			"port":         svc.Port,
+			"ports":        svc.Ports,
+			"version":      svc.Version,
+			"command":      svc.Command,
+			"cpu_usage":    svc.CPUUsage,
+			"memory_usage": svc.MemoryUsage,
+			"memory_kb":    svc.MemoryKB,
+			"status":       svc.Status,
+			"user":         svc.User,
+			"start_time":   svc.StartTime,
+			"threads":      svc.Threads,
+			"is_container": svc.IsContainer,
+			"container_id": svc.ContainerID,
+		})
+	}
+
+	// Create the request payload
+	requestData := map[string]interface{}{
+		"timestamp":  fmt.Sprintf("%d", time.Now().Unix()),
+		"user_token": s.cfg.AuthToken,
+		"server_id":  s.cfg.ServerID,
+		"services":   servicesData,
+		"tags": map[string]string{
+			"hostname": hostname,
+			"os_name":  metricsData.OSName,
+		},
+	}
+
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		return
+	}
+
+	// Send service metrics to backend asynchronously
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("PANIC in SendServiceMetrics goroutine: %v", r)
+			}
+		}()
+
+		// Log service metrics request start
+		logger.Info("Service metrics request started - URL: %s, Services count: %d", constants.SERVICES_URL, len(metricsData.Services))
+
+		req, err := utils.CreateCLIRequest("POST", constants.SERVICES_URL, bytes.NewBuffer(jsonData), s.version)
+		if err != nil {
+			logger.Error("Failed to create service metrics request: %v", err)
+			return
+		}
+
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			logger.Warning("Failed to send service metrics (will retry next cycle): %v", err)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == 200 {
+			logger.Info("Service metrics sent successfully - Status: %d", resp.StatusCode)
+		} else {
+			logger.Warning("Service metrics sent with non-200 status - Status: %d", resp.StatusCode)
+		}
+	}()
 }
 
 // SendNetworkMetrics sends network metrics to the backend network endpoint

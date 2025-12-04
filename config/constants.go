@@ -9,7 +9,8 @@ const (
 	EVENTS_URL           = "https://api.catops.app/api/cli/events"
 	METRICS_URL          = "https://api.catops.app/api/cli/metrics"
 	PROCESSES_URL        = "https://api.catops.app/api/cli/processes"
-	NETWORK_METRICS_URL  = "https://api.catops.app/api/cli/network" // Network observability metrics
+	NETWORK_METRICS_URL  = "https://api.catops.app/api/cli/network"  // Network observability metrics
+	SERVICES_URL         = "https://api.catops.app/api/cli/services" // Service detection metrics
 
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.app/api/cli/servers/change-owner"

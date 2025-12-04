@@ -25,6 +25,46 @@ var (
 	iopsStopOnce sync.Once     // Ensures channel is closed only once
 )
 
+// ServiceType represents the type of detected service
+type ServiceType string
+
+const (
+	ServiceTypeNginx      ServiceType = "nginx"
+	ServiceTypeApache     ServiceType = "apache"
+	ServiceTypeRedis      ServiceType = "redis"
+	ServiceTypePostgres   ServiceType = "postgres"
+	ServiceTypeMySQL      ServiceType = "mysql"
+	ServiceTypeMongoDB    ServiceType = "mongodb"
+	ServiceTypePythonApp  ServiceType = "python_app"
+	ServiceTypeNodeApp    ServiceType = "node_app"
+	ServiceTypeGoApp      ServiceType = "go_app"
+	ServiceTypeJavaApp    ServiceType = "java_app"
+	ServiceTypeDocker     ServiceType = "docker"
+	ServiceTypeKubernetes ServiceType = "kubernetes"
+	ServiceTypeUnknown    ServiceType = "unknown"
+)
+
+// ServiceInfo contains information about a detected service
+type ServiceInfo struct {
+	PID         int         `json:"pid"`
+	ServiceType ServiceType `json:"service_type"`
+	ServiceName string      `json:"service_name"` // e.g., "FastAPI backend", "nginx reverse proxy"
+	Framework   string      `json:"framework"`    // e.g., "gunicorn", "uvicorn", "express"
+	Port        int         `json:"port"`         // Primary listening port
+	Ports       []int       `json:"ports"`        // All listening ports
+	Version     string      `json:"version"`      // If detectable
+	Command     string      `json:"command"`      // Full command line
+	CPUUsage    float64     `json:"cpu_usage"`
+	MemoryUsage float64     `json:"memory_usage"`
+	MemoryKB    int64       `json:"memory_kb"`
+	Status      string      `json:"status"`      // Process status (R, S, D, Z, T)
+	User        string      `json:"user"`        // Process owner
+	StartTime   int64       `json:"start_time"`  // Unix timestamp
+	Threads     int         `json:"threads"`     // Thread count
+	IsContainer bool        `json:"is_container"` // Running in Docker/container
+	ContainerID string      `json:"container_id"` // Container ID if applicable
+}
+
 // ProcessInfo contains detailed information about a running system process
 type ProcessInfo struct {
 	PID         int     `json:"pid"`
@@ -83,6 +123,9 @@ type Metrics struct {
 
 	// Network monitoring (Phase 1 - Network Observability)
 	NetworkMetrics *NetworkMetrics `json:"network_metrics,omitempty"` // Network bandwidth, connections, top connections
+
+	// Service detection (Phase 0 - AI & Monitoring Core)
+	Services []ServiceInfo `json:"services,omitempty"` // Detected services (nginx, redis, postgres, python apps, etc.)
 }
 
 // GetCPUUsage retrieves the current CPU usage percentage across all cores
@@ -401,6 +444,13 @@ func GetMetrics() (*Metrics, error) {
 		networkMetrics = nil
 	}
 
+	// Get detected services (non-critical - don't fail if error occurs)
+	services, err := GetServices()
+	if err != nil {
+		// Log error but continue with nil value
+		services = nil
+	}
+
 	return &Metrics{
 		CPUUsage:      cpuUsage,
 		DiskUsage:     diskUsage,
@@ -423,6 +473,9 @@ func GetMetrics() (*Metrics, error) {
 
 		// Network monitoring (Phase 1 - Network Observability)
 		NetworkMetrics: networkMetrics,
+
+		// Service detection (Phase 0 - AI & Monitoring Core)
+		Services: services,
 	}, nil
 }
 

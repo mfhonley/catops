@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -107,9 +108,6 @@ func (lc *LogCollector) loadDockerContainers() {
 	}
 
 	lc.dockerLoaded = true
-	if len(lc.dockerContainers) > 0 {
-		fmt.Printf("[LogCollector] Loaded %d docker containers\n", len(lc.dockerContainers)/3) // div 3 because we store 3 keys per container
-	}
 }
 
 // getContainerPID gets the main PID of a container
@@ -173,12 +171,8 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	// 1. Try to find docker container for this service
 	container := lc.findContainerForService(service)
 	if container != nil {
-		logs, err := lc.collectDockerLogs(container.ID)
-		if err != nil {
-			fmt.Printf("[LogCollector] Docker logs error for %s (container %s): %v\n", service.ServiceName, container.Name, err)
-		}
+		logs, _ := lc.collectDockerLogs(container.ID)
 		if len(logs) > 0 {
-			fmt.Printf("[LogCollector] Collected %d logs from docker for %s (container: %s)\n", len(logs), service.ServiceName, container.Name)
 			// Update service with container info
 			service.ContainerID = container.ID
 			service.IsContainer = true
@@ -190,19 +184,19 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	if service.IsContainer && service.ContainerID != "" {
 		logs, err := lc.collectDockerLogs(service.ContainerID)
 		if err == nil && len(logs) > 0 {
-			fmt.Printf("[LogCollector] Collected %d logs from docker (by ID) for %s\n", len(logs), service.ServiceName)
 			return logs, "docker"
 		}
+	}
+
+	// Skip journald on non-Linux systems (macOS, Windows don't have journalctl)
+	if runtime.GOOS != "linux" {
+		return nil, ""
 	}
 
 	// 3. Try journald for system services (nginx, redis, postgres, etc.)
 	if lc.isSystemService(service.ServiceType) {
 		logs, err := lc.collectJournaldLogs(service.ServiceType)
-		if err != nil {
-			fmt.Printf("[LogCollector] Journald logs error for %s: %v\n", service.ServiceName, err)
-		}
-		if len(logs) > 0 {
-			fmt.Printf("[LogCollector] Collected %d logs from journald for %s\n", len(logs), service.ServiceName)
+		if err == nil && len(logs) > 0 {
 			return logs, "journald"
 		}
 	}
@@ -210,7 +204,6 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	// 4. Try journald by PID for any service
 	logs, err := lc.collectJournaldByPID(service.PID)
 	if err == nil && len(logs) > 0 {
-		fmt.Printf("[LogCollector] Collected %d logs from journald (by PID) for %s\n", len(logs), service.ServiceName)
 		return logs, "journald"
 	}
 

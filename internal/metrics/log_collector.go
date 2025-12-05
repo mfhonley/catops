@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,15 +17,30 @@ const (
 	maxLogLineLen  = 500 // Maximum length per log line
 )
 
+// DockerContainer represents a running docker container
+type DockerContainer struct {
+	ID      string `json:"Id"`
+	Name    string `json:"Name"`
+	Names   string // from docker ps
+	Image   string `json:"Image"`
+	State   string `json:"State"`
+	Status  string `json:"Status"`
+	Pid     int    // main process PID
+	Compose string // docker-compose service name if applicable
+}
+
 // LogCollector collects logs from various sources
 type LogCollector struct {
 	// Patterns to filter interesting log lines (errors, warnings)
 	errorPatterns []*regexp.Regexp
+	// Cache of running docker containers (container name/id -> DockerContainer)
+	dockerContainers map[string]DockerContainer
+	dockerLoaded     bool
 }
 
 // NewLogCollector creates a new LogCollector
 func NewLogCollector() *LogCollector {
-	return &LogCollector{
+	lc := &LogCollector{
 		errorPatterns: []*regexp.Regexp{
 			regexp.MustCompile(`(?i)\b(error|err|fail|failed|failure|exception|panic|fatal|critical)\b`),
 			regexp.MustCompile(`(?i)\b(warn|warning)\b`),
@@ -32,24 +48,154 @@ func NewLogCollector() *LogCollector {
 			regexp.MustCompile(`(?i)(out of memory|oom|killed|segfault)`),
 			regexp.MustCompile(`(?i)(denied|unauthorized|forbidden|permission)`),
 		},
+		dockerContainers: make(map[string]DockerContainer),
 	}
+	// Pre-load docker containers
+	lc.loadDockerContainers()
+	return lc
+}
+
+// loadDockerContainers loads all running docker containers
+func (lc *LogCollector) loadDockerContainers() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
+	defer cancel()
+
+	// Get all running containers with their PIDs
+	// Format: ID|Names|Image|State|Pid
+	cmd := exec.CommandContext(ctx, "docker", "ps", "--format", "{{.ID}}|{{.Names}}|{{.Image}}|{{.State}}")
+	output, err := cmd.Output()
+	if err != nil {
+		// Docker not available or no containers
+		return
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, "|")
+		if len(parts) < 4 {
+			continue
+		}
+
+		containerID := parts[0]
+		containerName := parts[1]
+		image := parts[2]
+		state := parts[3]
+
+		// Get container PID using docker inspect
+		pid := lc.getContainerPID(containerID)
+
+		// Check if it's a docker-compose service
+		composeName := lc.getComposeServiceName(containerName)
+
+		container := DockerContainer{
+			ID:      containerID,
+			Name:    containerName,
+			Names:   containerName,
+			Image:   image,
+			State:   state,
+			Pid:     pid,
+			Compose: composeName,
+		}
+
+		// Index by ID, name, and PID for quick lookup
+		lc.dockerContainers[containerID] = container
+		lc.dockerContainers[containerName] = container
+		if pid > 0 {
+			lc.dockerContainers[fmt.Sprintf("pid:%d", pid)] = container
+		}
+	}
+
+	lc.dockerLoaded = true
+	if len(lc.dockerContainers) > 0 {
+		fmt.Printf("[LogCollector] Loaded %d docker containers\n", len(lc.dockerContainers)/3) // div 3 because we store 3 keys per container
+	}
+}
+
+// getContainerPID gets the main PID of a container
+func (lc *LogCollector) getContainerPID(containerID string) int {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.Pid}}", containerID)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(output)))
+	return pid
+}
+
+// getComposeServiceName extracts docker-compose service name from container name
+func (lc *LogCollector) getComposeServiceName(containerName string) string {
+	// Docker-compose names containers as: project_service_1 or project-service-1
+	parts := strings.Split(containerName, "_")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2] // service name is second to last
+	}
+	parts = strings.Split(containerName, "-")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2]
+	}
+	return ""
+}
+
+// findContainerForService tries to find a docker container for the service
+func (lc *LogCollector) findContainerForService(service *ServiceInfo) *DockerContainer {
+	// Try by container ID if we have it
+	if service.ContainerID != "" {
+		if c, ok := lc.dockerContainers[service.ContainerID]; ok {
+			return &c
+		}
+	}
+
+	// Try by PID
+	if c, ok := lc.dockerContainers[fmt.Sprintf("pid:%d", service.PID)]; ok {
+		return &c
+	}
+
+	// Try to match by service name in container name
+	serviceLower := strings.ToLower(service.ServiceName)
+	for _, container := range lc.dockerContainers {
+		nameLower := strings.ToLower(container.Name)
+		if strings.Contains(nameLower, serviceLower) ||
+			strings.Contains(serviceLower, nameLower) {
+			return &container
+		}
+	}
+
+	return nil
 }
 
 // CollectServiceLogs collects logs for a service based on its type and container status
 func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, string) {
-	// If running in Docker container, use docker logs
-	if service.IsContainer && service.ContainerID != "" {
-		logs, err := lc.collectDockerLogs(service.ContainerID)
+	// 1. Try to find docker container for this service
+	container := lc.findContainerForService(service)
+	if container != nil {
+		logs, err := lc.collectDockerLogs(container.ID)
 		if err != nil {
-			fmt.Printf("[LogCollector] Docker logs error for %s (container %s): %v\n", service.ServiceName, service.ContainerID, err)
+			fmt.Printf("[LogCollector] Docker logs error for %s (container %s): %v\n", service.ServiceName, container.Name, err)
 		}
 		if len(logs) > 0 {
-			fmt.Printf("[LogCollector] Collected %d logs from docker for %s\n", len(logs), service.ServiceName)
+			fmt.Printf("[LogCollector] Collected %d logs from docker for %s (container: %s)\n", len(logs), service.ServiceName, container.Name)
+			// Update service with container info
+			service.ContainerID = container.ID
+			service.IsContainer = true
 			return logs, "docker"
 		}
 	}
 
-	// Try journald for system services
+	// 2. If explicitly marked as container but no logs yet, try by container ID
+	if service.IsContainer && service.ContainerID != "" {
+		logs, err := lc.collectDockerLogs(service.ContainerID)
+		if err == nil && len(logs) > 0 {
+			fmt.Printf("[LogCollector] Collected %d logs from docker (by ID) for %s\n", len(logs), service.ServiceName)
+			return logs, "docker"
+		}
+	}
+
+	// 3. Try journald for system services (nginx, redis, postgres, etc.)
 	if lc.isSystemService(service.ServiceType) {
 		logs, err := lc.collectJournaldLogs(service.ServiceType)
 		if err != nil {
@@ -61,7 +207,7 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 		}
 	}
 
-	// Try journald by PID for any service
+	// 4. Try journald by PID for any service
 	logs, err := lc.collectJournaldByPID(service.PID)
 	if err == nil && len(logs) > 0 {
 		fmt.Printf("[LogCollector] Collected %d logs from journald (by PID) for %s\n", len(logs), service.ServiceName)

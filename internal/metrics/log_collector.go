@@ -3,8 +3,11 @@ package metrics
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -188,12 +191,20 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 		}
 	}
 
+	// 3. Try pm2 logs for Node.js apps
+	if service.ServiceType == ServiceTypeNodeApp {
+		logs := lc.collectPM2Logs(service.PID)
+		if len(logs) > 0 {
+			return logs, "pm2"
+		}
+	}
+
 	// Skip journald on non-Linux systems (macOS, Windows don't have journalctl)
 	if runtime.GOOS != "linux" {
 		return nil, ""
 	}
 
-	// 3. Try journald for system services (nginx, redis, postgres, etc.)
+	// 4. Try journald for system services (nginx, redis, postgres, etc.)
 	if lc.isSystemService(service.ServiceType) {
 		logs, err := lc.collectJournaldLogs(service.ServiceType)
 		if err == nil && len(logs) > 0 {
@@ -201,7 +212,7 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 		}
 	}
 
-	// 4. Try journald by PID for any service
+	// 5. Try journald by PID for any service
 	logs, err := lc.collectJournaldByPID(service.PID)
 	if err == nil && len(logs) > 0 {
 		return logs, "journald"
@@ -258,6 +269,144 @@ func (lc *LogCollector) collectJournaldByPID(pid int) ([]string, error) {
 	}
 
 	return lc.filterLogLines(string(output)), nil
+}
+
+// pm2Process represents a pm2 process from jlist output
+type pm2Process struct {
+	Name string `json:"name"`
+	PID  int    `json:"pid"`
+}
+
+// collectPM2Logs collects logs from pm2 for Node.js applications
+func (lc *LogCollector) collectPM2Logs(pid int) []string {
+	// First, try to find the pm2 app name by PID
+	appName := lc.findPM2AppByPID(pid)
+	if appName == "" {
+		return nil
+	}
+
+	// Get pm2 home directory (usually ~/.pm2)
+	pm2Home := os.Getenv("PM2_HOME")
+	if pm2Home == "" {
+		// Try default locations
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		pm2Home = filepath.Join(homeDir, ".pm2")
+	}
+
+	logsDir := filepath.Join(pm2Home, "logs")
+
+	// Try to read the error log file first (more likely to have interesting content)
+	var allLogs []string
+
+	// PM2 log file naming: <app-name>-error.log and <app-name>-out.log
+	errorLogPath := filepath.Join(logsDir, appName+"-error.log")
+	if logs := lc.readLastLines(errorLogPath, 50); len(logs) > 0 {
+		allLogs = append(allLogs, logs...)
+	}
+
+	// Also check stdout log for errors
+	outLogPath := filepath.Join(logsDir, appName+"-out.log")
+	if logs := lc.readLastLines(outLogPath, 50); len(logs) > 0 {
+		allLogs = append(allLogs, logs...)
+	}
+
+	// Filter for interesting lines
+	return lc.filterLogLines(strings.Join(allLogs, "\n"))
+}
+
+// findPM2AppByPID finds pm2 application name by its PID
+func (lc *LogCollector) findPM2AppByPID(pid int) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Use pm2 jlist to get JSON list of all processes
+	cmd := exec.CommandContext(ctx, "pm2", "jlist")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	var processes []pm2Process
+	if err := json.Unmarshal(output, &processes); err != nil {
+		return ""
+	}
+
+	for _, proc := range processes {
+		if proc.PID == pid {
+			return proc.Name
+		}
+	}
+
+	return ""
+}
+
+// readLastLines reads the last N lines from a file
+func (lc *LogCollector) readLastLines(filePath string, n int) []string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		return nil
+	}
+
+	fileSize := stat.Size()
+	if fileSize == 0 {
+		return nil
+	}
+
+	// Read from the end of the file
+	// Estimate: average line length ~100 bytes, read n*150 bytes to be safe
+	bufSize := int64(n * 150)
+	if bufSize > fileSize {
+		bufSize = fileSize
+	}
+
+	// Seek to position near end
+	startPos := fileSize - bufSize
+	if startPos < 0 {
+		startPos = 0
+	}
+
+	_, err = file.Seek(startPos, 0)
+	if err != nil {
+		return nil
+	}
+
+	// Read the buffer
+	buf := make([]byte, bufSize)
+	bytesRead, err := file.Read(buf)
+	if err != nil {
+		return nil
+	}
+
+	// Split into lines
+	content := string(buf[:bytesRead])
+	lines := strings.Split(content, "\n")
+
+	// If we started mid-line, skip the first partial line
+	if startPos > 0 && len(lines) > 0 {
+		lines = lines[1:]
+	}
+
+	// Remove empty last line if present
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	// Return last n lines
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+
+	return lines
 }
 
 // filterLogLines filters log output to only include error/warning lines

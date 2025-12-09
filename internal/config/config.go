@@ -27,6 +27,7 @@ type Config struct {
 	AlertDeduplication     bool    `mapstructure:"alert_deduplication"`      // default true
 	AlertRenotifyInterval  int     `mapstructure:"alert_renotify_interval"`  // in minutes, default 120
 	AlertResolutionTimeout int     `mapstructure:"alert_resolution_timeout"` // in minutes, default 5
+
 }
 
 // determineMode automatically sets the operation mode based on tokens

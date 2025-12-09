@@ -2,12 +2,10 @@ package commands
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -15,742 +13,226 @@ import (
 	"github.com/spf13/cobra"
 
 	constants "catops/config"
-	"catops/internal/alerts"
 	"catops/internal/analytics"
 	"catops/internal/config"
 	"catops/internal/logger"
-	"catops/internal/metrics"
+	"catops/internal/otelcol"
 	"catops/internal/process"
 	"catops/internal/server"
 	"catops/pkg/utils"
 )
 
 // NewDaemonCmd creates the daemon command
+// The daemon is now a thin wrapper that:
+// 1. Manages OTel Collector lifecycle (metrics collection)
+// 2. Sends service events (start/stop)
+// 3. Checks for updates
+// All alerting and metric analysis is done on the backend
 func NewDaemonCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "daemon",
 		Hidden: true,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Log ALL exits - catches external kills, panics, and normal shutdowns
-			defer func() {
-				logger.Info("=== DAEMON EXITING - PID: %d, Goroutines: %d ===", os.Getpid(), runtime.NumGoroutine())
-			}()
-
-			// Panic recovery to log crashes with stack trace
-			defer func() {
-				if r := recover(); r != nil {
-					logger.Error("=== PANIC DETECTED ===")
-					logger.Error("Panic value: %v", r)
-					logger.Error("PID: %d, Goroutines: %d", os.Getpid(), runtime.NumGoroutine())
-
-					// Print stack trace
-					buf := make([]byte, 4096)
-					n := runtime.Stack(buf, false)
-					logger.Error("Stack trace:\n%s", string(buf[:n]))
-
-					process.ReleaseLock()
-					os.Exit(1)
-				}
-			}()
-
-			// CRITICAL: Acquire lock file FIRST (before any other operations)
-			// This prevents duplicate daemon processes from starting
-			_, err := process.AcquireLock()
-			if err != nil {
-				logger.Error("Failed to start daemon: %v", err)
-				logger.Error("Another CatOps instance may already be running")
-				os.Exit(1)
-			}
-			defer func() {
-				logger.Info("Releasing lock file (PID: %d)", os.Getpid())
-				process.ReleaseLock()
-			}()
-
-			logger.Info("========================================")
-			logger.Info("=== DAEMON STARTING - PID: %d ===", os.Getpid())
-			logger.Info("========================================")
-
-			// Load configuration
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				logger.Error("Error loading config: %v", err)
-				os.Exit(1)
-			}
-
-			// Prepare startup message (always prepare, Telegram is optional)
-			hostname, _ := os.Hostname()
-			ipAddress, _ := metrics.GetIPAddress()
-			osName, _ := metrics.GetOSName()
-			uptime, _ := metrics.GetUptime()
-
-			_ = fmt.Sprintf(`🚀 <b>CatOps Monitoring Started</b>
-
-📊 <b>Server Information:</b>
-• Hostname: %s
-• OS: %s
-• IP: %s
-• Uptime: %s
-
-⏰ <b>Startup Time:</b> %s
-
-🔧 <b>Status:</b> Monitoring service is now active
-
-📡 <b>Monitoring Active:</b>
-• CPU, Memory, Disk usage
-• System connections monitoring
-• Real-time alerts
-
-🔔 <b>Alert Thresholds:</b>
-• CPU: %.1f%% (will trigger alert if exceeded)
-• Memory: %.1f%% (will trigger alert if exceeded)
-• Disk: %.1f%% (will trigger alert if exceeded)`, hostname, osName, ipAddress, uptime, time.Now().Format("2006-01-02 15:04:05"), cfg.CPUThreshold, cfg.MemThreshold, cfg.DiskThreshold)
-
-			// Telegram notifications removed - Backend handles all notifications
-
-			// send service start analytics (always if in cloud mode)
-			if currentMetrics, err := metrics.GetMetrics(); err == nil {
-				analytics.NewSender(cfg, GetCurrentVersion()).SendAll("service_start", currentMetrics)
-			}
-
-			// Update server version in database if in cloud mode
-			// This ensures version is updated after CLI updates
-			if cfg.IsCloudMode() && cfg.AuthToken != "" && cfg.ServerID != "" {
-				server.UpdateServerVersion(cfg.AuthToken, GetCurrentVersion(), cfg)
-			}
-
-			// Initialize metrics buffer and alert manager
-			metricsBuffer := metrics.NewMetricsBuffer(cfg.BufferSize)
-			alertManager := alerts.NewAlertManager(
-				time.Duration(cfg.AlertRenotifyInterval)*time.Minute,
-				time.Duration(cfg.AlertResolutionTimeout)*time.Minute,
-			)
-
-			// Start background monitoring for bandwidth and IOPS to prevent blocking
-			metrics.StartBandwidthMonitoring()
-			metrics.StartIOPSMonitoring()
-
-			logger.Info("Monitoring system initialized:")
-			logger.Info("  Collection interval: %ds", cfg.CollectionInterval)
-			logger.Info("  Buffer size: %d points", cfg.BufferSize)
-			logger.Info("  Spike detection: enabled (sudden: %.1f%%, gradual: %.1f%%)",
-				cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold)
-			logger.Info("  Alert deduplication: %v", cfg.AlertDeduplication)
-
-			// Start periodic cleanup of resolved alerts (runs every 5 minutes)
-			if cfg.AlertDeduplication {
-				go func() {
-					// CRITICAL: Recover from panic to prevent daemon crash
-					defer func() {
-						if r := recover(); r != nil {
-							logger.Error("PANIC in alert cleanup goroutine: %v", r)
-							logger.Error("Alert cleanup goroutine crashed - daemon may have memory leak")
-						}
-					}()
-
-					cleanupTicker := time.NewTicker(5 * time.Minute)
-					defer cleanupTicker.Stop()
-					for range cleanupTicker.C {
-						removed := alertManager.ClearResolved()
-						if removed > 0 {
-							logger.Info("Alert cleanup: removed %d resolved alerts from memory", removed)
-						}
-					}
-				}()
-				logger.Info("  Alert cleanup: enabled (every 5 minutes)")
-			}
-
-			// Start heartbeat sender for active alerts (Phase 2B - every 2 minutes)
-			if cfg.IsCloudMode() && cfg.AlertDeduplication {
-				go func() {
-					// CRITICAL: Recover from panic to prevent daemon crash
-					defer func() {
-						if r := recover(); r != nil {
-							logger.Error("PANIC in heartbeat sender goroutine: %v", r)
-							logger.Error("Heartbeat sender goroutine crashed - alerts may auto-resolve on backend")
-						}
-					}()
-
-					heartbeatTicker := time.NewTicker(2 * time.Minute)
-					defer heartbeatTicker.Stop()
-					for range heartbeatTicker.C {
-						currentCfg, err := config.LoadConfig()
-						if err != nil {
-							currentCfg = cfg
-						}
-
-						// Get active alerts from alert manager
-						activeAlerts := alertManager.GetActiveAlerts()
-						if len(activeAlerts) > 0 {
-							sender := analytics.NewSender(currentCfg, GetCurrentVersion())
-							for _, activeAlert := range activeAlerts {
-								// Send heartbeat for each active alert
-								sender.SendHeartbeat(activeAlert.Alert.Fingerprint)
-							}
-							logger.Debug("Heartbeat sent for %d active alerts", len(activeAlerts))
-						}
-					}
-				}()
-				logger.Info("  Alert heartbeat: enabled (every 2 minutes)")
-			}
-
-			// setup signal handling for graceful shutdown
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
-
-			// start monitoring loop with configurable interval
-			collectionInterval := time.Duration(cfg.CollectionInterval) * time.Second
-			ticker := time.NewTicker(collectionInterval)
-			updateTicker := time.NewTicker(24 * time.Hour)
-			defer ticker.Stop()
-			defer updateTicker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					// Monitor daemon health - goroutines and memory
-					var memStats runtime.MemStats
-					runtime.ReadMemStats(&memStats)
-					logger.Debug("Main loop cycle - goroutines: %d, memory: %.1f MB",
-						runtime.NumGoroutine(),
-						float64(memStats.Alloc)/1024/1024)
-
-					// reload config to get latest changes
-					currentCfg, err := config.LoadConfig()
-					if err != nil {
-						// if config reload fails, use cached config
-						currentCfg = cfg
-					}
-
-					// get current metrics
-					currentMetrics, err := metrics.GetMetrics()
-					if err != nil {
-						logger.Error("Failed to get metrics: %v", err)
-						continue
-					}
-
-					// Save metrics to cache for fast status command (ignore errors - not critical)
-					_ = metrics.SaveMetricsToCache(currentMetrics)
-
-					// Add metrics to buffer
-					metricsBuffer.AddCPUPoint(currentMetrics.CPUUsage)
-					metricsBuffer.AddMemoryPoint(currentMetrics.MemoryUsage)
-					metricsBuffer.AddDiskPoint(currentMetrics.DiskUsage)
-
-					// Detect alerts with spike detection
-					alertsToSend := []alerts.Alert{}
-
-					// CPU alerts
-					cpuAlerts := checkCPUAlerts(currentMetrics.CPUUsage, currentCfg, metricsBuffer, currentMetrics)
-					alertsToSend = append(alertsToSend, cpuAlerts...)
-
-					// Memory alerts
-					memoryAlerts := checkMemoryAlerts(currentMetrics.MemoryUsage, currentCfg, metricsBuffer, currentMetrics)
-					alertsToSend = append(alertsToSend, memoryAlerts...)
-
-					// Disk alerts
-					diskAlerts := checkDiskAlerts(currentMetrics.DiskUsage, currentCfg, metricsBuffer)
-					alertsToSend = append(alertsToSend, diskAlerts...)
-
-					// Process alerts through alert manager (deduplication enabled)
-					if currentCfg.AlertDeduplication && len(alertsToSend) > 0 {
-						for _, alert := range alertsToSend {
-							decision := alertManager.ProcessAlert(alert)
-
-							if decision.ShouldNotify {
-								// Log alert
-								logger.Warning("ALERT [%s]: %s", decision.Reason, alert.Title)
-
-								// Send to backend if in cloud mode (Phase 2B)
-								// IMPORTANT: Use decision.Alert.Alert (has fingerprint set by AlertManager)
-								if currentCfg.IsCloudMode() {
-									analytics.NewSender(currentCfg, GetCurrentVersion()).ProcessAlert(&decision.Alert.Alert, currentMetrics)
-								}
-							}
-						}
-
-						// Check for resolved alerts
-						checkResolvedAlerts(currentMetrics, currentCfg, alertManager)
-					} else if len(alertsToSend) > 0 {
-						// No deduplication - send all alerts immediately (legacy mode)
-						logger.Warning("ALERT: %d alerts detected", len(alertsToSend))
-
-						for _, alert := range alertsToSend {
-							// Generate fingerprint even without deduplication (needed for backend)
-							decision := alertManager.ProcessAlert(alert)
-
-							// Send to backend if in cloud mode (Phase 2B)
-							if currentCfg.IsCloudMode() {
-								analytics.NewSender(currentCfg, GetCurrentVersion()).ProcessAlert(&decision.Alert.Alert, currentMetrics)
-							}
-						}
-					}
-
-					// IMPORTANT: Always send metrics to backend, regardless of alerts
-					// This ensures continuous metric collection in ClickHouse even during alert conditions
-					if currentCfg.IsCloudMode() {
-						analytics.NewSender(currentCfg, GetCurrentVersion()).SendAll("system_monitoring", currentMetrics)
-					}
-
-				case <-updateTicker.C:
-					// check for updates once per day (always check, Telegram is optional)
-					// get current version
-					currentVersion := GetCurrentVersion()
-					currentVersion = strings.TrimPrefix(currentVersion, "v")
-
-					// check API for latest version
-					logger.Info("Daily update check started - URL: %s", constants.VERSIONS_URL)
-
-					req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, GetCurrentVersion())
-					if err != nil {
-						logger.Error("Failed to create update check request: %s", err.Error())
-						continue
-					}
-
-					client := &http.Client{Timeout: 10 * time.Second}
-					resp, err := client.Do(req)
-					if err != nil {
-						logger.Error("Failed to check for updates: %s", err.Error())
-						continue
-					}
-
-					defer resp.Body.Close()
-					var result map[string]interface{}
-					if json.NewDecoder(resp.Body).Decode(&result) == nil {
-						// API returns "version" field, not "latest_version"
-						if latestVersion, ok := result["version"].(string); ok {
-							latestVersion = strings.TrimPrefix(latestVersion, "v")
-
-							if latestVersion != currentVersion {
-								logger.Info("New version available: v%s (current: v%s)", latestVersion, currentVersion)
-							} else {
-								logger.Info("Already running latest version: v%s", currentVersion)
-							}
-						} else {
-							logger.Error("Invalid response from version API: missing 'version' field")
-						}
-					} else {
-						logger.Error("Failed to parse version API response")
-					}
-
-				case sig := <-sigChan:
-					logger.Info("========================================")
-					logger.Info("=== SIGNAL RECEIVED: %v (PID: %d) ===", sig, os.Getpid())
-					logger.Info("Initiating graceful shutdown...")
-					logger.Info("========================================")
-
-					metrics.StopIOPSMonitoring()
-					metrics.StopBandwidthMonitoring()
-					time.Sleep(100 * time.Millisecond)
-
-					logger.Info("Graceful shutdown completed successfully")
-					return
-				}
-			}
+			runDaemon()
 		},
 	}
 }
 
-// checkCPUAlerts checks for CPU-related alerts with spike detection
-func checkCPUAlerts(cpuUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer, currentMetrics *metrics.Metrics) []alerts.Alert {
-	var cpuAlerts []alerts.Alert
+func runDaemon() {
+	// Log all exits
+	defer func() {
+		logger.Info("=== DAEMON EXITING - PID: %d ===", os.Getpid())
+	}()
 
-	// Detect spikes
-	spikeResult := buffer.DetectCPUSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
+	// Panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("=== PANIC DETECTED ===")
+			logger.Error("Panic value: %v", r)
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			logger.Error("Stack trace:\n%s", string(buf[:n]))
+			process.ReleaseLock()
+			os.Exit(1)
+		}
+	}()
 
-	// Sudden spike (highest priority)
-	if spikeResult.HasSuddenSpike {
-		cpuAlerts = append(cpuAlerts, alerts.CreateAlert(
-			alerts.AlertTypeCPU,
-			alerts.SubTypeSuddenSpike,
-			alerts.SeverityCritical,
-			"CPU Spike Detected",
-			fmt.Sprintf("CPU jumped from %.1f%% to %.1f%% (+%.1f%% in %ds)",
-				spikeResult.PreviousValue,
-				spikeResult.CurrentValue,
-				spikeResult.PercentChange,
-				cfg.CollectionInterval),
-			cpuUsage,
-			cfg.CPUThreshold,
-			map[string]interface{}{
-				"previous_value": spikeResult.PreviousValue,
-				"change_percent": spikeResult.PercentChange,
-				"avg_5min":       spikeResult.Stats.Avg,
-				"p95_5min":       spikeResult.Stats.P95,
-				"top_processes":  getTop5ProcessesByCPU(currentMetrics.TopProcesses),
-			},
-		))
+	// Acquire lock file
+	if _, err := process.AcquireLock(); err != nil {
+		logger.Error("Failed to start daemon: %v", err)
+		logger.Error("Another CatOps instance may already be running")
+		os.Exit(1)
+	}
+	defer func() {
+		logger.Info("Releasing lock file")
+		process.ReleaseLock()
+	}()
+
+	logger.Info("========================================")
+	logger.Info("=== DAEMON STARTING - PID: %d ===", os.Getpid())
+	logger.Info("========================================")
+
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		logger.Error("Error loading config: %v", err)
+		os.Exit(1)
 	}
 
-	// Gradual rise (medium priority)
-	if spikeResult.HasGradualRise {
-		cpuAlerts = append(cpuAlerts, alerts.CreateAlert(
-			alerts.AlertTypeCPU,
-			alerts.SubTypeGradualRise,
-			alerts.SeverityWarning,
-			"CPU Gradually Increasing",
-			fmt.Sprintf("CPU steadily rising - increased %.1f%% over last %d minutes (from %.1f%% to %.1f%%). May indicate resource leak.",
-				spikeResult.ChangeOverWindow,
-				constants.DETECTION_WINDOW_MINUTES,
-				spikeResult.Stats.Avg,
-				spikeResult.CurrentValue),
-			cpuUsage,
-			cfg.CPUThreshold,
-			map[string]interface{}{
-				"change_over_window": spikeResult.ChangeOverWindow,
-				"avg_5min":           spikeResult.Stats.Avg,
-				"p95_5min":           spikeResult.Stats.P95,
-				"top_processes":      getTop5ProcessesByCPU(currentMetrics.TopProcesses),
-			},
-		))
+	hostname, _ := os.Hostname()
+
+	// Send service start event
+	if cfg.IsCloudMode() {
+		analytics.NewSender(cfg, GetCurrentVersion()).SendEvent("service_start")
+		server.UpdateServerVersion(cfg.AuthToken, GetCurrentVersion(), cfg)
 	}
 
-	// Statistical anomaly
-	if spikeResult.HasAnomalousValue && !spikeResult.HasSuddenSpike {
-		cpuAlerts = append(cpuAlerts, alerts.CreateAlert(
-			alerts.AlertTypeCPU,
-			alerts.SubTypeAnomaly,
-			alerts.SeverityWarning,
-			"CPU Anomaly Detected",
-			fmt.Sprintf("CPU at %.1f%% (%.1f stddev from 5min avg of %.1f%%)",
-				spikeResult.CurrentValue,
-				spikeResult.DeviationFromAvg,
-				spikeResult.Stats.Avg),
-			cpuUsage,
-			cfg.CPUThreshold,
-			map[string]interface{}{
-				"deviation":     spikeResult.DeviationFromAvg,
-				"avg_5min":      spikeResult.Stats.Avg,
-				"stddev":        spikeResult.Stats.StdDev,
-				"p95_5min":      spikeResult.Stats.P95,
-				"top_processes": getTop5ProcessesByCPU(currentMetrics.TopProcesses),
-			},
-		))
+	// Start OTel Collector (handles all metrics collection and export)
+	var otelManager *otelcol.Manager
+	if cfg.IsCloudMode() && cfg.AuthToken != "" && cfg.ServerID != "" {
+		otelManager = startOTelCollector(cfg, hostname)
 	}
-
-	// Simple threshold (lowest priority, only if no spikes detected)
-	if cpuUsage >= cfg.CPUThreshold && !spikeResult.HasSuddenSpike && !spikeResult.HasGradualRise {
-		cpuAlerts = append(cpuAlerts, alerts.CreateAlert(
-			alerts.AlertTypeCPU,
-			alerts.SubTypeThreshold,
-			alerts.SeverityWarning,
-			"CPU High",
-			fmt.Sprintf("CPU at %.1f%% (threshold: %.1f%%, 5min avg: %.1f%%, p95: %.1f%%)",
-				cpuUsage,
-				cfg.CPUThreshold,
-				spikeResult.Stats.Avg,
-				spikeResult.Stats.P95),
-			cpuUsage,
-			cfg.CPUThreshold,
-			map[string]interface{}{
-				"avg_5min":      spikeResult.Stats.Avg,
-				"p95_5min":      spikeResult.Stats.P95,
-				"top_processes": getTop5ProcessesByCPU(currentMetrics.TopProcesses),
-			},
-		))
-	}
-
-	return cpuAlerts
-}
-
-// checkMemoryAlerts checks for Memory-related alerts with spike detection
-func checkMemoryAlerts(memUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer, currentMetrics *metrics.Metrics) []alerts.Alert {
-	var memAlerts []alerts.Alert
-
-	// Detect spikes
-	spikeResult := buffer.DetectMemorySpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
-
-	// Sudden spike (critical - possible memory leak or attack)
-	if spikeResult.HasSuddenSpike {
-		memAlerts = append(memAlerts, alerts.CreateAlert(
-			alerts.AlertTypeMemory,
-			alerts.SubTypeSuddenSpike,
-			alerts.SeverityCritical,
-			"Memory Spike Detected",
-			fmt.Sprintf("Memory jumped from %.1f%% to %.1f%% (+%.1f%% in %ds)",
-				spikeResult.PreviousValue,
-				spikeResult.CurrentValue,
-				spikeResult.PercentChange,
-				cfg.CollectionInterval),
-			memUsage,
-			cfg.MemThreshold,
-			map[string]interface{}{
-				"previous_value": spikeResult.PreviousValue,
-				"change_percent": spikeResult.PercentChange,
-				"avg_5min":       spikeResult.Stats.Avg,
-				"p95_5min":       spikeResult.Stats.P95,
-				"top_processes":  getTop5ProcessesByMemory(currentMetrics.TopProcesses),
-			},
-		))
-	}
-
-	// Gradual rise (warning - likely memory leak)
-	if spikeResult.HasGradualRise {
-		memAlerts = append(memAlerts, alerts.CreateAlert(
-			alerts.AlertTypeMemory,
-			alerts.SubTypeGradualRise,
-			alerts.SeverityWarning,
-			"Memory Gradually Increasing",
-			fmt.Sprintf("Memory steadily rising - increased %.1f%% over last %d minutes (from %.1f%% to %.1f%%). Possible memory leak - check application logs.",
-				spikeResult.ChangeOverWindow,
-				constants.DETECTION_WINDOW_MINUTES,
-				spikeResult.Stats.Avg,
-				spikeResult.CurrentValue),
-			memUsage,
-			cfg.MemThreshold,
-			map[string]interface{}{
-				"change_over_window": spikeResult.ChangeOverWindow,
-				"avg_5min":           spikeResult.Stats.Avg,
-				"p95_5min":           spikeResult.Stats.P95,
-				"top_processes":      getTop5ProcessesByMemory(currentMetrics.TopProcesses),
-			},
-		))
-	}
-
-	// Statistical anomaly
-	if spikeResult.HasAnomalousValue && !spikeResult.HasSuddenSpike {
-		memAlerts = append(memAlerts, alerts.CreateAlert(
-			alerts.AlertTypeMemory,
-			alerts.SubTypeAnomaly,
-			alerts.SeverityWarning,
-			"Memory Anomaly Detected",
-			fmt.Sprintf("Memory at %.1f%% (%.1f stddev from 5min avg of %.1f%%)",
-				spikeResult.CurrentValue,
-				spikeResult.DeviationFromAvg,
-				spikeResult.Stats.Avg),
-			memUsage,
-			cfg.MemThreshold,
-			map[string]interface{}{
-				"deviation":     spikeResult.DeviationFromAvg,
-				"avg_5min":      spikeResult.Stats.Avg,
-				"stddev":        spikeResult.Stats.StdDev,
-				"p95_5min":      spikeResult.Stats.P95,
-				"top_processes": getTop5ProcessesByMemory(currentMetrics.TopProcesses),
-			},
-		))
-	}
-
-	// Simple threshold
-	if memUsage >= cfg.MemThreshold && !spikeResult.HasSuddenSpike && !spikeResult.HasGradualRise {
-		memAlerts = append(memAlerts, alerts.CreateAlert(
-			alerts.AlertTypeMemory,
-			alerts.SubTypeThreshold,
-			alerts.SeverityWarning,
-			"Memory High",
-			fmt.Sprintf("Memory at %.1f%% (threshold: %.1f%%, 5min avg: %.1f%%, p95: %.1f%%)",
-				memUsage,
-				cfg.MemThreshold,
-				spikeResult.Stats.Avg,
-				spikeResult.Stats.P95),
-			memUsage,
-			cfg.MemThreshold,
-			map[string]interface{}{
-				"avg_5min":      spikeResult.Stats.Avg,
-				"p95_5min":      spikeResult.Stats.P95,
-				"top_processes": getTop5ProcessesByMemory(currentMetrics.TopProcesses),
-			},
-		))
-	}
-
-	return memAlerts
-}
-
-// checkDiskAlerts checks for Disk-related alerts with spike detection
-func checkDiskAlerts(diskUsage float64, cfg *config.Config, buffer *metrics.MetricsBuffer) []alerts.Alert {
-	var diskAlerts []alerts.Alert
-
-	// Detect spikes
-	spikeResult := buffer.DetectDiskSpike(cfg.SuddenSpikeThreshold, cfg.GradualRiseThreshold, cfg.AnomalyThreshold)
-
-	// Sudden spike (critical - disk filling rapidly)
-	if spikeResult.HasSuddenSpike {
-		diskAlerts = append(diskAlerts, alerts.CreateAlert(
-			alerts.AlertTypeDisk,
-			alerts.SubTypeSuddenSpike,
-			alerts.SeverityCritical,
-			"Disk Filling Rapidly",
-			fmt.Sprintf("Disk usage jumped from %.1f%% to %.1f%% (+%.1f%% in %ds)",
-				spikeResult.PreviousValue,
-				spikeResult.CurrentValue,
-				spikeResult.PercentChange,
-				cfg.CollectionInterval),
-			diskUsage,
-			cfg.DiskThreshold,
-			map[string]interface{}{
-				"previous_value": spikeResult.PreviousValue,
-				"change_percent": spikeResult.PercentChange,
-				"avg_5min":       spikeResult.Stats.Avg,
-				"p95_5min":       spikeResult.Stats.P95,
-			},
-		))
-	}
-
-	// Gradual rise (warning - disk filling steadily)
-	if spikeResult.HasGradualRise {
-		diskAlerts = append(diskAlerts, alerts.CreateAlert(
-			alerts.AlertTypeDisk,
-			alerts.SubTypeGradualRise,
-			alerts.SeverityWarning,
-			"Disk Filling Steadily",
-			fmt.Sprintf("Disk usage increased by %.1f%% over last %d minutes (current: %.1f%%, avg: %.1f%%)",
-				spikeResult.ChangeOverWindow,
-				constants.DETECTION_WINDOW_MINUTES,
-				spikeResult.CurrentValue,
-				spikeResult.Stats.Avg),
-			diskUsage,
-			cfg.DiskThreshold,
-			map[string]interface{}{
-				"change_over_window": spikeResult.ChangeOverWindow,
-				"avg_5min":           spikeResult.Stats.Avg,
-				"p95_5min":           spikeResult.Stats.P95,
-			},
-		))
-	}
-
-	// Simple threshold
-	if diskUsage >= cfg.DiskThreshold && !spikeResult.HasSuddenSpike && !spikeResult.HasGradualRise {
-		diskAlerts = append(diskAlerts, alerts.CreateAlert(
-			alerts.AlertTypeDisk,
-			alerts.SubTypeThreshold,
-			alerts.SeverityWarning,
-			"Disk Space High",
-			fmt.Sprintf("Disk at %.1f%% (threshold: %.1f%%, 5min avg: %.1f%%, p95: %.1f%%)",
-				diskUsage,
-				cfg.DiskThreshold,
-				spikeResult.Stats.Avg,
-				spikeResult.Stats.P95),
-			diskUsage,
-			cfg.DiskThreshold,
-			map[string]interface{}{
-				"avg_5min": spikeResult.Stats.Avg,
-				"p95_5min": spikeResult.Stats.P95,
-			},
-		))
-	}
-
-	return diskAlerts
-}
-
-// checkResolvedAlerts checks if any active alerts have been resolved
-func checkResolvedAlerts(currentMetrics *metrics.Metrics, cfg *config.Config, alertMgr *alerts.AlertManager) {
-	// Check if CPU alerts resolved
-	if currentMetrics.CPUUsage < cfg.CPUThreshold {
-		for _, subType := range []alerts.AlertSubType{
-			alerts.SubTypeThreshold,
-			alerts.SubTypeSuddenSpike,
-			alerts.SubTypeGradualRise,
-			alerts.SubTypeAnomaly,
-		} {
-			if decision := alertMgr.CheckResolved(alerts.AlertTypeCPU, subType); decision != nil {
-				logger.Info("RESOLVED: CPU alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
-
-				// Send resolve notification to backend (Phase 2B) with current value
-				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.CPUUsage)
-				}
+	defer func() {
+		if otelManager != nil {
+			logger.Info("Stopping OTel Collector...")
+			if err := otelManager.Stop(); err != nil {
+				logger.Warning("Failed to stop OTel Collector: %v", err)
 			}
 		}
+	}()
+
+	logger.Info("Daemon initialized:")
+	logger.Info("  Mode: %s", cfg.Mode)
+	logger.Info("  Collection interval: %ds", cfg.CollectionInterval)
+	if otelManager != nil {
+		logger.Info("  OTel Collector: running")
+		logger.Info("  Metrics: sent via OTLP to %s", constants.OTLP_ENDPOINT)
+		logger.Info("  Alerts: processed on backend")
+	} else {
+		logger.Info("  OTel Collector: not started (local mode or missing credentials)")
 	}
 
-	// Check if Memory alerts resolved
-	if currentMetrics.MemoryUsage < cfg.MemThreshold {
-		for _, subType := range []alerts.AlertSubType{
-			alerts.SubTypeThreshold,
-			alerts.SubTypeSuddenSpike,
-			alerts.SubTypeGradualRise,
-			alerts.SubTypeAnomaly,
-		} {
-			if decision := alertMgr.CheckResolved(alerts.AlertTypeMemory, subType); decision != nil {
-				logger.Info("RESOLVED: Memory alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
+	// Signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-				// Send resolve notification to backend (Phase 2B) with current value
-				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.MemoryUsage)
+	// Update check ticker (once per day)
+	updateTicker := time.NewTicker(24 * time.Hour)
+	defer updateTicker.Stop()
+
+	// Health check ticker (every 5 minutes)
+	healthTicker := time.NewTicker(5 * time.Minute)
+	defer healthTicker.Stop()
+
+	// Main loop
+	for {
+		select {
+		case <-healthTicker.C:
+			// Log health status
+			var memStats runtime.MemStats
+			runtime.ReadMemStats(&memStats)
+			logger.Debug("Health check - goroutines: %d, memory: %.1f MB",
+				runtime.NumGoroutine(),
+				float64(memStats.Alloc)/1024/1024)
+
+			// Check if OTel Collector is still running
+			if otelManager != nil {
+				status := otelManager.Status()
+				if running, ok := status["running"].(bool); ok && !running {
+					logger.Warning("OTel Collector not running, attempting restart...")
+					if err := otelManager.Start(); err != nil {
+						logger.Error("Failed to restart OTel Collector: %v", err)
+					}
 				}
 			}
-		}
-	}
 
-	// Check if Disk alerts resolved
-	if currentMetrics.DiskUsage < cfg.DiskThreshold {
-		for _, subType := range []alerts.AlertSubType{
-			alerts.SubTypeThreshold,
-			alerts.SubTypeSuddenSpike,
-			alerts.SubTypeGradualRise,
-		} {
-			if decision := alertMgr.CheckResolved(alerts.AlertTypeDisk, subType); decision != nil {
-				logger.Info("RESOLVED: Disk alert (fingerprint: %s)", decision.Alert.Alert.Fingerprint)
+		case <-updateTicker.C:
+			checkForUpdates()
 
-				// Send resolve notification to backend (Phase 2B) with current value
-				if cfg.IsCloudMode() {
-					analytics.NewSender(cfg, GetCurrentVersion()).ResolveAlert(decision.Alert.Alert.Fingerprint, currentMetrics.DiskUsage)
-				}
+		case sig := <-sigChan:
+			logger.Info("========================================")
+			logger.Info("=== SIGNAL RECEIVED: %v ===", sig)
+			logger.Info("Initiating graceful shutdown...")
+			logger.Info("========================================")
+
+			// Send service stop event
+			if cfg.IsCloudMode() {
+				analytics.NewSender(cfg, GetCurrentVersion()).SendEventSync("service_stop")
 			}
+
+			return
 		}
 	}
 }
 
-// getTop5ProcessesByCPU возвращает топ-5 процессов по CPU для включения в алерт
-func getTop5ProcessesByCPU(processes []metrics.ProcessInfo) []map[string]interface{} {
-	if len(processes) == 0 {
-		return []map[string]interface{}{}
+// startOTelCollector initializes and starts the OTel Collector
+func startOTelCollector(cfg *config.Config, hostname string) *otelcol.Manager {
+	manager, err := otelcol.NewManager()
+	if err != nil {
+		logger.Error("Failed to create OTel Collector manager: %v", err)
+		return nil
 	}
 
-	// Сортируем по CPU usage
-	sorted := make([]metrics.ProcessInfo, len(processes))
-	copy(sorted, processes)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].CPUUsage > sorted[j].CPUUsage
-	})
-
-	// Берём топ 5
-	limit := 5
-	if len(sorted) < limit {
-		limit = len(sorted)
+	// Ensure collector is installed
+	if err := manager.EnsureInstalled(); err != nil {
+		logger.Error("Failed to install OTel Collector: %v", err)
+		return nil
 	}
 
-	result := make([]map[string]interface{}, limit)
-	for i := 0; i < limit; i++ {
-		p := sorted[i]
-		result[i] = map[string]interface{}{
-			"name":       p.Name,
-			"pid":        p.PID,
-			"cpu_usage":  p.CPUUsage,
-			"memory_kb":  p.MemoryKB,
-			"command":    p.Command,
-		}
+	// Generate config
+	otelCfg := &otelcol.Config{
+		Endpoint:           constants.OTLP_ENDPOINT,
+		AuthToken:          cfg.AuthToken,
+		ServerID:           cfg.ServerID,
+		Hostname:           hostname,
+		CollectionInterval: cfg.CollectionInterval,
 	}
-	return result
+	if err := manager.GenerateConfig(otelCfg); err != nil {
+		logger.Error("Failed to generate OTel Collector config: %v", err)
+		return nil
+	}
+
+	// Start collector
+	if err := manager.Start(); err != nil {
+		logger.Error("Failed to start OTel Collector: %v", err)
+		return nil
+	}
+
+	logger.Info("OTel Collector started successfully")
+	return manager
 }
 
-// getTop5ProcessesByMemory возвращает топ-5 процессов по памяти для включения в алерт
-func getTop5ProcessesByMemory(processes []metrics.ProcessInfo) []map[string]interface{} {
-	if len(processes) == 0 {
-		return []map[string]interface{}{}
+// checkForUpdates checks for new CLI versions
+func checkForUpdates() {
+	currentVersion := strings.TrimPrefix(GetCurrentVersion(), "v")
+	logger.Info("Checking for updates...")
+
+	req, err := utils.CreateCLIRequest("GET", constants.VERSIONS_URL, nil, GetCurrentVersion())
+	if err != nil {
+		logger.Error("Failed to create update check request: %v", err)
+		return
 	}
 
-	// Сортируем по Memory usage
-	sorted := make([]metrics.ProcessInfo, len(processes))
-	copy(sorted, processes)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].MemoryUsage > sorted[j].MemoryUsage
-	})
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Error("Failed to check for updates: %v", err)
+		return
+	}
+	defer resp.Body.Close()
 
-	// Берём топ 5
-	limit := 5
-	if len(sorted) < limit {
-		limit = len(sorted)
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		logger.Error("Failed to parse version API response: %v", err)
+		return
 	}
 
-	result := make([]map[string]interface{}, limit)
-	for i := 0; i < limit; i++ {
-		p := sorted[i]
-		result[i] = map[string]interface{}{
-			"name":       p.Name,
-			"pid":        p.PID,
-			"cpu_usage":  p.CPUUsage,
-			"memory_kb":  p.MemoryKB,
-			"command":    p.Command,
+	if latestVersion, ok := result["version"].(string); ok {
+		latestVersion = strings.TrimPrefix(latestVersion, "v")
+		if latestVersion != currentVersion {
+			logger.Info("New version available: v%s (current: v%s)", latestVersion, currentVersion)
+		} else {
+			logger.Info("Already running latest version: v%s", currentVersion)
 		}
 	}
-	return result
 }

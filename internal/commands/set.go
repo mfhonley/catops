@@ -9,7 +9,6 @@ import (
 	constants "catops/config"
 	"catops/internal/analytics"
 	"catops/internal/config"
-	"catops/internal/metrics"
 	"catops/internal/ui"
 	"catops/pkg/utils"
 )
@@ -158,16 +157,7 @@ Examples:
 			// Send config_change event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
 				ui.PrintStatus("info", "Sending config_change event to backend...")
-				currentMetrics, err := metrics.GetMetrics()
-				if err != nil {
-					ui.PrintStatus("warning", fmt.Sprintf("Failed to get metrics for event: %v", err))
-					ui.PrintStatus("info", "Sending event without metrics...")
-					// Still send event without metrics
-					emptyMetrics := &metrics.Metrics{}
-					analytics.NewSender(cfg, GetCurrentVersion()).SendAllSync("config_change", emptyMetrics)
-				} else {
-					analytics.NewSender(cfg, GetCurrentVersion()).SendAllSync("config_change", currentMetrics)
-				}
+				analytics.NewSender(cfg, GetCurrentVersion()).SendEventSync("config_change")
 				ui.PrintStatus("success", "Config change event sent")
 			} else {
 				ui.PrintStatus("info", "Cloud mode not configured - event not sent")

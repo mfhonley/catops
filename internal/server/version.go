@@ -139,9 +139,7 @@ func ExecuteUpdateScript(currentVersion string) {
 	// Send analytics event
 	cfg, err := config.LoadConfig()
 	if err == nil && cfg.IsCloudMode() {
-		if currentMetrics, err := metrics.GetMetrics(); err == nil {
-			analytics.NewSender(cfg, currentVersion).SendAll("update_installed", currentMetrics)
-		}
+		analytics.NewSender(cfg, currentVersion).SendEvent("update_installed")
 	}
 }
 

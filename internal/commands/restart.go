@@ -7,7 +7,6 @@ import (
 
 	"catops/internal/analytics"
 	"catops/internal/config"
-	"catops/internal/metrics"
 	"catops/internal/process"
 	"catops/internal/ui"
 )
@@ -58,9 +57,7 @@ Examples:
 
 			// Send service_restart event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {
-				if currentMetrics, err := metrics.GetMetrics(); err == nil {
-					analytics.NewSender(cfg, GetCurrentVersion()).SendAll("service_restart", currentMetrics)
-				}
+				analytics.NewSender(cfg, GetCurrentVersion()).SendEvent("service_restart")
 			}
 
 			ui.PrintSectionEnd()

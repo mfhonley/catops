@@ -6,11 +6,12 @@ const (
 	ALERTS_PROCESS_URL   = "https://api.catops.app/api/cli/alerts/process" // Phase 2: New spike-based alerts
 	ALERTS_HEARTBEAT_URL = "https://api.catops.app/api/cli/alerts"         // Phase 2: Base URL for heartbeat (/{fingerprint}/heartbeat)
 	ALERTS_RESOLVE_URL   = "https://api.catops.app/api/cli/alerts/resolve" // Phase 2: Alert resolution
-	EVENTS_URL           = "https://api.catops.app/api/cli/events"
-	METRICS_URL          = "https://api.catops.app/api/cli/metrics"
-	PROCESSES_URL        = "https://api.catops.app/api/cli/processes"
-	NETWORK_METRICS_URL  = "https://api.catops.app/api/cli/network"  // Network observability metrics
-	SERVICES_URL         = "https://api.catops.app/api/cli/services" // Service detection metrics
+	EVENTS_URL = "https://api.catops.app/api/cli/events"
+
+	// OpenTelemetry Protocol (OTLP) endpoints
+	// Metrics are now sent via OTLP instead of REST API
+	OTLP_ENDPOINT = "api.catops.app" // OTLP HTTP endpoint host (SDK adds /api/v1/metrics)
+	OTLP_PATH     = "/api/v1/metrics" // Custom path for CatOps OTLP receiver
 
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.app/api/cli/servers/change-owner"

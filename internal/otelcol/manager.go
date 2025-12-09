@@ -271,7 +271,7 @@ exporters:
     headers:
       Authorization: "Bearer %s"
       X-CatOps-Server-ID: "%s"
-    compression: gzip
+    compression: none
     retry_on_failure:
       enabled: true
       initial_interval: 5s

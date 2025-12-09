@@ -249,17 +249,6 @@ receivers:
             enabled: true
           system.processes.created:
             enabled: true
-      process:
-        mute_process_exe_error: true
-        mute_process_io_error: true
-        mute_process_user_error: true
-        metrics:
-          process.cpu.utilization:
-            enabled: true
-          process.memory.utilization:
-            enabled: true
-          process.disk.io:
-            enabled: true
 
 processors:
   batch:

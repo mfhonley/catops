@@ -275,16 +275,6 @@ processors:
         value: "%s"
         action: upsert
 
-  filter/processes:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - process\..*
-      # Only include processes using >0.1%% CPU or memory
-      datapoint:
-        - 'value > 0.001'
-
 exporters:
   otlphttp:
     endpoint: "https://%s/api"

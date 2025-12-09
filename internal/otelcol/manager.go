@@ -23,7 +23,7 @@ import (
 
 const (
 	// OTel Collector version to use
-	CollectorVersion = "0.115.0"
+	CollectorVersion = "0.116.0"
 
 	// Download URLs
 	BaseDownloadURL = "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"

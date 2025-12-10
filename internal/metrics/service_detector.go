@@ -90,10 +90,8 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 		// Check if running in container
 		isContainer, containerID := d.detectContainer(int(proc.Pid))
 
-		// Truncate command if too long
-		if len(cmdline) > 200 {
-			cmdline = cmdline[:197] + "..."
-		}
+		// Note: cmdline is used for service detection but not stored in ServiceInfo
+		_ = cmdline
 
 		// Convert ports to uint16
 		portsU16 := make([]uint16, len(ports))

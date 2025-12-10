@@ -517,7 +517,9 @@ func formatKB(kb int64) string {
 		return fmt.Sprintf("%d KB", kb)
 	} else if kb < 1024*1024 {
 		return fmt.Sprintf("%.1f MB", float64(kb)/1024)
-	} else {
+	} else if kb < 1024*1024*1024 {
 		return fmt.Sprintf("%.1f GB", float64(kb)/(1024*1024))
+	} else {
+		return fmt.Sprintf("%.1f TB", float64(kb)/(1024*1024*1024))
 	}
 }

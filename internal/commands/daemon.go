@@ -123,9 +123,35 @@ func runDaemon() {
 	healthTicker := time.NewTicker(5 * time.Minute)
 	defer healthTicker.Stop()
 
+	// Metrics collection ticker - must run BEFORE OTel SDK reads the cache
+	// OTel SDK calls callbacks at CollectionInterval, we collect slightly faster
+	metricsInterval := time.Duration(cfg.CollectionInterval) * time.Second
+	if metricsInterval == 0 {
+		metricsInterval = 15 * time.Second
+	}
+	metricsTicker := time.NewTicker(metricsInterval)
+	defer metricsTicker.Stop()
+
+	// Initial metrics collection (so first OTel export has data)
+	if metricsStarted {
+		if _, err := metrics.CollectAllMetrics(); err != nil {
+			logger.Warning("Initial metrics collection failed: %v", err)
+		} else {
+			logger.Debug("Initial metrics collected successfully")
+		}
+	}
+
 	// Main loop
 	for {
 		select {
+		case <-metricsTicker.C:
+			// Collect metrics and update cache for OTel callbacks
+			if metricsStarted {
+				if _, err := metrics.CollectAllMetrics(); err != nil {
+					logger.Debug("Metrics collection error: %v", err)
+				}
+			}
+
 		case <-healthTicker.C:
 			// Log health status
 			var memStats runtime.MemStats
@@ -133,8 +159,6 @@ func runDaemon() {
 			logger.Debug("Health check - goroutines: %d, memory: %.1f MB",
 				runtime.NumGoroutine(),
 				float64(memStats.Alloc)/1024/1024)
-
-			// Metrics collection is handled by the SDK, no need to check status
 
 		case <-updateTicker.C:
 			checkForUpdates()

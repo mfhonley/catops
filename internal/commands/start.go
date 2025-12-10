@@ -15,8 +15,7 @@ func NewStartCmd() *cobra.Command {
 		Use:   "start",
 		Short: "Start background monitoring service",
 		Long: `Start the monitoring service in the background.
-The service will continuously check system metrics and send Telegram alerts
-when thresholds are exceeded.
+The service will continuously collect system metrics and send them to the cloud.
 
 To run in background (recommended):
   nohup catops start > /dev/null 2>&1 &

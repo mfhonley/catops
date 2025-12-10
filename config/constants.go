@@ -2,10 +2,7 @@ package constants
 
 // API Endpoints (used only in cloud mode)
 const (
-	// Analytics and data endpoints
-	ALERTS_PROCESS_URL   = "https://api.catops.app/api/cli/alerts/process" // Phase 2: New spike-based alerts
-	ALERTS_HEARTBEAT_URL = "https://api.catops.app/api/cli/alerts"         // Phase 2: Base URL for heartbeat (/{fingerprint}/heartbeat)
-	ALERTS_RESOLVE_URL   = "https://api.catops.app/api/cli/alerts/resolve" // Phase 2: Alert resolution
+	// Events endpoint
 	EVENTS_URL = "https://api.catops.app/api/cli/events"
 
 	// OpenTelemetry Protocol (OTLP) endpoints
@@ -46,24 +43,9 @@ const (
 	MODE_CLOUD = "cloud" // Requires backend integration
 )
 
-// Default thresholds (production-ready values to prevent alert spam)
-const (
-	DEFAULT_CPU_THRESHOLD    = 85.0
-	DEFAULT_MEMORY_THRESHOLD = 90.0
-	DEFAULT_DISK_THRESHOLD   = 95.0
-)
-
 // Default monitoring configuration
 const (
-	DEFAULT_COLLECTION_INTERVAL       = 15   // seconds
-	DEFAULT_BUFFER_SIZE               = 20   // data points (5 minutes at 15s interval)
-	DEFAULT_SUDDEN_SPIKE_THRESHOLD    = 30.0 // percent change
-	DEFAULT_GRADUAL_RISE_THRESHOLD    = 15.0 // percent change over window
-	DEFAULT_ANOMALY_THRESHOLD         = 4.0  // standard deviations
-	DEFAULT_ALERT_DEDUPLICATION       = true // enable deduplication
-	DEFAULT_ALERT_RENOTIFY_INTERVAL   = 120  // minutes (2 hours)
-	DEFAULT_ALERT_RESOLUTION_TIMEOUT  = 5    // minutes
-	DETECTION_WINDOW_MINUTES          = 5    // fixed window for gradual rise and anomaly detection
+	DEFAULT_COLLECTION_INTERVAL = 15 // seconds
 )
 
 // File paths

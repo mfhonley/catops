@@ -13,21 +13,6 @@ import (
 	constants "catops/config"
 )
 
-// CheckCPUAlert checks if CPU usage exceeds threshold
-func CheckCPUAlert(cpuUsage float64, threshold float64) bool {
-	return cpuUsage >= threshold
-}
-
-// CheckMemoryAlert checks if memory usage exceeds threshold
-func CheckMemoryAlert(memUsage float64, threshold float64) bool {
-	return memUsage >= threshold
-}
-
-// CheckDiskAlert checks if disk usage exceeds threshold
-func CheckDiskAlert(diskUsage float64, threshold float64) bool {
-	return diskUsage >= threshold
-}
-
 // FormatPercentage formats a float as percentage
 func FormatPercentage(value float64) string {
 	return fmt.Sprintf("%.1f%%", value)
@@ -65,11 +50,6 @@ func TruncateString(s string, maxLen int) string {
 // IsValidPercentage checks if a value is a valid percentage (0-100)
 func IsValidPercentage(value float64) bool {
 	return value >= 0 && value <= 100
-}
-
-// IsValidThreshold checks if a threshold value is valid
-func IsValidThreshold(value float64) bool {
-	return IsValidPercentage(value)
 }
 
 // CopyFile copies a file from src to dst

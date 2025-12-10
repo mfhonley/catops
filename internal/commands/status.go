@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	constants "catops/config"
 	"catops/internal/config"
 	"catops/internal/metrics"
 	"catops/internal/process"
@@ -18,11 +17,10 @@ import (
 func NewStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Display current system metrics and alert thresholds",
+		Short: "Display current system metrics",
 		Long: `Display real-time system information including:
   • System Information (Hostname, OS, IP, Uptime)
   • Current Metrics (CPU, Memory, Disk, HTTPS Connections)
-  • Alert Thresholds (configured limits for alerts)
 
 Examples:
   catops status          # Show all system information`,
@@ -31,12 +29,7 @@ Examples:
 			cfg, err := config.LoadConfig()
 			if err != nil {
 				ui.PrintStatus("error", "Failed to load configuration")
-				ui.PrintStatus("info", "Using default thresholds")
-				cfg = &config.Config{
-					CPUThreshold:  constants.DEFAULT_CPU_THRESHOLD,
-					MemThreshold:  constants.DEFAULT_MEMORY_THRESHOLD,
-					DiskThreshold: constants.DEFAULT_DISK_THRESHOLD,
-				}
+				cfg = &config.Config{}
 			}
 
 			// get system information
@@ -80,14 +73,13 @@ Examples:
 			fmt.Print(ui.CreateBeautifulList(metricsData))
 			ui.PrintSectionEnd()
 
-			// thresholds section
-			ui.PrintSection("Alert Thresholds")
-			thresholdData := map[string]string{
-				"CPU Threshold":    utils.FormatPercentage(cfg.CPUThreshold),
-				"Memory Threshold": utils.FormatPercentage(cfg.MemThreshold),
-				"Disk Threshold":   utils.FormatPercentage(cfg.DiskThreshold),
+			// monitoring settings section
+			ui.PrintSection("Monitoring Settings")
+			settingsData := map[string]string{
+				"Collection Interval": fmt.Sprintf("%d seconds", cfg.CollectionInterval),
+				"Mode":                cfg.Mode,
 			}
-			fmt.Print(ui.CreateBeautifulList(thresholdData))
+			fmt.Print(ui.CreateBeautifulList(settingsData))
 			ui.PrintSectionEnd()
 
 			// daemon status

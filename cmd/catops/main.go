@@ -46,7 +46,7 @@ func main() {
 		Short: "Professional CatOps Tool",
 		Long: `CatOps - Professional Server Monitoring Tool
 
-Monitor your servers with real-time metrics, alerts, and analytics.
+Monitor your servers with real-time metrics and smart notifications.
 Lightweight, open-source, and easy to use.
 
 Need help? Telegram: @mfhonley`,
@@ -73,7 +73,7 @@ Need help? Telegram: @mfhonley`,
 			// features section
 			featuresData := map[string]string{
 				"System Monitoring": "CPU, Memory, Disk metrics",
-				"Alert System":      "Telegram notifications",
+				"Notifications":     "Telegram & Slack alerts",
 				"Remote Control":    "Telegram bot commands",
 				"Open Source":       "Free monitoring solution",
 				"Lightweight":       "Minimal resource usage",
@@ -84,12 +84,11 @@ Need help? Telegram: @mfhonley`,
 			// quick start section
 			ui.PrintSection("Quick Start")
 			quickStartData := map[string]string{
-				"Start Service":  "catops start",
-				"Set Thresholds": "catops set cpu=90",
-				"Apply Changes":  "catops restart",
-				"Check Status":   "catops status",
-				"Telegram Bot":   "Auto-configured",
-				"Cloud Mode":     "catops auth login <token>",
+				"Start Service": "catops start",
+				"Apply Changes": "catops restart",
+				"Check Status":  "catops status",
+				"Telegram Bot":  "Auto-configured",
+				"Cloud Mode":    "catops auth login <token>",
 			}
 			fmt.Print(ui.CreateBeautifulList(quickStartData))
 			ui.PrintSectionEnd()
@@ -101,7 +100,7 @@ Need help? Telegram: @mfhonley`,
 				"ask":     "Ask AI about your server",
 				"start":   "Start monitoring service",
 				"restart": "Restart monitoring service",
-				"set":     "Set alert thresholds",
+				"set":     "Configure monitoring settings",
 				"update":  "Update to latest version",
 				"auth":    "Manage Cloud Mode authentication",
 			}

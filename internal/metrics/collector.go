@@ -1346,10 +1346,14 @@ func collectSystemSummary() (*SystemSummary, error) {
 		}
 	}
 
-	// Disk - aggregate all mounts
+	// Disk - aggregate all mounts (filter pseudo filesystems)
 	if partitions, err := disk.Partitions(false); err == nil {
 		var maxUsage float64
 		for _, p := range partitions {
+			// Skip pseudo filesystems that report 100% or have no real storage
+			if shouldSkipPartition(p) {
+				continue
+			}
 			if usage, err := disk.Usage(p.Mountpoint); err == nil {
 				s.DiskTotal += usage.Total
 				s.DiskUsed += usage.Used
@@ -1523,10 +1527,7 @@ func collectDisks() ([]DiskMetrics, error) {
 
 	for _, p := range partitions {
 		// Skip pseudo filesystems
-		if strings.HasPrefix(p.Device, "/dev/loop") ||
-			p.Fstype == "squashfs" ||
-			p.Fstype == "devtmpfs" ||
-			p.Fstype == "tmpfs" {
+		if shouldSkipPartition(p) {
 			continue
 		}
 
@@ -1927,6 +1928,35 @@ func collectPodmanContainers() ([]ContainerMetrics, error) {
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+// shouldSkipPartition returns true for pseudo filesystems that should be excluded from metrics
+func shouldSkipPartition(p disk.PartitionStat) bool {
+	// Linux pseudo filesystems
+	if strings.HasPrefix(p.Device, "/dev/loop") ||
+		p.Fstype == "squashfs" ||
+		p.Fstype == "devtmpfs" ||
+		p.Fstype == "tmpfs" ||
+		p.Fstype == "overlay" {
+		return true
+	}
+
+	// macOS pseudo filesystems
+	if p.Fstype == "devfs" ||
+		p.Fstype == "autofs" ||
+		p.Fstype == "nullfs" ||
+		strings.HasPrefix(p.Device, "map ") {
+		return true
+	}
+
+	// Skip system volumes that aren't the main data partition
+	// On macOS, /System/Volumes/* except Data are system partitions
+	if strings.HasPrefix(p.Mountpoint, "/System/Volumes/") &&
+		!strings.HasPrefix(p.Mountpoint, "/System/Volumes/Data") {
+		return true
+	}
+
+	return false
+}
 
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {

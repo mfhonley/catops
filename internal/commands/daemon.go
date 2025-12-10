@@ -16,7 +16,7 @@ import (
 	"catops/internal/analytics"
 	"catops/internal/config"
 	"catops/internal/logger"
-	"catops/internal/otelcol"
+	"catops/internal/metrics"
 	"catops/internal/process"
 	"catops/internal/server"
 	"catops/pkg/utils"
@@ -87,16 +87,16 @@ func runDaemon() {
 		server.UpdateServerVersion(cfg.AuthToken, GetCurrentVersion(), cfg)
 	}
 
-	// Start OTel Collector (handles all metrics collection and export)
-	var otelManager *otelcol.Manager
+	// Start metrics collection (sends catops.* metrics directly to backend)
+	var metricsStarted bool
 	if cfg.IsCloudMode() && cfg.AuthToken != "" && cfg.ServerID != "" {
-		otelManager = startOTelCollector(cfg, hostname)
+		metricsStarted = startMetricsCollection(cfg, hostname)
 	}
 	defer func() {
-		if otelManager != nil {
-			logger.Info("Stopping OTel Collector...")
-			if err := otelManager.Stop(); err != nil {
-				logger.Warning("Failed to stop OTel Collector: %v", err)
+		if metricsStarted {
+			logger.Info("Stopping metrics collection...")
+			if err := metrics.StopOTelCollector(); err != nil {
+				logger.Warning("Failed to stop metrics collection: %v", err)
 			}
 		}
 	}()
@@ -104,12 +104,11 @@ func runDaemon() {
 	logger.Info("Daemon initialized:")
 	logger.Info("  Mode: %s", cfg.Mode)
 	logger.Info("  Collection interval: %ds", cfg.CollectionInterval)
-	if otelManager != nil {
-		logger.Info("  OTel Collector: running")
-		logger.Info("  Metrics: sent via OTLP to %s", constants.OTLP_ENDPOINT)
+	if metricsStarted {
+		logger.Info("  Metrics: sending via OTLP to %s", constants.OTLP_ENDPOINT)
 		logger.Info("  Alerts: processed on backend")
 	} else {
-		logger.Info("  OTel Collector: not started (local mode or missing credentials)")
+		logger.Info("  Metrics: not started (local mode or missing credentials)")
 	}
 
 	// Signal handling
@@ -135,16 +134,7 @@ func runDaemon() {
 				runtime.NumGoroutine(),
 				float64(memStats.Alloc)/1024/1024)
 
-			// Check if OTel Collector is still running
-			if otelManager != nil {
-				status := otelManager.Status()
-				if running, ok := status["running"].(bool); ok && !running {
-					logger.Warning("OTel Collector not running, attempting restart...")
-					if err := otelManager.Start(); err != nil {
-						logger.Error("Failed to restart OTel Collector: %v", err)
-					}
-				}
-			}
+			// Metrics collection is handled by the SDK, no need to check status
 
 		case <-updateTicker.C:
 			checkForUpdates()
@@ -165,41 +155,28 @@ func runDaemon() {
 	}
 }
 
-// startOTelCollector initializes and starts the OTel Collector
-func startOTelCollector(cfg *config.Config, hostname string) *otelcol.Manager {
-	manager, err := otelcol.NewManager()
-	if err != nil {
-		logger.Error("Failed to create OTel Collector manager: %v", err)
-		return nil
+// startMetricsCollection initializes and starts the built-in metrics collection
+func startMetricsCollection(cfg *config.Config, hostname string) bool {
+	interval := time.Duration(cfg.CollectionInterval) * time.Second
+	if interval == 0 {
+		interval = 15 * time.Second
 	}
 
-	// Ensure collector is installed
-	if err := manager.EnsureInstalled(); err != nil {
-		logger.Error("Failed to install OTel Collector: %v", err)
-		return nil
-	}
-
-	// Generate config
-	otelCfg := &otelcol.Config{
+	otelCfg := &metrics.OTelConfig{
 		Endpoint:           constants.OTLP_ENDPOINT,
 		AuthToken:          cfg.AuthToken,
 		ServerID:           cfg.ServerID,
 		Hostname:           hostname,
-		CollectionInterval: cfg.CollectionInterval,
-	}
-	if err := manager.GenerateConfig(otelCfg); err != nil {
-		logger.Error("Failed to generate OTel Collector config: %v", err)
-		return nil
+		CollectionInterval: interval,
 	}
 
-	// Start collector
-	if err := manager.Start(); err != nil {
-		logger.Error("Failed to start OTel Collector: %v", err)
-		return nil
+	if err := metrics.StartOTelCollector(otelCfg); err != nil {
+		logger.Error("Failed to start metrics collection: %v", err)
+		return false
 	}
 
-	logger.Info("OTel Collector started successfully")
-	return manager
+	logger.Info("Metrics collection started successfully")
+	return true
 }
 
 // checkForUpdates checks for new CLI versions

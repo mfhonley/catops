@@ -1,18 +1,22 @@
 // Package metrics provides OpenTelemetry-based system metrics collection for CatOps CLI.
 //
-// This package uses OpenTelemetry instrumentation to collect:
-// - CPU utilization and load averages
-// - Memory usage and availability
-// - Disk I/O and filesystem usage
-// - Network I/O and connections
-// - Process information
-// - Docker container metrics (when available)
+// This package uses OpenTelemetry instrumentation to collect comprehensive system metrics:
+// - System summary (CPU, memory, disk, network aggregated)
+// - CPU per-core with user/system/idle/iowait breakdown
+// - Memory detailed (used/free/cached/buffers/swap)
+// - Disk per-mount with IOPS and throughput
+// - Network per-interface with packets and errors
+// - Processes (top N by resource usage)
+// - Services (auto-detected: nginx, redis, postgres, etc.)
+// - Containers (Docker/Podman metrics)
 package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -27,11 +31,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
-	// Still using gopsutil for local metrics display (UI)
-	// OTel SDK sends metrics to backend, gopsutil provides immediate values for CLI UI
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
@@ -40,30 +43,282 @@ import (
 )
 
 // =============================================================================
-// OpenTelemetry Collector Integration
+// Types
+// =============================================================================
+
+// ServiceType represents the type of detected service
+type ServiceType string
+
+const (
+	ServiceTypeNginx      ServiceType = "nginx"
+	ServiceTypeApache     ServiceType = "apache"
+	ServiceTypeRedis      ServiceType = "redis"
+	ServiceTypePostgres   ServiceType = "postgres"
+	ServiceTypeMySQL      ServiceType = "mysql"
+	ServiceTypeMongoDB    ServiceType = "mongodb"
+	ServiceTypePythonApp  ServiceType = "python_app"
+	ServiceTypeNodeApp    ServiceType = "node_app"
+	ServiceTypeGoApp      ServiceType = "go_app"
+	ServiceTypeJavaApp    ServiceType = "java_app"
+	ServiceTypeDocker     ServiceType = "docker"
+	ServiceTypeKubernetes ServiceType = "kubernetes"
+	ServiceTypeUnknown    ServiceType = "unknown"
+)
+
+// CPUCoreMetrics contains per-core CPU metrics
+type CPUCoreMetrics struct {
+	CoreID  int     `json:"core_id"`
+	Usage   float64 `json:"usage"`
+	User    float64 `json:"user"`
+	System  float64 `json:"system"`
+	Idle    float64 `json:"idle"`
+	IOWait  float64 `json:"iowait"`
+	IRQ     float64 `json:"irq"`
+	SoftIRQ float64 `json:"softirq"`
+	Steal   float64 `json:"steal"`
+	Guest   float64 `json:"guest"`
+	Nice    float64 `json:"nice"`
+	FreqMHz uint32  `json:"frequency_mhz"`
+}
+
+// MemoryMetrics contains detailed memory breakdown
+type MemoryMetrics struct {
+	Total        uint64  `json:"total"`
+	Used         uint64  `json:"used"`
+	Free         uint64  `json:"free"`
+	Available    uint64  `json:"available"`
+	Cached       uint64  `json:"cached"`
+	Buffers      uint64  `json:"buffers"`
+	Shared       uint64  `json:"shared"`
+	Slab         uint64  `json:"slab"`
+	SwapTotal    uint64  `json:"swap_total"`
+	SwapUsed     uint64  `json:"swap_used"`
+	SwapFree     uint64  `json:"swap_free"`
+	SwapCached   uint64  `json:"swap_cached"`
+	UsagePercent float64 `json:"usage_percent"`
+	SwapPercent  float64 `json:"swap_percent"`
+}
+
+// DiskMetrics contains per-mount disk metrics
+type DiskMetrics struct {
+	Device          string  `json:"device"`
+	MountPoint      string  `json:"mount_point"`
+	FSType          string  `json:"fs_type"`
+	Total           uint64  `json:"total"`
+	Used            uint64  `json:"used"`
+	Free            uint64  `json:"free"`
+	UsagePercent    float64 `json:"usage_percent"`
+	InodesTotal     uint64  `json:"inodes_total"`
+	InodesUsed      uint64  `json:"inodes_used"`
+	InodesFree      uint64  `json:"inodes_free"`
+	InodesPercent   float64 `json:"inodes_percent"`
+	IOPSRead        uint32  `json:"iops_read"`
+	IOPSWrite       uint32  `json:"iops_write"`
+	ThroughputRead  uint64  `json:"throughput_read"`
+	ThroughputWrite uint64  `json:"throughput_write"`
+}
+
+// NetworkInterfaceMetrics contains per-interface network metrics
+type NetworkInterfaceMetrics struct {
+	Interface       string   `json:"interface"`
+	MACAddress      string   `json:"mac_address"`
+	IPAddresses     []string `json:"ip_addresses"`
+	IsUp            bool     `json:"is_up"`
+	SpeedMbps       uint32   `json:"speed_mbps"`
+	MTU             uint16   `json:"mtu"`
+	BytesRecv       uint64   `json:"bytes_recv"`
+	BytesSent       uint64   `json:"bytes_sent"`
+	PacketsRecv     uint64   `json:"packets_recv"`
+	PacketsSent     uint64   `json:"packets_sent"`
+	ErrorsIn        uint32   `json:"errors_in"`
+	ErrorsOut       uint32   `json:"errors_out"`
+	DropsIn         uint32   `json:"drops_in"`
+	DropsOut        uint32   `json:"drops_out"`
+	BytesRecvRate   uint64   `json:"bytes_recv_rate"`
+	BytesSentRate   uint64   `json:"bytes_sent_rate"`
+	PacketsRecvRate uint32   `json:"packets_recv_rate"`
+	PacketsSentRate uint32   `json:"packets_sent_rate"`
+}
+
+// ProcessInfo contains detailed process information
+type ProcessInfo struct {
+	PID           int     `json:"pid"`
+	PPID          int     `json:"ppid"`
+	Name          string  `json:"name"`
+	Command       string  `json:"command"`
+	Exe           string  `json:"exe"`
+	User          string  `json:"user"`
+	UID           int32   `json:"uid"`
+	GID           int32   `json:"gid"`
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemoryPercent float64 `json:"memory_percent"`
+	MemoryRSS     uint64  `json:"memory_rss"`
+	MemoryVMS     uint64  `json:"memory_vms"`
+	MemoryShared  uint64  `json:"memory_shared"`
+	Status        string  `json:"status"`
+	NumThreads    uint16  `json:"num_threads"`
+	NumFDs        uint32  `json:"num_fds"`
+	IOReadBytes   uint64  `json:"io_read_bytes"`
+	IOWriteBytes  uint64  `json:"io_write_bytes"`
+	CreateTime    int64   `json:"create_time"`
+	CPUTimeUser   float64 `json:"cpu_time_user"`
+	CPUTimeSystem float64 `json:"cpu_time_system"`
+	Nice          int8    `json:"nice"`
+	Priority      int16   `json:"priority"`
+
+	// Legacy fields for UI compatibility
+	CPUUsage    float64 `json:"cpu_usage"`    // Alias for CPUPercent
+	MemoryUsage float64 `json:"memory_usage"` // Alias for MemoryPercent
+	MemoryKB    int64   `json:"memory_kb"`    // MemoryRSS in KB
+	TTY         string  `json:"tty"`
+	Threads     int     `json:"threads"` // Alias for NumThreads
+}
+
+// ServiceInfo contains information about a detected service
+type ServiceInfo struct {
+	ServiceType       ServiceType `json:"service_type"`
+	ServiceName       string      `json:"service_name"`
+	PID               int         `json:"pid"`
+	PIDs              []int       `json:"pids"`
+	Ports             []uint16    `json:"ports"`
+	Protocol          string      `json:"protocol"`
+	BindAddress       string      `json:"bind_address"`
+	CPUPercent        float64     `json:"cpu_percent"`
+	MemoryPercent     float64     `json:"memory_percent"`
+	MemoryBytes       uint64      `json:"memory_bytes"`
+	Version           string      `json:"version"`
+	ConfigPath        string      `json:"config_path"`
+	Status            string      `json:"status"`
+	IsContainer       bool        `json:"is_container"`
+	ContainerID       string      `json:"container_id"`
+	ContainerName     string      `json:"container_name"`
+	HealthStatus      string      `json:"health_status"`
+	ConnectionsActive uint32      `json:"connections_active"`
+	RecentLogs        []string    `json:"recent_logs"`
+	LogSource         string      `json:"log_source"`
+}
+
+// ContainerMetrics contains Docker/Podman container metrics
+type ContainerMetrics struct {
+	ContainerID      string  `json:"container_id"`
+	ContainerName    string  `json:"container_name"`
+	ImageName        string  `json:"image_name"`
+	ImageTag         string  `json:"image_tag"`
+	Runtime          string  `json:"runtime"`
+	Status           string  `json:"status"`
+	Health           string  `json:"health"`
+	StartedAt        int64   `json:"started_at"`
+	ExitCode         *int16  `json:"exit_code"`
+	CPUPercent       float64 `json:"cpu_percent"`
+	CPUSystemPercent float64 `json:"cpu_system_percent"`
+	MemoryUsage      uint64  `json:"memory_usage"`
+	MemoryLimit      uint64  `json:"memory_limit"`
+	MemoryPercent    float64 `json:"memory_percent"`
+	NetRxBytes       uint64  `json:"net_rx_bytes"`
+	NetTxBytes       uint64  `json:"net_tx_bytes"`
+	BlockReadBytes   uint64  `json:"block_read_bytes"`
+	BlockWriteBytes  uint64  `json:"block_write_bytes"`
+	PIDsCurrent      uint32  `json:"pids_current"`
+	PIDsLimit        uint32  `json:"pids_limit"`
+	Ports            string  `json:"ports"`
+	Labels           string  `json:"labels"`
+}
+
+// SystemSummary contains aggregated system metrics for the main dashboard
+type SystemSummary struct {
+	// CPU
+	CPUUsage  float64 `json:"cpu_usage"`
+	CPUUser   float64 `json:"cpu_user"`
+	CPUSystem float64 `json:"cpu_system"`
+	CPUIdle   float64 `json:"cpu_idle"`
+	CPUIOWait float64 `json:"cpu_iowait"`
+	CPUSteal  float64 `json:"cpu_steal"`
+	CPUCores  uint16  `json:"cpu_cores"`
+
+	// Load
+	Load1m  float64 `json:"load_1m"`
+	Load5m  float64 `json:"load_5m"`
+	Load15m float64 `json:"load_15m"`
+
+	// Memory
+	MemoryUsage     float64 `json:"memory_usage"`
+	MemoryTotal     uint64  `json:"memory_total"`
+	MemoryUsed      uint64  `json:"memory_used"`
+	MemoryFree      uint64  `json:"memory_free"`
+	MemoryAvailable uint64  `json:"memory_available"`
+	MemoryCached    uint64  `json:"memory_cached"`
+	MemoryBuffers   uint64  `json:"memory_buffers"`
+
+	// Swap
+	SwapUsage float64 `json:"swap_usage"`
+	SwapTotal uint64  `json:"swap_total"`
+	SwapUsed  uint64  `json:"swap_used"`
+	SwapFree  uint64  `json:"swap_free"`
+
+	// Disk (aggregated)
+	DiskUsage           float64 `json:"disk_usage"`
+	DiskTotal           uint64  `json:"disk_total"`
+	DiskUsed            uint64  `json:"disk_used"`
+	DiskFree            uint64  `json:"disk_free"`
+	DiskIOPSRead        uint32  `json:"disk_iops_read"`
+	DiskIOPSWrite       uint32  `json:"disk_iops_write"`
+	DiskThroughputRead  uint64  `json:"disk_throughput_read"`
+	DiskThroughputWrite uint64  `json:"disk_throughput_write"`
+
+	// Network (aggregated)
+	NetBytesRecv   uint64 `json:"net_bytes_recv"`
+	NetBytesSent   uint64 `json:"net_bytes_sent"`
+	NetPacketsRecv uint64 `json:"net_packets_recv"`
+	NetPacketsSent uint64 `json:"net_packets_sent"`
+	NetErrorsIn    uint32 `json:"net_errors_in"`
+	NetErrorsOut   uint32 `json:"net_errors_out"`
+	NetDropsIn     uint32 `json:"net_drops_in"`
+	NetDropsOut    uint32 `json:"net_drops_out"`
+	NetConnections uint32 `json:"net_connections"`
+
+	// Processes
+	ProcessesTotal    uint32 `json:"processes_total"`
+	ProcessesRunning  uint32 `json:"processes_running"`
+	ProcessesSleeping uint32 `json:"processes_sleeping"`
+	ProcessesZombie   uint32 `json:"processes_zombie"`
+
+	// System
+	UptimeSeconds uint64 `json:"uptime_seconds"`
+	BootTime      int64  `json:"boot_time"`
+}
+
+// AllMetrics contains all collected metrics
+type AllMetrics struct {
+	Timestamp  time.Time                 `json:"timestamp"`
+	Summary    *SystemSummary            `json:"summary"`
+	CPUCores   []CPUCoreMetrics          `json:"cpu_cores"`
+	Memory     *MemoryMetrics            `json:"memory"`
+	Disks      []DiskMetrics             `json:"disks"`
+	Networks   []NetworkInterfaceMetrics `json:"networks"`
+	Processes  []ProcessInfo             `json:"processes"`
+	Services   []ServiceInfo             `json:"services"`
+	Containers []ContainerMetrics        `json:"containers"`
+}
+
+// =============================================================================
+// Global State
 // =============================================================================
 
 var (
-	// OTel meter provider and meter
 	meterProvider *sdkmetric.MeterProvider
 	meter         metric.Meter
 	otelMu        sync.Mutex
 	otelStarted   bool
 
-	// Observable instruments for async metrics
-	cpuGauge    metric.Float64ObservableGauge
-	memGauge    metric.Float64ObservableGauge
-	diskGauge   metric.Float64ObservableGauge
-	iopsGauge   metric.Int64ObservableGauge
-	ioWaitGauge metric.Float64ObservableGauge
+	// Cached metrics for OTel callbacks
+	cachedMetrics *AllMetrics
+	cacheMu       sync.RWMutex
 
-	// Cached metric values for OTel callbacks
-	cachedCPU    float64
-	cachedMem    float64
-	cachedDisk   float64
-	cachedIOPS   int64
-	cachedIOWait float64
-	cacheMu      sync.RWMutex
+	// Previous values for rate calculations
+	prevNetStats     map[string]net.IOCountersStat
+	prevDiskStats    map[string]disk.IOCountersStat
+	prevStatsTime    time.Time
+	prevStatsMu      sync.RWMutex
 )
 
 // OTelConfig holds configuration for OpenTelemetry exporter
@@ -75,13 +330,17 @@ type OTelConfig struct {
 	CollectionInterval time.Duration
 }
 
+// =============================================================================
+// OTel Setup
+// =============================================================================
+
 // StartOTelCollector initializes and starts the OpenTelemetry metrics exporter
 func StartOTelCollector(cfg *OTelConfig) error {
 	otelMu.Lock()
 	defer otelMu.Unlock()
 
 	if otelStarted {
-		return nil // Already started
+		return nil
 	}
 
 	if cfg.Endpoint == "" || cfg.AuthToken == "" || cfg.ServerID == "" {
@@ -90,7 +349,6 @@ func StartOTelCollector(cfg *OTelConfig) error {
 
 	ctx := context.Background()
 
-	// Create OTLP HTTP exporter
 	exporter, err := otlpmetrichttp.New(ctx,
 		otlpmetrichttp.WithEndpoint(cfg.Endpoint),
 		otlpmetrichttp.WithURLPath(constants.OTLP_PATH),
@@ -103,7 +361,6 @@ func StartOTelCollector(cfg *OTelConfig) error {
 		return fmt.Errorf("failed to create OTLP exporter: %w", err)
 	}
 
-	// Create resource with server attributes
 	hostname := cfg.Hostname
 	if hostname == "" {
 		hostname, _ = os.Hostname()
@@ -114,7 +371,7 @@ func StartOTelCollector(cfg *OTelConfig) error {
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName("catops-cli"),
-			semconv.ServiceVersion("2.0.0"),
+			semconv.ServiceVersion("1.0.0"),
 			semconv.HostName(hostname),
 			attribute.String("catops.server.id", cfg.ServerID),
 		),
@@ -123,7 +380,6 @@ func StartOTelCollector(cfg *OTelConfig) error {
 		return fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	// Create meter provider
 	interval := cfg.CollectionInterval
 	if interval == 0 {
 		interval = 15 * time.Second
@@ -138,17 +394,14 @@ func StartOTelCollector(cfg *OTelConfig) error {
 		),
 	)
 
-	// Set as global provider
 	otel.SetMeterProvider(meterProvider)
 
-	// Get meter for our metrics
 	meter = meterProvider.Meter("catops.io/cli",
-		metric.WithInstrumentationVersion("2.0.0"),
+		metric.WithInstrumentationVersion("1.0.0"),
 	)
 
-	// Register observable gauges for system metrics
-	if err := registerSystemMetrics(); err != nil {
-		return fmt.Errorf("failed to register system metrics: %w", err)
+	if err := registerAllMetrics(); err != nil {
+		return fmt.Errorf("failed to register metrics: %w", err)
 	}
 
 	otelStarted = true
@@ -175,284 +428,1528 @@ func StopOTelCollector() error {
 	return err
 }
 
-// registerSystemMetrics registers all system metric instruments
-func registerSystemMetrics() error {
-	var err error
+// =============================================================================
+// OTel Metrics Registration
+// =============================================================================
 
-	// CPU utilization (system.cpu.utilization)
-	cpuGauge, err = meter.Float64ObservableGauge(
-		"system.cpu.utilization",
-		metric.WithDescription("CPU utilization as a fraction (0-1)"),
-		metric.WithUnit("1"),
-		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			cacheMu.RLock()
-			val := cachedCPU / 100.0 // Convert percentage to fraction
-			cacheMu.RUnlock()
-			o.Observe(val, metric.WithAttributes(attribute.String("state", "used")))
-			return nil
-		}),
-	)
-	if err != nil {
+func registerAllMetrics() error {
+	// System Summary Metrics
+	if err := registerSystemSummaryMetrics(); err != nil {
 		return err
 	}
 
-	// Memory utilization (system.memory.utilization)
-	memGauge, err = meter.Float64ObservableGauge(
-		"system.memory.utilization",
-		metric.WithDescription("Memory utilization as a fraction (0-1)"),
-		metric.WithUnit("1"),
-		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			cacheMu.RLock()
-			val := cachedMem / 100.0
-			cacheMu.RUnlock()
-			o.Observe(val, metric.WithAttributes(attribute.String("state", "used")))
-			return nil
-		}),
-	)
-	if err != nil {
+	// Per-core CPU Metrics
+	if err := registerCPUCoreMetrics(); err != nil {
 		return err
 	}
 
-	// Filesystem utilization (system.filesystem.utilization)
-	diskGauge, err = meter.Float64ObservableGauge(
-		"system.filesystem.utilization",
-		metric.WithDescription("Filesystem utilization as a fraction (0-1)"),
-		metric.WithUnit("1"),
-		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			cacheMu.RLock()
-			val := cachedDisk / 100.0
-			cacheMu.RUnlock()
-			o.Observe(val, metric.WithAttributes(
-				attribute.String("device", "/"),
-				attribute.String("mountpoint", "/"),
-			))
-			return nil
-		}),
-	)
-	if err != nil {
+	// Memory Metrics
+	if err := registerMemoryMetrics(); err != nil {
 		return err
 	}
 
-	// Disk IOPS (system.disk.operations)
-	iopsGauge, err = meter.Int64ObservableGauge(
-		"system.disk.operations",
-		metric.WithDescription("Disk I/O operations per second"),
-		metric.WithUnit("{operations}/s"),
-		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
-			cacheMu.RLock()
-			val := cachedIOPS
-			cacheMu.RUnlock()
-			o.Observe(val)
-			return nil
-		}),
-	)
-	if err != nil {
+	// Per-mount Disk Metrics
+	if err := registerDiskMetrics(); err != nil {
 		return err
 	}
 
-	// IO Wait (custom metric for CatOps)
-	ioWaitGauge, err = meter.Float64ObservableGauge(
-		"system.cpu.iowait",
-		metric.WithDescription("CPU time waiting for I/O as a fraction"),
-		metric.WithUnit("1"),
-		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
-			cacheMu.RLock()
-			val := cachedIOWait / 100.0
-			cacheMu.RUnlock()
-			o.Observe(val)
-			return nil
-		}),
-	)
-	if err != nil {
+	// Per-interface Network Metrics
+	if err := registerNetworkMetrics(); err != nil {
+		return err
+	}
+
+	// Process Metrics
+	if err := registerProcessMetrics(); err != nil {
+		return err
+	}
+
+	// Service Metrics
+	if err := registerServiceMetrics(); err != nil {
+		return err
+	}
+
+	// Container Metrics
+	if err := registerContainerMetrics(); err != nil {
+		return err
+	}
+
+	// Log Metrics
+	if err := registerLogMetrics(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// UpdateCachedMetrics updates the cached metric values for OTel export
-// Called from the main metrics collection loop
-func UpdateCachedMetrics(m *Metrics) {
-	cacheMu.Lock()
-	defer cacheMu.Unlock()
-
-	cachedCPU = m.CPUUsage
-	cachedMem = m.MemoryUsage
-	cachedDisk = m.DiskUsage
-	cachedIOPS = m.IOPS
-	cachedIOWait = m.IOWait
-}
-
-// =============================================================================
-// Legacy IOPS Monitoring (kept for backward compatibility)
-// =============================================================================
-
-var (
-	iopsOnce     sync.Once
-	iopsStopChan chan struct{}
-	iopsStopOnce sync.Once
-	iopsMutex    sync.RWMutex
-	localIOPS    int64
-)
-
-// StartIOPSMonitoring starts background goroutine to measure IOPS continuously
-func StartIOPSMonitoring() {
-	iopsOnce.Do(func() {
-		iopsStopChan = make(chan struct{})
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					// Silently recover
-				}
-			}()
-
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					iops, err := measureIOPS()
-					if err == nil {
-						iopsMutex.Lock()
-						localIOPS = iops
-						iopsMutex.Unlock()
-					}
-				case <-iopsStopChan:
-					return
-				}
+func registerSystemSummaryMetrics() error {
+	// catops.system.* - Main dashboard metrics
+	_, err := meter.Float64ObservableGauge(
+		"catops.system.cpu",
+		metric.WithDescription("System CPU metrics"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
 			}
-		}()
-	})
-}
-
-// StopIOPSMonitoring gracefully stops the IOPS monitoring goroutine
-func StopIOPSMonitoring() {
-	iopsStopOnce.Do(func() {
-		if iopsStopChan != nil {
-			close(iopsStopChan)
-		}
-	})
-}
-
-var prevIOCounters map[string]disk.IOCountersStat
-var prevIOMutex sync.RWMutex
-
-// measureIOPS calculates IOPS from delta between measurements
-func measureIOPS() (int64, error) {
-	currentIO, err := disk.IOCounters()
+			s := m.Summary
+			o.Observe(s.CPUUsage, metric.WithAttributes(attribute.String("type", "usage")))
+			o.Observe(s.CPUUser, metric.WithAttributes(attribute.String("type", "user")))
+			o.Observe(s.CPUSystem, metric.WithAttributes(attribute.String("type", "system")))
+			o.Observe(s.CPUIdle, metric.WithAttributes(attribute.String("type", "idle")))
+			o.Observe(s.CPUIOWait, metric.WithAttributes(attribute.String("type", "iowait")))
+			o.Observe(s.CPUSteal, metric.WithAttributes(attribute.String("type", "steal")))
+			return nil
+		}),
+	)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get IO counters: %w", err)
+		return err
 	}
 
-	prevIOMutex.Lock()
-	defer prevIOMutex.Unlock()
-
-	if prevIOCounters == nil {
-		prevIOCounters = currentIO
-		return 0, nil
+	_, err = meter.Float64ObservableGauge(
+		"catops.system.load",
+		metric.WithDescription("System load averages"),
+		metric.WithUnit("1"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(s.Load1m, metric.WithAttributes(attribute.String("period", "1m")))
+			o.Observe(s.Load5m, metric.WithAttributes(attribute.String("period", "5m")))
+			o.Observe(s.Load15m, metric.WithAttributes(attribute.String("period", "15m")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
 	}
 
-	io1 := prevIOCounters
-	io2 := currentIO
-	prevIOCounters = currentIO
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.memory",
+		metric.WithDescription("System memory in bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.MemoryTotal), metric.WithAttributes(attribute.String("type", "total")))
+			o.Observe(int64(s.MemoryUsed), metric.WithAttributes(attribute.String("type", "used")))
+			o.Observe(int64(s.MemoryFree), metric.WithAttributes(attribute.String("type", "free")))
+			o.Observe(int64(s.MemoryAvailable), metric.WithAttributes(attribute.String("type", "available")))
+			o.Observe(int64(s.MemoryCached), metric.WithAttributes(attribute.String("type", "cached")))
+			o.Observe(int64(s.MemoryBuffers), metric.WithAttributes(attribute.String("type", "buffers")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
 
-	var totalIOPS int64
-	for device, stats2 := range io2 {
-		if stats1, ok := io1[device]; ok {
-			if strings.HasPrefix(device, "loop") ||
-				strings.Contains(device, "dm-") ||
-				strings.Contains(device, "sr") ||
-				len(device) > 20 {
-				continue
+	_, err = meter.Float64ObservableGauge(
+		"catops.system.memory.usage",
+		metric.WithDescription("System memory usage percent"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			o.Observe(m.Summary.MemoryUsage)
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.swap",
+		metric.WithDescription("System swap in bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.SwapTotal), metric.WithAttributes(attribute.String("type", "total")))
+			o.Observe(int64(s.SwapUsed), metric.WithAttributes(attribute.String("type", "used")))
+			o.Observe(int64(s.SwapFree), metric.WithAttributes(attribute.String("type", "free")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.disk",
+		metric.WithDescription("System disk aggregated in bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.DiskTotal), metric.WithAttributes(attribute.String("type", "total")))
+			o.Observe(int64(s.DiskUsed), metric.WithAttributes(attribute.String("type", "used")))
+			o.Observe(int64(s.DiskFree), metric.WithAttributes(attribute.String("type", "free")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Float64ObservableGauge(
+		"catops.system.disk.usage",
+		metric.WithDescription("System disk usage percent"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			o.Observe(m.Summary.DiskUsage)
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.disk.iops",
+		metric.WithDescription("System disk IOPS"),
+		metric.WithUnit("{operations}/s"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.DiskIOPSRead), metric.WithAttributes(attribute.String("direction", "read")))
+			o.Observe(int64(s.DiskIOPSWrite), metric.WithAttributes(attribute.String("direction", "write")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.network",
+		metric.WithDescription("System network aggregated bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.NetBytesRecv), metric.WithAttributes(attribute.String("direction", "recv")))
+			o.Observe(int64(s.NetBytesSent), metric.WithAttributes(attribute.String("direction", "sent")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.processes",
+		metric.WithDescription("System process counts"),
+		metric.WithUnit("{processes}"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.ProcessesTotal), metric.WithAttributes(attribute.String("state", "total")))
+			o.Observe(int64(s.ProcessesRunning), metric.WithAttributes(attribute.String("state", "running")))
+			o.Observe(int64(s.ProcessesSleeping), metric.WithAttributes(attribute.String("state", "sleeping")))
+			o.Observe(int64(s.ProcessesZombie), metric.WithAttributes(attribute.String("state", "zombie")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.uptime",
+		metric.WithDescription("System uptime in seconds"),
+		metric.WithUnit("s"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			o.Observe(int64(m.Summary.UptimeSeconds))
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerCPUCoreMetrics() error {
+	_, err := meter.Float64ObservableGauge(
+		"catops.cpu.core",
+		metric.WithDescription("Per-core CPU metrics"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
 			}
 
-			readOps := stats2.ReadCount - stats1.ReadCount
-			writeOps := stats2.WriteCount - stats1.WriteCount
-			totalIOPS += int64(readOps + writeOps)
+			for _, core := range m.CPUCores {
+				attrs := []attribute.KeyValue{
+					attribute.Int("core_id", core.CoreID),
+				}
+				o.Observe(core.Usage, metric.WithAttributes(append(attrs, attribute.String("type", "usage"))...))
+				o.Observe(core.User, metric.WithAttributes(append(attrs, attribute.String("type", "user"))...))
+				o.Observe(core.System, metric.WithAttributes(append(attrs, attribute.String("type", "system"))...))
+				o.Observe(core.Idle, metric.WithAttributes(append(attrs, attribute.String("type", "idle"))...))
+				o.Observe(core.IOWait, metric.WithAttributes(append(attrs, attribute.String("type", "iowait"))...))
+				o.Observe(core.IRQ, metric.WithAttributes(append(attrs, attribute.String("type", "irq"))...))
+				o.Observe(core.SoftIRQ, metric.WithAttributes(append(attrs, attribute.String("type", "softirq"))...))
+				o.Observe(core.Steal, metric.WithAttributes(append(attrs, attribute.String("type", "steal"))...))
+				o.Observe(core.Nice, metric.WithAttributes(append(attrs, attribute.String("type", "nice"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerMemoryMetrics() error {
+	_, err := meter.Int64ObservableGauge(
+		"catops.memory.detailed",
+		metric.WithDescription("Detailed memory metrics in bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Memory == nil {
+				return nil
+			}
+			mem := m.Memory
+			o.Observe(int64(mem.Total), metric.WithAttributes(attribute.String("type", "total")))
+			o.Observe(int64(mem.Used), metric.WithAttributes(attribute.String("type", "used")))
+			o.Observe(int64(mem.Free), metric.WithAttributes(attribute.String("type", "free")))
+			o.Observe(int64(mem.Available), metric.WithAttributes(attribute.String("type", "available")))
+			o.Observe(int64(mem.Cached), metric.WithAttributes(attribute.String("type", "cached")))
+			o.Observe(int64(mem.Buffers), metric.WithAttributes(attribute.String("type", "buffers")))
+			o.Observe(int64(mem.Shared), metric.WithAttributes(attribute.String("type", "shared")))
+			o.Observe(int64(mem.Slab), metric.WithAttributes(attribute.String("type", "slab")))
+			o.Observe(int64(mem.SwapTotal), metric.WithAttributes(attribute.String("type", "swap_total")))
+			o.Observe(int64(mem.SwapUsed), metric.WithAttributes(attribute.String("type", "swap_used")))
+			o.Observe(int64(mem.SwapFree), metric.WithAttributes(attribute.String("type", "swap_free")))
+			o.Observe(int64(mem.SwapCached), metric.WithAttributes(attribute.String("type", "swap_cached")))
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerDiskMetrics() error {
+	_, err := meter.Float64ObservableGauge(
+		"catops.disk.mount",
+		metric.WithDescription("Per-mount disk metrics"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, d := range m.Disks {
+				attrs := []attribute.KeyValue{
+					attribute.String("device", d.Device),
+					attribute.String("mount_point", d.MountPoint),
+					attribute.String("fs_type", d.FSType),
+				}
+				o.Observe(d.UsagePercent, metric.WithAttributes(append(attrs, attribute.String("metric", "usage_percent"))...))
+				o.Observe(d.InodesPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "inodes_percent"))...))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.disk.mount.bytes",
+		metric.WithDescription("Per-mount disk bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, d := range m.Disks {
+				attrs := []attribute.KeyValue{
+					attribute.String("device", d.Device),
+					attribute.String("mount_point", d.MountPoint),
+					attribute.String("fs_type", d.FSType),
+				}
+				o.Observe(int64(d.Total), metric.WithAttributes(append(attrs, attribute.String("type", "total"))...))
+				o.Observe(int64(d.Used), metric.WithAttributes(append(attrs, attribute.String("type", "used"))...))
+				o.Observe(int64(d.Free), metric.WithAttributes(append(attrs, attribute.String("type", "free"))...))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.disk.mount.iops",
+		metric.WithDescription("Per-mount disk IOPS"),
+		metric.WithUnit("{operations}/s"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, d := range m.Disks {
+				attrs := []attribute.KeyValue{
+					attribute.String("device", d.Device),
+					attribute.String("mount_point", d.MountPoint),
+				}
+				o.Observe(int64(d.IOPSRead), metric.WithAttributes(append(attrs, attribute.String("direction", "read"))...))
+				o.Observe(int64(d.IOPSWrite), metric.WithAttributes(append(attrs, attribute.String("direction", "write"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerNetworkMetrics() error {
+	_, err := meter.Int64ObservableGauge(
+		"catops.network.interface.bytes",
+		metric.WithDescription("Per-interface network bytes"),
+		metric.WithUnit("By"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, n := range m.Networks {
+				attrs := []attribute.KeyValue{
+					attribute.String("interface", n.Interface),
+				}
+				o.Observe(int64(n.BytesRecv), metric.WithAttributes(append(attrs, attribute.String("direction", "recv"))...))
+				o.Observe(int64(n.BytesSent), metric.WithAttributes(append(attrs, attribute.String("direction", "sent"))...))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.network.interface.packets",
+		metric.WithDescription("Per-interface network packets"),
+		metric.WithUnit("{packets}"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, n := range m.Networks {
+				attrs := []attribute.KeyValue{
+					attribute.String("interface", n.Interface),
+				}
+				o.Observe(int64(n.PacketsRecv), metric.WithAttributes(append(attrs, attribute.String("direction", "recv"))...))
+				o.Observe(int64(n.PacketsSent), metric.WithAttributes(append(attrs, attribute.String("direction", "sent"))...))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.network.interface.errors",
+		metric.WithDescription("Per-interface network errors"),
+		metric.WithUnit("{errors}"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, n := range m.Networks {
+				attrs := []attribute.KeyValue{
+					attribute.String("interface", n.Interface),
+				}
+				o.Observe(int64(n.ErrorsIn), metric.WithAttributes(append(attrs, attribute.String("direction", "in"))...))
+				o.Observe(int64(n.ErrorsOut), metric.WithAttributes(append(attrs, attribute.String("direction", "out"))...))
+				o.Observe(int64(n.DropsIn), metric.WithAttributes(append(attrs, attribute.String("type", "drops_in"))...))
+				o.Observe(int64(n.DropsOut), metric.WithAttributes(append(attrs, attribute.String("type", "drops_out"))...))
+			}
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = meter.Int64ObservableGauge(
+		"catops.network.interface.rate",
+		metric.WithDescription("Per-interface network rate bytes/sec"),
+		metric.WithUnit("By/s"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, n := range m.Networks {
+				attrs := []attribute.KeyValue{
+					attribute.String("interface", n.Interface),
+				}
+				o.Observe(int64(n.BytesRecvRate), metric.WithAttributes(append(attrs, attribute.String("direction", "recv"))...))
+				o.Observe(int64(n.BytesSentRate), metric.WithAttributes(append(attrs, attribute.String("direction", "sent"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerProcessMetrics() error {
+	_, err := meter.Float64ObservableGauge(
+		"catops.process",
+		metric.WithDescription("Process CPU/Memory usage"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			limit := 20
+			if len(m.Processes) < limit {
+				limit = len(m.Processes)
+			}
+
+			for i := 0; i < limit; i++ {
+				p := m.Processes[i]
+				attrs := []attribute.KeyValue{
+					attribute.Int("pid", p.PID),
+					attribute.Int("ppid", p.PPID),
+					attribute.String("name", p.Name),
+					attribute.String("command", truncateString(p.Command, 200)),
+					attribute.String("exe", p.Exe),
+					attribute.String("user", p.User),
+					attribute.Int("uid", int(p.UID)),
+					attribute.Int("gid", int(p.GID)),
+					attribute.String("status", p.Status),
+					attribute.Int("num_threads", int(p.NumThreads)),
+					attribute.Int("num_fds", int(p.NumFDs)),
+					attribute.Int64("memory_rss", int64(p.MemoryRSS)),
+					attribute.Int64("memory_vms", int64(p.MemoryVMS)),
+					attribute.Int64("memory_shared", int64(p.MemoryShared)),
+					attribute.Int64("io_read_bytes", int64(p.IOReadBytes)),
+					attribute.Int64("io_write_bytes", int64(p.IOWriteBytes)),
+					attribute.Int64("create_time", p.CreateTime),
+					attribute.Float64("cpu_time_user", p.CPUTimeUser),
+					attribute.Float64("cpu_time_system", p.CPUTimeSystem),
+					attribute.Int("nice", int(p.Nice)),
+					attribute.Int("priority", int(p.Priority)),
+				}
+				o.Observe(p.CPUPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "cpu"))...))
+				o.Observe(p.MemoryPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "memory"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerServiceMetrics() error {
+	_, err := meter.Float64ObservableGauge(
+		"catops.service",
+		metric.WithDescription("Service CPU/Memory usage"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, s := range m.Services {
+				portsJSON, _ := json.Marshal(s.Ports)
+				pidsJSON, _ := json.Marshal(s.PIDs)
+				logsJSON, _ := json.Marshal(s.RecentLogs)
+				attrs := []attribute.KeyValue{
+					attribute.String("service_type", string(s.ServiceType)),
+					attribute.String("service_name", s.ServiceName),
+					attribute.Int("pid", s.PID),
+					attribute.String("pids", string(pidsJSON)),
+					attribute.String("ports", string(portsJSON)),
+					attribute.String("protocol", s.Protocol),
+					attribute.String("bind_address", s.BindAddress),
+					attribute.String("version", s.Version),
+					attribute.String("config_path", s.ConfigPath),
+					attribute.String("status", s.Status),
+					attribute.Bool("is_container", s.IsContainer),
+					attribute.String("container_id", s.ContainerID),
+					attribute.String("container_name", s.ContainerName),
+					attribute.String("health_status", s.HealthStatus),
+					attribute.Int("connections_active", int(s.ConnectionsActive)),
+					attribute.Int64("memory_bytes", int64(s.MemoryBytes)),
+					attribute.String("recent_logs", string(logsJSON)),
+					attribute.String("log_source", s.LogSource),
+				}
+				o.Observe(s.CPUPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "cpu"))...))
+				o.Observe(s.MemoryPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "memory"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerContainerMetrics() error {
+	_, err := meter.Float64ObservableGauge(
+		"catops.container",
+		metric.WithDescription("Container CPU/Memory usage"),
+		metric.WithUnit("%"),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			for _, c := range m.Containers {
+				var exitCode int64 = -1
+				if c.ExitCode != nil {
+					exitCode = int64(*c.ExitCode)
+				}
+				attrs := []attribute.KeyValue{
+					attribute.String("container_id", c.ContainerID),
+					attribute.String("container_name", c.ContainerName),
+					attribute.String("image_name", c.ImageName),
+					attribute.String("image_tag", c.ImageTag),
+					attribute.String("runtime", c.Runtime),
+					attribute.String("status", c.Status),
+					attribute.String("health", c.Health),
+					attribute.Int64("started_at", c.StartedAt),
+					attribute.Int64("exit_code", exitCode),
+					attribute.Float64("cpu_system_percent", c.CPUSystemPercent),
+					attribute.Int64("memory_usage", int64(c.MemoryUsage)),
+					attribute.Int64("memory_limit", int64(c.MemoryLimit)),
+					attribute.Int64("net_rx_bytes", int64(c.NetRxBytes)),
+					attribute.Int64("net_tx_bytes", int64(c.NetTxBytes)),
+					attribute.Int64("block_read_bytes", int64(c.BlockReadBytes)),
+					attribute.Int64("block_write_bytes", int64(c.BlockWriteBytes)),
+					attribute.Int("pids_current", int(c.PIDsCurrent)),
+					attribute.Int("pids_limit", int(c.PIDsLimit)),
+					attribute.String("ports", c.Ports),
+					attribute.String("labels", c.Labels),
+				}
+				o.Observe(c.CPUPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "cpu"))...))
+				o.Observe(c.MemoryPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "memory"))...))
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+func registerLogMetrics() error {
+	// catops.log - Log entries from services (sent as individual metrics)
+	_, err := meter.Int64ObservableGauge(
+		"catops.log",
+		metric.WithDescription("Log entries from services"),
+		metric.WithUnit("{entries}"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil {
+				return nil
+			}
+
+			// Send logs from services
+			for _, s := range m.Services {
+				if len(s.RecentLogs) == 0 {
+					continue
+				}
+
+				for idx, logLine := range s.RecentLogs {
+					level := detectLogLevel(logLine)
+					attrs := []attribute.KeyValue{
+						attribute.String("source", s.LogSource),
+						attribute.String("source_path", s.ServiceName),
+						attribute.String("level", level),
+						attribute.String("message", truncateString(logLine, 500)),
+						attribute.String("service", s.ServiceName),
+						attribute.String("container_id", s.ContainerID),
+						attribute.Int("pid", s.PID),
+					}
+					o.Observe(int64(idx), metric.WithAttributes(attrs...))
+				}
+			}
+			return nil
+		}),
+	)
+	return err
+}
+
+// detectLogLevel detects log level from log line content
+func detectLogLevel(line string) string {
+	lineLower := strings.ToLower(line)
+	switch {
+	case strings.Contains(lineLower, "fatal") || strings.Contains(lineLower, "critical"):
+		return "fatal"
+	case strings.Contains(lineLower, "error") || strings.Contains(lineLower, "err"):
+		return "error"
+	case strings.Contains(lineLower, "warn"):
+		return "warn"
+	case strings.Contains(lineLower, "debug"):
+		return "debug"
+	default:
+		return "info"
+	}
+}
+
+// =============================================================================
+// Metrics Collection
+// =============================================================================
+
+// CollectAllMetrics collects all system metrics and updates the cache
+func CollectAllMetrics() (*AllMetrics, error) {
+	m := &AllMetrics{
+		Timestamp: time.Now().UTC(),
+	}
+
+	// Collect all metrics in parallel
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var errs []error
+
+	// System summary
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if summary, err := collectSystemSummary(); err == nil {
+			mu.Lock()
+			m.Summary = summary
+			mu.Unlock()
+		} else {
+			mu.Lock()
+			errs = append(errs, fmt.Errorf("summary: %w", err))
+			mu.Unlock()
+		}
+	}()
+
+	// CPU cores
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if cores, err := collectCPUCores(); err == nil {
+			mu.Lock()
+			m.CPUCores = cores
+			mu.Unlock()
+		}
+	}()
+
+	// Memory
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if memory, err := collectMemory(); err == nil {
+			mu.Lock()
+			m.Memory = memory
+			mu.Unlock()
+		}
+	}()
+
+	// Disks
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if disks, err := collectDisks(); err == nil {
+			mu.Lock()
+			m.Disks = disks
+			mu.Unlock()
+		}
+	}()
+
+	// Networks
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if networks, err := collectNetworks(); err == nil {
+			mu.Lock()
+			m.Networks = networks
+			mu.Unlock()
+		}
+	}()
+
+	// Processes
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if processes, err := collectProcesses(30); err == nil {
+			mu.Lock()
+			m.Processes = processes
+			mu.Unlock()
+		}
+	}()
+
+	// Services
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if services, err := GetServices(); err == nil {
+			mu.Lock()
+			m.Services = services
+			mu.Unlock()
+		}
+	}()
+
+	// Containers
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if containers, err := collectContainers(); err == nil {
+			mu.Lock()
+			m.Containers = containers
+			mu.Unlock()
+		}
+	}()
+
+	wg.Wait()
+
+	// Update cache
+	cacheMu.Lock()
+	cachedMetrics = m
+	cacheMu.Unlock()
+
+	if len(errs) > 0 {
+		return m, errs[0]
+	}
+
+	return m, nil
+}
+
+func collectSystemSummary() (*SystemSummary, error) {
+	s := &SystemSummary{
+		CPUCores: uint16(runtime.NumCPU()),
+	}
+
+	// CPU
+	if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
+		s.CPUUsage = cpuPercent[0]
+	}
+
+	if cpuTimes, err := cpu.Times(false); err == nil && len(cpuTimes) > 0 {
+		t := cpuTimes[0]
+		total := t.User + t.System + t.Idle + t.Iowait + t.Nice + t.Irq + t.Softirq + t.Steal
+		if total > 0 {
+			s.CPUUser = (t.User / total) * 100
+			s.CPUSystem = (t.System / total) * 100
+			s.CPUIdle = (t.Idle / total) * 100
+			s.CPUIOWait = (t.Iowait / total) * 100
+			s.CPUSteal = (t.Steal / total) * 100
 		}
 	}
 
-	return totalIOPS, nil
+	// Load
+	if loadAvg, err := load.Avg(); err == nil {
+		s.Load1m = loadAvg.Load1
+		s.Load5m = loadAvg.Load5
+		s.Load15m = loadAvg.Load15
+	}
+
+	// Memory
+	if vm, err := mem.VirtualMemory(); err == nil {
+		s.MemoryUsage = vm.UsedPercent
+		s.MemoryTotal = vm.Total
+		s.MemoryUsed = vm.Used
+		s.MemoryFree = vm.Free
+		s.MemoryAvailable = vm.Available
+		s.MemoryCached = vm.Cached
+		s.MemoryBuffers = vm.Buffers
+	}
+
+	// Swap
+	if swap, err := mem.SwapMemory(); err == nil {
+		s.SwapTotal = swap.Total
+		s.SwapUsed = swap.Used
+		s.SwapFree = swap.Free
+		if swap.Total > 0 {
+			s.SwapUsage = swap.UsedPercent
+		}
+	}
+
+	// Disk - aggregate all mounts
+	if partitions, err := disk.Partitions(false); err == nil {
+		var maxUsage float64
+		for _, p := range partitions {
+			if usage, err := disk.Usage(p.Mountpoint); err == nil {
+				s.DiskTotal += usage.Total
+				s.DiskUsed += usage.Used
+				s.DiskFree += usage.Free
+				if usage.UsedPercent > maxUsage {
+					maxUsage = usage.UsedPercent
+				}
+			}
+		}
+		s.DiskUsage = maxUsage
+	}
+
+	// Disk IOPS
+	if ioCounters, err := disk.IOCounters(); err == nil {
+		prevStatsMu.Lock()
+		if prevDiskStats != nil && !prevStatsTime.IsZero() {
+			elapsed := time.Since(prevStatsTime).Seconds()
+			if elapsed > 0 {
+				for device, current := range ioCounters {
+					if prev, ok := prevDiskStats[device]; ok {
+						s.DiskIOPSRead += uint32(float64(current.ReadCount-prev.ReadCount) / elapsed)
+						s.DiskIOPSWrite += uint32(float64(current.WriteCount-prev.WriteCount) / elapsed)
+						s.DiskThroughputRead += uint64(float64(current.ReadBytes-prev.ReadBytes) / elapsed)
+						s.DiskThroughputWrite += uint64(float64(current.WriteBytes-prev.WriteBytes) / elapsed)
+					}
+				}
+			}
+		}
+		prevDiskStats = ioCounters
+		prevStatsMu.Unlock()
+	}
+
+	// Network - aggregate all interfaces
+	if netIO, err := net.IOCounters(false); err == nil && len(netIO) > 0 {
+		n := netIO[0]
+		s.NetBytesRecv = n.BytesRecv
+		s.NetBytesSent = n.BytesSent
+		s.NetPacketsRecv = n.PacketsRecv
+		s.NetPacketsSent = n.PacketsSent
+		s.NetErrorsIn = uint32(n.Errin)
+		s.NetErrorsOut = uint32(n.Errout)
+		s.NetDropsIn = uint32(n.Dropin)
+		s.NetDropsOut = uint32(n.Dropout)
+	}
+
+	// Connections count
+	if conns, err := net.Connections("tcp"); err == nil {
+		s.NetConnections = uint32(len(conns))
+	}
+
+	// Process counts
+	if procs, err := process.Processes(); err == nil {
+		s.ProcessesTotal = uint32(len(procs))
+		for _, p := range procs {
+			if status, err := p.Status(); err == nil && len(status) > 0 {
+				switch status[0] {
+				case "R":
+					s.ProcessesRunning++
+				case "S":
+					s.ProcessesSleeping++
+				case "Z":
+					s.ProcessesZombie++
+				}
+			}
+		}
+	}
+
+	// Uptime
+	if uptime, err := host.Uptime(); err == nil {
+		s.UptimeSeconds = uptime
+	}
+
+	if bootTime, err := host.BootTime(); err == nil {
+		s.BootTime = int64(bootTime)
+	}
+
+	// Update prev stats time
+	prevStatsMu.Lock()
+	prevStatsTime = time.Now()
+	prevStatsMu.Unlock()
+
+	return s, nil
+}
+
+func collectCPUCores() ([]CPUCoreMetrics, error) {
+	cpuTimes, err := cpu.Times(true) // per-core
+	if err != nil {
+		return nil, err
+	}
+
+	cpuPercent, err := cpu.Percent(0, true) // per-core
+	if err != nil {
+		// Try to calculate from times
+		cpuPercent = make([]float64, len(cpuTimes))
+	}
+
+	cores := make([]CPUCoreMetrics, len(cpuTimes))
+
+	for i, t := range cpuTimes {
+		total := t.User + t.System + t.Idle + t.Iowait + t.Nice + t.Irq + t.Softirq + t.Steal + t.Guest
+
+		var usage float64
+		if i < len(cpuPercent) {
+			usage = cpuPercent[i]
+		} else if total > 0 {
+			usage = 100 - (t.Idle/total)*100
+		}
+
+		cores[i] = CPUCoreMetrics{
+			CoreID: i,
+			Usage:  usage,
+		}
+
+		if total > 0 {
+			cores[i].User = (t.User / total) * 100
+			cores[i].System = (t.System / total) * 100
+			cores[i].Idle = (t.Idle / total) * 100
+			cores[i].IOWait = (t.Iowait / total) * 100
+			cores[i].IRQ = (t.Irq / total) * 100
+			cores[i].SoftIRQ = (t.Softirq / total) * 100
+			cores[i].Steal = (t.Steal / total) * 100
+			cores[i].Guest = (t.Guest / total) * 100
+			cores[i].Nice = (t.Nice / total) * 100
+		}
+	}
+
+	return cores, nil
+}
+
+func collectMemory() (*MemoryMetrics, error) {
+	vm, err := mem.VirtualMemory()
+	if err != nil {
+		return nil, err
+	}
+
+	m := &MemoryMetrics{
+		Total:        vm.Total,
+		Used:         vm.Used,
+		Free:         vm.Free,
+		Available:    vm.Available,
+		Cached:       vm.Cached,
+		Buffers:      vm.Buffers,
+		Shared:       vm.Shared,
+		Slab:         vm.Slab,
+		UsagePercent: vm.UsedPercent,
+	}
+
+	if swap, err := mem.SwapMemory(); err == nil {
+		m.SwapTotal = swap.Total
+		m.SwapUsed = swap.Used
+		m.SwapFree = swap.Free
+		m.SwapPercent = swap.UsedPercent
+	}
+
+	return m, nil
+}
+
+func collectDisks() ([]DiskMetrics, error) {
+	partitions, err := disk.Partitions(false)
+	if err != nil {
+		return nil, err
+	}
+
+	ioCounters, _ := disk.IOCounters()
+
+	var disks []DiskMetrics
+
+	prevStatsMu.Lock()
+	elapsed := time.Since(prevStatsTime).Seconds()
+	prevStatsMu.Unlock()
+
+	for _, p := range partitions {
+		// Skip pseudo filesystems
+		if strings.HasPrefix(p.Device, "/dev/loop") ||
+			p.Fstype == "squashfs" ||
+			p.Fstype == "devtmpfs" ||
+			p.Fstype == "tmpfs" {
+			continue
+		}
+
+		usage, err := disk.Usage(p.Mountpoint)
+		if err != nil {
+			continue
+		}
+
+		d := DiskMetrics{
+			Device:        p.Device,
+			MountPoint:    p.Mountpoint,
+			FSType:        p.Fstype,
+			Total:         usage.Total,
+			Used:          usage.Used,
+			Free:          usage.Free,
+			UsagePercent:  usage.UsedPercent,
+			InodesTotal:   usage.InodesTotal,
+			InodesUsed:    usage.InodesUsed,
+			InodesFree:    usage.InodesFree,
+			InodesPercent: usage.InodesUsedPercent,
+		}
+
+		// Calculate IOPS and throughput
+		deviceName := strings.TrimPrefix(p.Device, "/dev/")
+		if io, ok := ioCounters[deviceName]; ok {
+			prevStatsMu.RLock()
+			if prevDiskStats != nil && elapsed > 0 {
+				if prevIO, ok := prevDiskStats[deviceName]; ok {
+					d.IOPSRead = uint32(float64(io.ReadCount-prevIO.ReadCount) / elapsed)
+					d.IOPSWrite = uint32(float64(io.WriteCount-prevIO.WriteCount) / elapsed)
+					d.ThroughputRead = uint64(float64(io.ReadBytes-prevIO.ReadBytes) / elapsed)
+					d.ThroughputWrite = uint64(float64(io.WriteBytes-prevIO.WriteBytes) / elapsed)
+				}
+			}
+			prevStatsMu.RUnlock()
+		}
+
+		disks = append(disks, d)
+	}
+
+	return disks, nil
+}
+
+func collectNetworks() ([]NetworkInterfaceMetrics, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	ioCounters, err := net.IOCounters(true) // per-interface
+	if err != nil {
+		return nil, err
+	}
+
+	ioMap := make(map[string]net.IOCountersStat)
+	for _, io := range ioCounters {
+		ioMap[io.Name] = io
+	}
+
+	prevStatsMu.Lock()
+	elapsed := time.Since(prevStatsTime).Seconds()
+	prevStatsMu.Unlock()
+
+	var networks []NetworkInterfaceMetrics
+
+	for _, iface := range interfaces {
+		// Skip loopback
+		if strings.HasPrefix(iface.Name, "lo") || strings.HasPrefix(iface.Name, "veth") {
+			continue
+		}
+
+		n := NetworkInterfaceMetrics{
+			Interface:   iface.Name,
+			MACAddress:  iface.HardwareAddr,
+			IPAddresses: make([]string, 0),
+			MTU:         uint16(iface.MTU),
+		}
+
+		// Get IP addresses
+		for _, addr := range iface.Addrs {
+			n.IPAddresses = append(n.IPAddresses, addr.Addr)
+		}
+
+		// Check if up
+		for _, flag := range iface.Flags {
+			if flag == "up" {
+				n.IsUp = true
+				break
+			}
+		}
+
+		// Get IO stats
+		if io, ok := ioMap[iface.Name]; ok {
+			n.BytesRecv = io.BytesRecv
+			n.BytesSent = io.BytesSent
+			n.PacketsRecv = io.PacketsRecv
+			n.PacketsSent = io.PacketsSent
+			n.ErrorsIn = uint32(io.Errin)
+			n.ErrorsOut = uint32(io.Errout)
+			n.DropsIn = uint32(io.Dropin)
+			n.DropsOut = uint32(io.Dropout)
+
+			// Calculate rates
+			prevStatsMu.RLock()
+			if prevNetStats != nil && elapsed > 0 {
+				if prevIO, ok := prevNetStats[iface.Name]; ok {
+					n.BytesRecvRate = uint64(float64(io.BytesRecv-prevIO.BytesRecv) / elapsed)
+					n.BytesSentRate = uint64(float64(io.BytesSent-prevIO.BytesSent) / elapsed)
+					n.PacketsRecvRate = uint32(float64(io.PacketsRecv-prevIO.PacketsRecv) / elapsed)
+					n.PacketsSentRate = uint32(float64(io.PacketsSent-prevIO.PacketsSent) / elapsed)
+				}
+			}
+			prevStatsMu.RUnlock()
+		}
+
+		networks = append(networks, n)
+	}
+
+	// Update prev stats
+	prevStatsMu.Lock()
+	prevNetStats = ioMap
+	prevStatsMu.Unlock()
+
+	return networks, nil
+}
+
+func collectProcesses(limit int) ([]ProcessInfo, error) {
+	procs, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+
+	var processes []ProcessInfo
+
+	for _, p := range procs {
+		name, _ := p.Name()
+		if name == "catops" || strings.HasPrefix(name, "catops-") {
+			continue
+		}
+
+		cpuPercent, _ := p.CPUPercent()
+		memPercent, _ := p.MemoryPercent()
+
+		if cpuPercent < 0.1 && memPercent < 0.1 {
+			continue
+		}
+
+		pi := ProcessInfo{
+			PID:  int(p.Pid),
+			Name: name,
+		}
+
+		if ppid, err := p.Ppid(); err == nil {
+			pi.PPID = int(ppid)
+		}
+
+		pi.CPUPercent = cpuPercent
+		pi.MemoryPercent = float64(memPercent)
+
+		if cmdline, err := p.Cmdline(); err == nil {
+			pi.Command = truncateString(cmdline, 200)
+		} else {
+			pi.Command = name
+		}
+
+		if exe, err := p.Exe(); err == nil {
+			pi.Exe = exe
+		}
+
+		if uids, err := p.Uids(); err == nil && len(uids) > 0 {
+			pi.UID = uids[0]
+			pi.User = fmt.Sprintf("%d", uids[0])
+		}
+
+		if gids, err := p.Gids(); err == nil && len(gids) > 0 {
+			pi.GID = gids[0]
+		}
+
+		if memInfo, err := p.MemoryInfo(); err == nil && memInfo != nil {
+			pi.MemoryRSS = memInfo.RSS
+			pi.MemoryVMS = memInfo.VMS
+		}
+
+		if status, err := p.Status(); err == nil && len(status) > 0 {
+			pi.Status = string(status[0])
+		}
+
+		if threads, err := p.NumThreads(); err == nil {
+			pi.NumThreads = uint16(threads)
+		}
+
+		if fds, err := p.NumFDs(); err == nil {
+			pi.NumFDs = uint32(fds)
+		}
+
+		if ioCounters, err := p.IOCounters(); err == nil && ioCounters != nil {
+			pi.IOReadBytes = ioCounters.ReadBytes
+			pi.IOWriteBytes = ioCounters.WriteBytes
+		}
+
+		if createTime, err := p.CreateTime(); err == nil {
+			pi.CreateTime = createTime / 1000
+		}
+
+		if times, err := p.Times(); err == nil && times != nil {
+			pi.CPUTimeUser = times.User
+			pi.CPUTimeSystem = times.System
+		}
+
+		if nice, err := p.Nice(); err == nil {
+			pi.Nice = int8(nice)
+		}
+
+		if terminal, err := p.Terminal(); err == nil {
+			pi.TTY = terminal
+		}
+
+		pi.CPUUsage = pi.CPUPercent
+		pi.MemoryUsage = pi.MemoryPercent
+		pi.MemoryKB = int64(pi.MemoryRSS / 1024)
+		pi.Threads = int(pi.NumThreads)
+
+		processes = append(processes, pi)
+	}
+
+	// Sort by CPU usage
+	sort.Slice(processes, func(i, j int) bool {
+		return processes[i].CPUPercent > processes[j].CPUPercent
+	})
+
+	if len(processes) > limit {
+		return processes[:limit], nil
+	}
+
+	return processes, nil
+}
+
+func collectContainers() ([]ContainerMetrics, error) {
+	// Try docker first
+	containers, err := collectDockerContainers()
+	if err == nil && len(containers) > 0 {
+		return containers, nil
+	}
+
+	// Try podman
+	containers, err = collectPodmanContainers()
+	if err == nil && len(containers) > 0 {
+		return containers, nil
+	}
+
+	return nil, nil
+}
+
+func collectDockerContainers() ([]ContainerMetrics, error) {
+	// Check if docker is available
+	cmd := exec.Command("docker", "ps", "-q")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(output) == 0 {
+		return nil, nil
+	}
+
+	// Get container stats
+	cmd = exec.Command("docker", "stats", "--no-stream", "--format", "{{json .}}")
+	output, err = cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var containers []ContainerMetrics
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		var stats struct {
+			ID        string `json:"ID"`
+			Name      string `json:"Name"`
+			CPUPerc   string `json:"CPUPerc"`
+			MemUsage  string `json:"MemUsage"`
+			MemPerc   string `json:"MemPerc"`
+			NetIO     string `json:"NetIO"`
+			BlockIO   string `json:"BlockIO"`
+			PIDs      string `json:"PIDs"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &stats); err != nil {
+			continue
+		}
+
+		c := ContainerMetrics{
+			ContainerID:   stats.ID,
+			ContainerName: strings.TrimPrefix(stats.Name, "/"),
+			Runtime:       "docker",
+			Status:        "running",
+		}
+
+		// Parse CPU percentage
+		cpuStr := strings.TrimSuffix(stats.CPUPerc, "%")
+		if cpu, err := parseFloat(cpuStr); err == nil {
+			c.CPUPercent = cpu
+		}
+
+		// Parse memory percentage
+		memPercStr := strings.TrimSuffix(stats.MemPerc, "%")
+		if memPerc, err := parseFloat(memPercStr); err == nil {
+			c.MemoryPercent = memPerc
+		}
+
+		containers = append(containers, c)
+	}
+
+	// Get more details with docker inspect
+	for i := range containers {
+		cmd := exec.Command("docker", "inspect", "--format", "{{json .}}", containers[i].ContainerID)
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		var inspect struct {
+			Config struct {
+				Image  string            `json:"Image"`
+				Labels map[string]string `json:"Labels"`
+			} `json:"Config"`
+			State struct {
+				Status     string `json:"Status"`
+				Health     *struct{ Status string } `json:"Health"`
+				StartedAt  string `json:"StartedAt"`
+				ExitCode   int16  `json:"ExitCode"`
+			} `json:"State"`
+		}
+
+		if err := json.Unmarshal(output, &inspect); err == nil {
+			containers[i].ImageName = inspect.Config.Image
+			containers[i].Status = inspect.State.Status
+			if inspect.State.Health != nil {
+				containers[i].Health = inspect.State.Health.Status
+			}
+			if labels, err := json.Marshal(inspect.Config.Labels); err == nil {
+				containers[i].Labels = string(labels)
+			}
+		}
+	}
+
+	return containers, nil
+}
+
+func collectPodmanContainers() ([]ContainerMetrics, error) {
+	cmd := exec.Command("podman", "ps", "-q")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(output) == 0 {
+		return nil, nil
+	}
+
+	// Similar to docker but with podman
+	cmd = exec.Command("podman", "stats", "--no-stream", "--format", "json")
+	output, err = cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var stats []struct {
+		ID      string  `json:"id"`
+		Name    string  `json:"name"`
+		CPU     float64 `json:"cpu_percent"`
+		MemPerc float64 `json:"mem_percent"`
+	}
+
+	if err := json.Unmarshal(output, &stats); err != nil {
+		return nil, err
+	}
+
+	containers := make([]ContainerMetrics, len(stats))
+	for i, s := range stats {
+		containers[i] = ContainerMetrics{
+			ContainerID:   s.ID[:12],
+			ContainerName: s.Name,
+			Runtime:       "podman",
+			Status:        "running",
+			CPUPercent:    s.CPU,
+			MemoryPercent: s.MemPerc,
+		}
+	}
+
+	return containers, nil
 }
 
 // =============================================================================
-// Types (unchanged for backward compatibility)
+// Helper Functions
 // =============================================================================
 
-// ServiceType represents the type of detected service
-type ServiceType string
-
-const (
-	ServiceTypeNginx      ServiceType = "nginx"
-	ServiceTypeApache     ServiceType = "apache"
-	ServiceTypeRedis      ServiceType = "redis"
-	ServiceTypePostgres   ServiceType = "postgres"
-	ServiceTypeMySQL      ServiceType = "mysql"
-	ServiceTypeMongoDB    ServiceType = "mongodb"
-	ServiceTypePythonApp  ServiceType = "python_app"
-	ServiceTypeNodeApp    ServiceType = "node_app"
-	ServiceTypeGoApp      ServiceType = "go_app"
-	ServiceTypeJavaApp    ServiceType = "java_app"
-	ServiceTypeDocker     ServiceType = "docker"
-	ServiceTypeKubernetes ServiceType = "kubernetes"
-	ServiceTypeUnknown    ServiceType = "unknown"
-)
-
-// ServiceInfo contains information about a detected service
-type ServiceInfo struct {
-	PID         int         `json:"pid"`
-	ServiceType ServiceType `json:"service_type"`
-	ServiceName string      `json:"service_name"`
-	Framework   string      `json:"framework"`
-	Port        int         `json:"port"`
-	Ports       []int       `json:"ports"`
-	Version     string      `json:"version"`
-	Command     string      `json:"command"`
-	CPUUsage    float64     `json:"cpu_usage"`
-	MemoryUsage float64     `json:"memory_usage"`
-	MemoryKB    int64       `json:"memory_kb"`
-	Status      string      `json:"status"`
-	User        string      `json:"user"`
-	StartTime   int64       `json:"start_time"`
-	Threads     int         `json:"threads"`
-	IsContainer bool        `json:"is_container"`
-	ContainerID string      `json:"container_id"`
-	RecentLogs  []string    `json:"recent_logs"`
-	LogSource   string      `json:"log_source"`
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
 
-// ProcessInfo contains detailed information about a running system process
-type ProcessInfo struct {
-	PID         int     `json:"pid"`
-	Name        string  `json:"name"`
-	CPUUsage    float64 `json:"cpu_usage"`
-	MemoryUsage float64 `json:"memory_usage"`
-	MemoryKB    int64   `json:"memory_kb"`
-	Command     string  `json:"command"`
-	User        string  `json:"user"`
-	Status      string  `json:"status"`
-	StartTime   int64   `json:"start_time"`
-	Threads     int     `json:"threads"`
-	VirtualMem  int64   `json:"virtual_mem"`
-	ResidentMem int64   `json:"resident_mem"`
-	TTY         string  `json:"tty"`
-	CPU         int     `json:"cpu"`
-	Priority    int     `json:"priority"`
-	Nice        int     `json:"nice"`
+func parseFloat(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	var f float64
+	_, err := fmt.Sscanf(s, "%f", &f)
+	return f, err
 }
 
-// ResourceUsage represents detailed resource information
-type ResourceUsage struct {
-	Total     int64   `json:"total"`
-	Used      int64   `json:"used"`
-	Free      int64   `json:"free"`
-	Available int64   `json:"available"`
-	Usage     float64 `json:"usage_percent"`
-}
+// =============================================================================
+// Legacy API (for backward compatibility with UI)
+// =============================================================================
 
-// Metrics contains comprehensive system monitoring data
+// Metrics contains system metrics for UI display
 type Metrics struct {
 	CPUUsage      float64 `json:"cpu_usage"`
 	DiskUsage     float64 `json:"disk_usage"`
@@ -469,428 +1966,180 @@ type Metrics struct {
 	MemoryDetails ResourceUsage `json:"memory_details"`
 	DiskDetails   ResourceUsage `json:"disk_details"`
 
-	TopProcesses   []ProcessInfo   `json:"top_processes"`
-	NetworkMetrics *NetworkMetrics `json:"network_metrics,omitempty"`
-	Services       []ServiceInfo   `json:"services,omitempty"`
+	TopProcesses   []ProcessInfo            `json:"top_processes"`
+	NetworkMetrics *NetworkMetrics          `json:"network_metrics,omitempty"`
+	Services       []ServiceInfo            `json:"services,omitempty"`
 }
 
-// =============================================================================
-// Metric Collection Functions (using gopsutil for local values)
-// =============================================================================
-
-// GetCPUUsage retrieves the current CPU usage percentage
-func GetCPUUsage() (float64, error) {
-	percent, err := cpu.Percent(time.Second, false)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get CPU usage: %w", err)
-	}
-
-	if len(percent) > 0 {
-		return percent[0], nil
-	}
-
-	return 0, fmt.Errorf("no CPU usage data available")
+// ResourceUsage for legacy API
+type ResourceUsage struct {
+	Total     int64   `json:"total"`
+	Used      int64   `json:"used"`
+	Free      int64   `json:"free"`
+	Available int64   `json:"available"`
+	Usage     float64 `json:"usage_percent"`
 }
 
-// GetDiskUsage returns disk usage percentage
-func GetDiskUsage() (float64, error) {
-	usage, err := disk.Usage("/")
+// GetMetrics returns metrics in legacy format for UI
+func GetMetrics() (*Metrics, error) {
+	all, err := CollectAllMetrics()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get disk usage: %w", err)
+		return nil, err
 	}
 
-	return usage.UsedPercent, nil
-}
-
-// GetMemoryUsage returns memory usage percentage
-func GetMemoryUsage() (float64, error) {
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get memory usage: %w", err)
+	m := &Metrics{
+		Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05"),
 	}
 
-	return vm.UsedPercent, nil
-}
+	if all.Summary != nil {
+		s := all.Summary
+		m.CPUUsage = s.CPUUsage
+		m.MemoryUsage = s.MemoryUsage
+		m.DiskUsage = s.DiskUsage
+		m.IOWait = s.CPUIOWait
+		m.IOPS = int64(s.DiskIOPSRead + s.DiskIOPSWrite)
 
-// GetHTTPSRequests returns number of HTTPS connections
-func GetHTTPSRequests() (int64, error) {
-	connections, err := net.Connections("tcp")
-	if err != nil {
-		return 0, fmt.Errorf("failed to get network connections: %w", err)
-	}
+		// Calculate HTTPS connections
+		if conns, err := net.Connections("tcp"); err == nil {
+			for _, c := range conns {
+				if c.Raddr.Port == 443 {
+					m.HTTPSRequests++
+				}
+			}
+		}
 
-	count := int64(0)
-	for _, conn := range connections {
-		if conn.Raddr.Port == 443 {
-			count++
+		m.CPUDetails = ResourceUsage{
+			Total: int64(s.CPUCores),
+			Usage: s.CPUUsage,
+		}
+
+		m.MemoryDetails = ResourceUsage{
+			Total:     int64(s.MemoryTotal / 1024),
+			Used:      int64(s.MemoryUsed / 1024),
+			Free:      int64(s.MemoryFree / 1024),
+			Available: int64(s.MemoryAvailable / 1024),
+			Usage:     s.MemoryUsage,
+		}
+
+		m.DiskDetails = ResourceUsage{
+			Total:     int64(s.DiskTotal / 1024),
+			Used:      int64(s.DiskUsed / 1024),
+			Free:      int64(s.DiskFree / 1024),
+			Available: int64(s.DiskFree / 1024),
+			Usage:     s.DiskUsage,
 		}
 	}
 
-	return count, nil
-}
-
-// GetIOPS returns cached Input/Output Operations Per Second
-func GetIOPS() (int64, error) {
-	iopsMutex.RLock()
-	iops := localIOPS
-	iopsMutex.RUnlock()
-
-	return iops, nil
-}
-
-// GetIOWait returns I/O Wait percentage
-func GetIOWait() (float64, error) {
-	if runtime.GOOS != "linux" {
-		return 0.0, nil
-	}
-
-	times, err := cpu.Times(false)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get CPU times: %w", err)
-	}
-
-	if len(times) == 0 {
-		return 0, fmt.Errorf("no CPU time data available")
-	}
-
-	cpuTime := times[0]
-
-	total := cpuTime.User +
-		cpuTime.System +
-		cpuTime.Idle +
-		cpuTime.Iowait +
-		cpuTime.Nice +
-		cpuTime.Irq +
-		cpuTime.Softirq +
-		cpuTime.Steal
-
-	if total == 0 {
-		return 0, nil
-	}
-
-	ioWaitPercent := (cpuTime.Iowait / total) * 100
-
-	return ioWaitPercent, nil
-}
-
-// GetOSName returns operating system name
-func GetOSName() (string, error) {
+	// OS Name
 	switch runtime.GOOS {
 	case "linux":
-		return "Linux", nil
+		m.OSName = "Linux"
 	case "darwin":
-		return "macOS", nil
+		m.OSName = "macOS"
 	default:
-		return runtime.GOOS, nil
-	}
-}
-
-// GetIPAddress returns system IP address
-func GetIPAddress() (string, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return "unknown", fmt.Errorf("failed to get network interfaces: %w", err)
+		m.OSName = runtime.GOOS
 	}
 
-	for _, iface := range interfaces {
-		for _, addr := range iface.Addrs {
-			if strings.Contains(addr.Addr, ".") && !strings.Contains(addr.Addr, "127.0.0.1") {
-				ip := strings.Split(addr.Addr, "/")[0]
-				return ip, nil
+	// IP Address
+	if interfaces, err := net.Interfaces(); err == nil {
+		for _, iface := range interfaces {
+			for _, addr := range iface.Addrs {
+				if strings.Contains(addr.Addr, ".") && !strings.Contains(addr.Addr, "127.0.0.1") {
+					m.IPAddress = strings.Split(addr.Addr, "/")[0]
+					break
+				}
+			}
+			if m.IPAddress != "" {
+				break
 			}
 		}
 	}
-
-	return "unknown", nil
-}
-
-// GetUptime returns system uptime
-func GetUptime() (string, error) {
-	uptime, err := host.Uptime()
-	if err != nil {
-		return "unknown", fmt.Errorf("failed to get uptime: %w", err)
+	if m.IPAddress == "" {
+		m.IPAddress = "unknown"
 	}
 
-	days := uptime / (24 * 3600)
-	hours := (uptime % (24 * 3600)) / 3600
-	minutes := (uptime % 3600) / 60
-
-	if days > 0 {
-		return fmt.Sprintf("%d days", days), nil
-	} else if hours > 0 {
-		return fmt.Sprintf("%d hours", hours), nil
+	// Uptime
+	if uptime, err := host.Uptime(); err == nil {
+		days := uptime / (24 * 3600)
+		hours := (uptime % (24 * 3600)) / 3600
+		minutes := (uptime % 3600) / 60
+		if days > 0 {
+			m.Uptime = fmt.Sprintf("%d days", days)
+		} else if hours > 0 {
+			m.Uptime = fmt.Sprintf("%d hours", hours)
+		} else {
+			m.Uptime = fmt.Sprintf("%d minutes", minutes)
+		}
 	} else {
-		return fmt.Sprintf("%d minutes", minutes), nil
-	}
-}
-
-// GetMetrics returns all system metrics
-func GetMetrics() (*Metrics, error) {
-	cpuUsage, err := GetCPUUsage()
-	if err != nil {
-		return nil, fmt.Errorf("CPU error: %w", err)
+		m.Uptime = "unknown"
 	}
 
-	diskUsage, err := GetDiskUsage()
-	if err != nil {
-		return nil, fmt.Errorf("disk error: %w", err)
+	m.TopProcesses = all.Processes
+	m.Services = all.Services
+
+	// Network metrics
+	if len(all.Networks) > 0 {
+		m.NetworkMetrics = convertToLegacyNetworkMetrics(all.Networks)
 	}
-
-	memoryUsage, err := GetMemoryUsage()
-	if err != nil {
-		return nil, fmt.Errorf("memory error: %w", err)
-	}
-
-	httpsRequests, _ := GetHTTPSRequests()
-	ioPS, _ := GetIOPS()
-	ioWait, _ := GetIOWait()
-	osName, _ := GetOSName()
-	ipAddress, _ := GetIPAddress()
-	uptime, _ := GetUptime()
-
-	cpuDetails, _ := GetDetailedCPUUsage()
-	memoryDetails, _ := GetDetailedMemoryUsage()
-	diskDetails, _ := GetDetailedDiskUsage()
-
-	topProcesses, _ := GetTopProcesses(30)
-	networkMetrics, _ := GetNetworkMetrics()
-	services, _ := GetServices()
-
-	m := &Metrics{
-		CPUUsage:      cpuUsage,
-		DiskUsage:     diskUsage,
-		MemoryUsage:   memoryUsage,
-		HTTPSRequests: httpsRequests,
-		IOPS:          ioPS,
-		IOWait:        ioWait,
-		OSName:        osName,
-		IPAddress:     ipAddress,
-		Uptime:        uptime,
-		Timestamp:     time.Now().UTC().Format("2006-01-02 15:04:05"),
-
-		CPUDetails:    cpuDetails,
-		MemoryDetails: memoryDetails,
-		DiskDetails:   diskDetails,
-
-		TopProcesses:   topProcesses,
-		NetworkMetrics: networkMetrics,
-		Services:       services,
-	}
-
-	// Update cached values for OTel export
-	UpdateCachedMetrics(m)
 
 	return m, nil
 }
 
-// GetDetailedCPUUsage returns detailed CPU information
-func GetDetailedCPUUsage() (ResourceUsage, error) {
-	var usage ResourceUsage
-
-	cores, err := cpu.Counts(false)
-	if err != nil {
-		return usage, fmt.Errorf("failed to get CPU cores: %w", err)
-	}
-	usage.Total = int64(cores)
-
-	if cpuPercent, err := GetCPUUsage(); err == nil {
-		usage.Usage = cpuPercent
-		usage.Used = int64(cpuPercent * float64(usage.Total) / 100)
-		usage.Free = usage.Total - usage.Used
-		usage.Available = usage.Total
+func convertToLegacyNetworkMetrics(networks []NetworkInterfaceMetrics) *NetworkMetrics {
+	nm := &NetworkMetrics{
+		Interfaces: make([]InterfaceInfo, 0, len(networks)),
 	}
 
-	return usage, nil
+	for _, n := range networks {
+		nm.TotalBytesIn += n.BytesRecv
+		nm.TotalBytesOut += n.BytesSent
+		nm.TotalPacketsIn += n.PacketsRecv
+		nm.TotalPacketsOut += n.PacketsSent
+		nm.TotalErrorsIn += int64(n.ErrorsIn)
+		nm.TotalErrorsOut += int64(n.ErrorsOut)
+
+		iface := InterfaceInfo{
+			Name:       n.Interface,
+			BytesIn:    n.BytesRecv,
+			BytesOut:   n.BytesSent,
+			PacketsIn:  n.PacketsRecv,
+			PacketsOut: n.PacketsSent,
+			ErrorsIn:   int64(n.ErrorsIn),
+			ErrorsOut:  int64(n.ErrorsOut),
+			IsUp:       n.IsUp,
+			MTU:        int(n.MTU),
+			Speed:      int64(n.SpeedMbps),
+		}
+		if len(n.IPAddresses) > 0 {
+			iface.IPAddresses = n.IPAddresses
+		}
+		nm.Interfaces = append(nm.Interfaces, iface)
+	}
+
+	return nm
 }
 
-// GetDetailedMemoryUsage returns detailed memory information
-func GetDetailedMemoryUsage() (ResourceUsage, error) {
-	var usage ResourceUsage
-
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		return usage, fmt.Errorf("failed to get memory usage: %w", err)
-	}
-
-	usage.Total = int64(vm.Total / 1024)
-	usage.Used = int64(vm.Used / 1024)
-	usage.Free = int64(vm.Free / 1024)
-	usage.Available = int64(vm.Available / 1024)
-	usage.Usage = vm.UsedPercent
-
-	return usage, nil
-}
-
-// GetDetailedDiskUsage returns detailed disk information
-func GetDetailedDiskUsage() (ResourceUsage, error) {
-	var usage ResourceUsage
-
-	diskUsage, err := disk.Usage("/")
-	if err != nil {
-		return usage, fmt.Errorf("failed to get disk usage: %w", err)
-	}
-
-	usage.Total = int64(diskUsage.Total / 1024)
-	usage.Used = int64(diskUsage.Used / 1024)
-	usage.Available = int64(diskUsage.Free / 1024)
-	usage.Free = int64(diskUsage.Free / 1024)
-	usage.Usage = diskUsage.UsedPercent
-
-	return usage, nil
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// GetTopProcesses returns top processes by resource usage
-func GetTopProcesses(limit int) ([]ProcessInfo, error) {
-	var processes []ProcessInfo
-
-	allProcesses, err := process.Processes()
-	if err != nil {
-		return processes, fmt.Errorf("failed to get processes: %w", err)
-	}
-
-	processes = make([]ProcessInfo, 0, min(len(allProcesses), limit*3))
-
-	for _, proc := range allProcesses {
-		name, _ := proc.Name()
-		cpuPercent, _ := proc.CPUPercent()
-		memoryPercent, _ := proc.MemoryPercent()
-		memoryInfo, _ := proc.MemoryInfo()
-
-		status, _ := proc.Status()
-		createTime, _ := proc.CreateTime()
-		numThreads, _ := proc.NumThreads()
-
-		username := "unknown"
-		if uids, err := proc.Uids(); err == nil && len(uids) > 0 {
-			username = fmt.Sprintf("%d", uids[0])
-		}
-
-		terminal, _ := proc.Terminal()
-
-		if cpuPercent < 0.1 && memoryPercent < 0.1 {
-			continue
-		}
-
-		if name == "catops" || strings.HasPrefix(name, "catops-") {
-			continue
-		}
-
-		command := name
-		if cmdline, err := proc.Cmdline(); err == nil && cmdline != "" {
-			command = cmdline
-		}
-
-		if len(command) > 200 {
-			command = command[:197] + "..."
-		}
-
-		var memoryKB int64
-		if memoryInfo != nil {
-			memoryKB = int64(memoryInfo.RSS / 1024)
-		}
-
-		var virtualMem int64
-		if memoryInfo != nil {
-			virtualMem = int64(memoryInfo.VMS / 1024)
-		}
-
-		statusChar := "R"
-		if len(status) > 0 {
-			statusChar = string(status[0])
-		}
-
-		startTime := createTime / 1000
-		threadCount := int(numThreads)
-
-		p := ProcessInfo{
-			PID:         int(proc.Pid),
-			Name:        name,
-			CPUUsage:    cpuPercent,
-			MemoryUsage: float64(memoryPercent),
-			MemoryKB:    memoryKB,
-			Command:     command,
-			User:        username,
-			Status:      statusChar,
-			StartTime:   startTime,
-			Priority:    20,
-			Nice:        0,
-			VirtualMem:  virtualMem,
-			ResidentMem: memoryKB,
-			TTY:         terminal,
-			CPU:         0,
-			Threads:     threadCount,
-		}
-
-		processes = append(processes, p)
-	}
-
-	sort.Slice(processes, func(i, j int) bool {
-		return processes[i].CPUUsage > processes[j].CPUUsage
-	})
-
-	if len(processes) > limit {
-		return processes[:limit], nil
-	}
-
-	return processes, nil
-}
+// =============================================================================
+// Server Specs (for registration)
+// =============================================================================
 
 // GetServerSpecs returns server specifications for registration
 func GetServerSpecs() (map[string]interface{}, error) {
 	specs := make(map[string]interface{})
 
-	cpuCores, err := GetCPUCores()
-	if err != nil {
-		specs["cpu_cores"] = 0
-	} else {
-		specs["cpu_cores"] = cpuCores
-	}
+	specs["cpu_cores"] = runtime.NumCPU()
 
-	totalMemory, err := GetTotalMemory()
-	if err != nil {
+	if vm, err := mem.VirtualMemory(); err == nil {
+		specs["total_memory"] = int64(vm.Total / (1024 * 1024 * 1024))
+	} else {
 		specs["total_memory"] = 0
-	} else {
-		specs["total_memory"] = totalMemory
 	}
 
-	totalStorage, err := GetTotalStorage()
-	if err != nil {
-		specs["total_storage"] = 0
+	if usage, err := disk.Usage("/"); err == nil {
+		specs["total_storage"] = int64(usage.Total / (1024 * 1024 * 1024))
 	} else {
-		specs["total_storage"] = totalStorage
+		specs["total_storage"] = 0
 	}
 
 	return specs, nil
-}
-
-// GetCPUCores returns the number of CPU cores
-func GetCPUCores() (int64, error) {
-	return int64(runtime.NumCPU()), nil
-}
-
-// GetTotalMemory returns total memory in GB
-func GetTotalMemory() (int64, error) {
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get total memory: %w", err)
-	}
-
-	return int64(vm.Total / (1024 * 1024 * 1024)), nil
-}
-
-// GetTotalStorage returns total storage in GB
-func GetTotalStorage() (int64, error) {
-	usage, err := disk.Usage("/")
-	if err != nil {
-		return 0, fmt.Errorf("failed to get total storage: %w", err)
-	}
-
-	return int64(usage.Total / (1024 * 1024 * 1024)), nil
 }

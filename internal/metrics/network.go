@@ -32,8 +32,32 @@ type NetworkMetrics struct {
 	ConnectionsFinWait2    int `json:"connections_fin_wait2"`
 	ConnectionsListen      int `json:"connections_listen"`
 
-	TotalConnections int                   `json:"total_connections"`
+	TotalConnections int                 `json:"total_connections"`
 	TopConnections   []NetworkConnection `json:"top_connections"`
+
+	// Aggregated stats for legacy API
+	TotalBytesIn   uint64          `json:"total_bytes_in"`
+	TotalBytesOut  uint64          `json:"total_bytes_out"`
+	TotalPacketsIn  uint64         `json:"total_packets_in"`
+	TotalPacketsOut uint64         `json:"total_packets_out"`
+	TotalErrorsIn   int64          `json:"total_errors_in"`
+	TotalErrorsOut  int64          `json:"total_errors_out"`
+	Interfaces      []InterfaceInfo `json:"interfaces"`
+}
+
+// InterfaceInfo represents network interface info for legacy API
+type InterfaceInfo struct {
+	Name        string   `json:"name"`
+	BytesIn     uint64   `json:"bytes_in"`
+	BytesOut    uint64   `json:"bytes_out"`
+	PacketsIn   uint64   `json:"packets_in"`
+	PacketsOut  uint64   `json:"packets_out"`
+	ErrorsIn    int64    `json:"errors_in"`
+	ErrorsOut   int64    `json:"errors_out"`
+	IsUp        bool     `json:"is_up"`
+	MTU         int      `json:"mtu"`
+	Speed       int64    `json:"speed"`
+	IPAddresses []string `json:"ip_addresses"`
 }
 
 // NetworkConnection represents a single network connection

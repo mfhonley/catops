@@ -66,13 +66,6 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 		memoryPercent, _ := proc.MemoryPercent()
 		memoryInfo, _ := proc.MemoryInfo()
 		status, _ := proc.Status()
-		createTime, _ := proc.CreateTime()
-		numThreads, _ := proc.NumThreads()
-
-		username := "unknown"
-		if uids, err := proc.Uids(); err == nil && len(uids) > 0 {
-			username = fmt.Sprintf("%d", uids[0])
-		}
 
 		var memoryKB int64
 		if memoryInfo != nil {
@@ -102,23 +95,30 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 			cmdline = cmdline[:197] + "..."
 		}
 
+		// Convert ports to uint16
+		portsU16 := make([]uint16, len(ports))
+		for i, p := range ports {
+			portsU16[i] = uint16(p)
+		}
+
 		service := ServiceInfo{
-			PID:         int(proc.Pid),
-			ServiceType: serviceType,
-			ServiceName: serviceName,
-			Framework:   framework,
-			Port:        primaryPort,
-			Ports:       ports,
-			Command:     cmdline,
-			CPUUsage:    cpuPercent,
-			MemoryUsage: float64(memoryPercent),
-			MemoryKB:    memoryKB,
-			Status:      statusChar,
-			User:        username,
-			StartTime:   createTime / 1000,
-			Threads:     int(numThreads),
-			IsContainer: isContainer,
-			ContainerID: containerID,
+			ServiceType:   serviceType,
+			ServiceName:   serviceName,
+			PID:           int(proc.Pid),
+			PIDs:          []int{int(proc.Pid)},
+			Ports:         portsU16,
+			Protocol:      "tcp",
+			BindAddress:   "0.0.0.0",
+			CPUPercent:    cpuPercent,
+			MemoryPercent: float64(memoryPercent),
+			MemoryBytes:   uint64(memoryKB * 1024),
+			Version:       "",
+			ConfigPath:    "",
+			Status:        statusChar,
+			IsContainer:   isContainer,
+			ContainerID:   containerID,
+			ContainerName: "",
+			HealthStatus:  "",
 		}
 
 		services = append(services, service)

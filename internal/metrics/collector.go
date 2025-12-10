@@ -366,19 +366,16 @@ func StartOTelCollector(cfg *OTelConfig) error {
 		hostname, _ = os.Hostname()
 	}
 
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName("catops-cli"),
-			semconv.ServiceVersion("1.0.0"),
-			semconv.HostName(hostname),
-			attribute.String("catops.server.id", cfg.ServerID),
-		),
+	// Create resource without merging with Default() to avoid schema URL conflicts
+	// (resource.Default() uses schema v1.26.0, semconv uses v1.24.0)
+	res := resource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceName("catops-cli"),
+		semconv.ServiceVersion("1.0.0"),
+		semconv.HostName(hostname),
+		attribute.String("catops.server.id", cfg.ServerID),
+		attribute.String("os.type", runtime.GOOS),
 	)
-	if err != nil {
-		return fmt.Errorf("failed to create resource: %w", err)
-	}
 
 	interval := cfg.CollectionInterval
 	if interval == 0 {

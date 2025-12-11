@@ -7,8 +7,9 @@ const (
 
 	// OpenTelemetry Protocol (OTLP) endpoints
 	// Metrics are now sent via OTLP instead of REST API
-	OTLP_ENDPOINT = "api.catops.app" // OTLP HTTP endpoint host (SDK adds /api/v1/metrics)
-	OTLP_PATH     = "/api/v1/metrics" // Custom path for CatOps OTLP receiver
+	OTLP_ENDPOINT   = "api.catops.app"  // OTLP HTTP endpoint host (SDK adds /api/v1/metrics)
+	OTLP_PATH       = "/api/v1/metrics" // Custom path for CatOps OTLP receiver
+	OTLP_LOGS_PATH  = "/api/v1/logs"    // Custom path for CatOps OTLP logs receiver
 
 	// Server management endpoints
 	SERVERS_URL   = "https://api.catops.app/api/cli/servers/change-owner"

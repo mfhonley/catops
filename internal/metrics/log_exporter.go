@@ -931,14 +931,17 @@ func (le *LogExporter) toOTLPRequest(logs []LogEntry) OTLPLogsRequest {
 			SeverityText:   string(log.Level),
 			Body:           OTLPAnyValue{StringValue: log.Message},
 			Attributes: []OTLPKeyValue{
-				{Key: "source", Value: OTLPAnyValue{StringValue: log.Source}},
-				{Key: "source_path", Value: OTLPAnyValue{StringValue: log.SourcePath}},
-				{Key: "service", Value: OTLPAnyValue{StringValue: log.Service}},
-				{Key: "container_id", Value: OTLPAnyValue{StringValue: log.ContainerID}},
-				{Key: "pid", Value: OTLPAnyValue{StringValue: strconv.Itoa(log.PID)}},
-				{Key: "facility", Value: OTLPAnyValue{StringValue: log.Facility}},
-				{Key: "app_name", Value: OTLPAnyValue{StringValue: log.AppName}},
-				{Key: "message_hash", Value: OTLPAnyValue{StringValue: log.MessageHash}},
+				// Standard OTLP semantic conventions
+				{Key: "log.source", Value: OTLPAnyValue{StringValue: log.Source}},
+				{Key: "log.file.path", Value: OTLPAnyValue{StringValue: log.SourcePath}},
+				{Key: "service.name", Value: OTLPAnyValue{StringValue: log.Service}},
+				{Key: "container.id", Value: OTLPAnyValue{StringValue: log.ContainerID}},
+				{Key: "process.pid", Value: OTLPAnyValue{StringValue: strconv.Itoa(log.PID)}},
+				{Key: "syslog.facility", Value: OTLPAnyValue{StringValue: log.Facility}},
+				{Key: "syslog.appname", Value: OTLPAnyValue{StringValue: log.AppName}},
+				{Key: "host.name", Value: OTLPAnyValue{StringValue: log.Hostname}},
+				// CatOps specific
+				{Key: "catops.message_hash", Value: OTLPAnyValue{StringValue: log.MessageHash}},
 			},
 		}
 	}

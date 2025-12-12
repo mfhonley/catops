@@ -1301,11 +1301,8 @@ func collectSystemSummary() (*SystemSummary, error) {
 		CPUCores: uint16(runtime.NumCPU()),
 	}
 
-	// CPU
-	if cpuPercent, err := cpu.Percent(time.Second, false); err == nil && len(cpuPercent) > 0 {
-		s.CPUUsage = cpuPercent[0]
-	}
-
+	// CPU - calculate from cpu.Times() delta for accurate usage
+	// Note: cpu.Percent() can return incorrect values on some systems
 	if cpuTimes, err := cpu.Times(false); err == nil && len(cpuTimes) > 0 {
 		t := cpuTimes[0]
 		total := t.User + t.System + t.Idle + t.Iowait + t.Nice + t.Irq + t.Softirq + t.Steal
@@ -1315,6 +1312,8 @@ func collectSystemSummary() (*SystemSummary, error) {
 			s.CPUIdle = (t.Idle / total) * 100
 			s.CPUIOWait = (t.Iowait / total) * 100
 			s.CPUSteal = (t.Steal / total) * 100
+			// Calculate CPU usage from idle (more reliable than cpu.Percent())
+			s.CPUUsage = 100.0 - s.CPUIdle
 		}
 	}
 

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	constants "catops/config"
+	"catops/internal/encoding"
 )
 
 // =============================================================================
@@ -860,16 +861,16 @@ func (le *LogExporter) sendLogs(logs []LogEntry) error {
 	// Convert to OTLP format
 	request := le.toOTLPRequest(logs)
 
-	// Serialize to JSON
-	jsonData, err := json.Marshal(request)
+	// Serialize to CBOR (more compact than JSON)
+	cborData, err := encoding.MarshalCBOR(request)
 	if err != nil {
-		return fmt.Errorf("marshal error: %w", err)
+		return fmt.Errorf("cbor marshal error: %w", err)
 	}
 
 	// Compress with gzip
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(jsonData); err != nil {
+	if _, err := gz.Write(cborData); err != nil {
 		gz.Close()
 		return fmt.Errorf("gzip error: %w", err)
 	}
@@ -890,7 +891,7 @@ func (le *LogExporter) sendLogs(logs []LogEntry) error {
 			continue
 		}
 
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", "application/cbor")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("Authorization", "Bearer "+le.authToken)
 		req.Header.Set("X-CatOps-Server-ID", le.serverID)

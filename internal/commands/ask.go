@@ -13,6 +13,7 @@ import (
 
 	constants "catops/config"
 	"catops/internal/config"
+	"catops/internal/encoding"
 	"catops/internal/metrics"
 	"catops/internal/ui"
 )
@@ -113,7 +114,8 @@ func runAsk(question string) {
 		Timestamp: time.Now().Unix(),
 	}
 
-	jsonData, err := json.Marshal(payload)
+	// Encode to CBOR for smaller payload
+	cborData, err := encoding.MarshalCBOR(payload)
 	if err != nil {
 		ui.PrintStatus("error", "Failed to prepare request")
 		showOfflineHelp(question)
@@ -122,13 +124,13 @@ func runAsk(question string) {
 
 	// Send to backend
 	url := constants.CATOPS_API_URL + "/api/ai/ask-cli"
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(cborData))
 	if err != nil {
 		showOfflineHelp(question)
 		return
 	}
 
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/cbor")
 	req.Header.Set("User-Agent", constants.HEADER_USER_AGENT)
 
 	// Show loading indicator

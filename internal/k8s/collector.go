@@ -1,13 +1,13 @@
 package k8s
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
+	"catops/internal/encoding"
 	"catops/internal/logger"
 	"catops/internal/metrics"
 )
@@ -323,25 +323,18 @@ func (c *Collector) shouldCollectClusterMetrics() bool {
 
 // sendMetrics отправляет метрики в backend
 func (c *Collector) sendMetrics(metrics *K8sMetrics) error {
-	// Сериализуем в JSON
-	jsonData, err := json.Marshal(metrics)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metrics: %w", err)
-	}
-
 	url := fmt.Sprintf("%s/api/cli/kubernetes/metrics", c.backendURL)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+
+	// Prepare headers
+	headers := map[string]string{
+		"User-Agent": "CatOps-CLI/1.0.0",
+		"X-Platform": "linux",
+		"X-Version":  c.version,
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "CatOps-CLI/1.0.0")
-	req.Header.Set("X-Platform", "linux")
-	req.Header.Set("X-Version", c.version)
-
+	// Send CBOR-encoded request
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := encoding.SendCBORRequest(client, url, metrics, headers)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
 	}

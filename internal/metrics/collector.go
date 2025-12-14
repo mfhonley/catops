@@ -31,7 +31,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
-	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/load"
@@ -1301,20 +1300,15 @@ func collectSystemSummary() (*SystemSummary, error) {
 		CPUCores: uint16(runtime.NumCPU()),
 	}
 
-	// CPU - calculate from cpu.Times() delta for accurate usage
-	// Note: cpu.Percent() can return incorrect values on some systems
-	if cpuTimes, err := cpu.Times(false); err == nil && len(cpuTimes) > 0 {
-		t := cpuTimes[0]
-		total := t.User + t.System + t.Idle + t.Iowait + t.Nice + t.Irq + t.Softirq + t.Steal
-		if total > 0 {
-			s.CPUUser = (t.User / total) * 100
-			s.CPUSystem = (t.System / total) * 100
-			s.CPUIdle = (t.Idle / total) * 100
-			s.CPUIOWait = (t.Iowait / total) * 100
-			s.CPUSteal = (t.Steal / total) * 100
-			// Calculate CPU usage from idle (more reliable than cpu.Percent())
-			s.CPUUsage = 100.0 - s.CPUIdle
-		}
+	// CPU - use delta-based calculation for accurate real-time usage
+	// This is non-blocking and returns instant results (unlike cpu.Percent with sleep)
+	if cpuMetrics, err := GetCPUMetrics(); err == nil {
+		s.CPUUsage = cpuMetrics.Total
+		s.CPUUser = cpuMetrics.User
+		s.CPUSystem = cpuMetrics.System
+		s.CPUIdle = cpuMetrics.Idle
+		s.CPUIOWait = cpuMetrics.Iowait
+		s.CPUSteal = cpuMetrics.Steal
 	}
 
 	// Load
@@ -1438,44 +1432,26 @@ func collectSystemSummary() (*SystemSummary, error) {
 }
 
 func collectCPUCores() ([]CPUCoreMetrics, error) {
-	cpuTimes, err := cpu.Times(true) // per-core
+	// Use delta-based calculation for accurate real-time per-core CPU usage
+	// This is non-blocking and returns instant results
+	perCoreMetrics, err := GetPerCoreCPUDetailed()
 	if err != nil {
 		return nil, err
 	}
 
-	cpuPercent, err := cpu.Percent(0, true) // per-core
-	if err != nil {
-		// Try to calculate from times
-		cpuPercent = make([]float64, len(cpuTimes))
-	}
+	cores := make([]CPUCoreMetrics, len(perCoreMetrics))
 
-	cores := make([]CPUCoreMetrics, len(cpuTimes))
-
-	for i, t := range cpuTimes {
-		total := t.User + t.System + t.Idle + t.Iowait + t.Nice + t.Irq + t.Softirq + t.Steal + t.Guest
-
-		var usage float64
-		if i < len(cpuPercent) {
-			usage = cpuPercent[i]
-		} else if total > 0 {
-			usage = 100 - (t.Idle/total)*100
-		}
-
+	for i, m := range perCoreMetrics {
 		cores[i] = CPUCoreMetrics{
-			CoreID: i,
-			Usage:  usage,
-		}
-
-		if total > 0 {
-			cores[i].User = (t.User / total) * 100
-			cores[i].System = (t.System / total) * 100
-			cores[i].Idle = (t.Idle / total) * 100
-			cores[i].IOWait = (t.Iowait / total) * 100
-			cores[i].IRQ = (t.Irq / total) * 100
-			cores[i].SoftIRQ = (t.Softirq / total) * 100
-			cores[i].Steal = (t.Steal / total) * 100
-			cores[i].Guest = (t.Guest / total) * 100
-			cores[i].Nice = (t.Nice / total) * 100
+			CoreID:  i,
+			Usage:   m.Total,
+			User:    m.User,
+			System:  m.System,
+			Idle:    m.Idle,
+			IOWait:  m.Iowait,
+			Steal:   m.Steal,
+			// Note: IRQ, SoftIRQ, Guest, Nice not available in simplified CPUMetrics
+			// These are included in System/User time
 		}
 	}
 

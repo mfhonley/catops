@@ -318,6 +318,11 @@ var (
 	prevDiskStats    map[string]disk.IOCountersStat
 	prevStatsTime    time.Time
 	prevStatsMu      sync.RWMutex
+
+	// Delta tracking - для оптимизации отправки метрик
+	lastSentMetrics *AllMetrics
+	lastSentTime    time.Time
+	deltaTrackingMu sync.RWMutex
 )
 
 // OTelConfig holds configuration for OpenTelemetry exporter
@@ -496,7 +501,7 @@ func registerSystemSummaryMetrics() error {
 			o.Observe(s.CPUSystem, metric.WithAttributes(attribute.String("type", "system")))
 			o.Observe(s.CPUIdle, metric.WithAttributes(attribute.String("type", "idle")))
 			o.Observe(s.CPUIOWait, metric.WithAttributes(attribute.String("type", "iowait")))
-			o.Observe(s.CPUSteal, metric.WithAttributes(attribute.String("type", "steal")))
+			// Removed: cpu_steal - rarely used, only relevant in virtualization environments
 			return nil
 		}),
 	)
@@ -540,7 +545,7 @@ func registerSystemSummaryMetrics() error {
 			s := m.Summary
 			o.Observe(int64(s.MemoryTotal), metric.WithAttributes(attribute.String("type", "total")))
 			o.Observe(int64(s.MemoryUsed), metric.WithAttributes(attribute.String("type", "used")))
-			o.Observe(int64(s.MemoryFree), metric.WithAttributes(attribute.String("type", "free")))
+			// Removed: memory_free - duplicate, can be calculated as (total - used)
 			o.Observe(int64(s.MemoryAvailable), metric.WithAttributes(attribute.String("type", "available")))
 			o.Observe(int64(s.MemoryCached), metric.WithAttributes(attribute.String("type", "cached")))
 			o.Observe(int64(s.MemoryBuffers), metric.WithAttributes(attribute.String("type", "buffers")))
@@ -606,7 +611,7 @@ func registerSystemSummaryMetrics() error {
 			s := m.Summary
 			o.Observe(int64(s.DiskTotal), metric.WithAttributes(attribute.String("type", "total")))
 			o.Observe(int64(s.DiskUsed), metric.WithAttributes(attribute.String("type", "used")))
-			o.Observe(int64(s.DiskFree), metric.WithAttributes(attribute.String("type", "free")))
+			// Removed: disk_free - duplicate, can be calculated as (total - used)
 			return nil
 		}),
 	)
@@ -690,7 +695,7 @@ func registerSystemSummaryMetrics() error {
 			o.Observe(int64(s.ProcessesTotal), metric.WithAttributes(attribute.String("state", "total")))
 			o.Observe(int64(s.ProcessesRunning), metric.WithAttributes(attribute.String("state", "running")))
 			o.Observe(int64(s.ProcessesSleeping), metric.WithAttributes(attribute.String("state", "sleeping")))
-			o.Observe(int64(s.ProcessesZombie), metric.WithAttributes(attribute.String("state", "zombie")))
+			// Removed: processes_zombie - rarely > 0, not useful for monitoring
 			return nil
 		}),
 	)
@@ -1179,6 +1184,46 @@ func detectLogLevel(line string) string {
 // =============================================================================
 
 // CollectAllMetrics collects all system metrics and updates the cache
+// shouldUpdateMetrics проверяет нужно ли собирать и отправлять новые метрики
+// Возвращает true если:
+// - Это первый сбор метрик
+// - Прошло больше 60 секунд с последней отправки
+// - CPU, Memory или Disk изменились больше чем на 1%
+func shouldUpdateMetrics(current *AllMetrics) bool {
+	deltaTrackingMu.RLock()
+	defer deltaTrackingMu.RUnlock()
+
+	// Первый сбор - всегда отправляем
+	if lastSentMetrics == nil {
+		return true
+	}
+
+	// Принудительная отправка каждые 60 секунд (даже если нет изменений)
+	if time.Since(lastSentTime) > 60*time.Second {
+		return true
+	}
+
+	// Проверяем изменения в ключевых метриках (> 1%)
+	if current.Summary != nil && lastSentMetrics.Summary != nil {
+		cpuDelta := absFloat64(current.Summary.CPUUsage - lastSentMetrics.Summary.CPUUsage)
+		memDelta := absFloat64(current.Summary.MemoryUsage - lastSentMetrics.Summary.MemoryUsage)
+		diskDelta := absFloat64(current.Summary.DiskUsage - lastSentMetrics.Summary.DiskUsage)
+
+		// Отправляем если любая метрика изменилась больше чем на 1%
+		return cpuDelta > 1.0 || memDelta > 1.0 || diskDelta > 1.0
+	}
+
+	return false
+}
+
+// absFloat64 returns absolute value of float64
+func absFloat64(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
 func CollectAllMetrics() (*AllMetrics, error) {
 	m := &AllMetrics{
 		Timestamp: time.Now().UTC(),
@@ -1283,10 +1328,38 @@ func CollectAllMetrics() (*AllMetrics, error) {
 
 	wg.Wait()
 
-	// Update cache
-	cacheMu.Lock()
-	cachedMetrics = m
-	cacheMu.Unlock()
+	// Delta tracking: Проверяем нужно ли обновлять кэш
+	shouldUpdate := shouldUpdateMetrics(m)
+
+	if shouldUpdate {
+		// Обновляем кэш только если есть значительные изменения
+		cacheMu.Lock()
+		cachedMetrics = m
+		cacheMu.Unlock()
+
+		// Сохраняем как последние отправленные метрики
+		deltaTrackingMu.Lock()
+		lastSentMetrics = m
+		lastSentTime = time.Now()
+		deltaTrackingMu.Unlock()
+
+		// Debug: для отладки можно включить через env CATOPS_DEBUG_DELTA=1
+		if os.Getenv("CATOPS_DEBUG_DELTA") == "1" {
+			fmt.Printf("[Delta Tracking] Sending metrics (CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%)\n",
+				m.Summary.CPUUsage, m.Summary.MemoryUsage, m.Summary.DiskUsage)
+		}
+	} else {
+		// Нет значительных изменений - возвращаем старые метрики из кэша
+		// Это предотвратит отправку данных в OpenTelemetry
+		cacheMu.RLock()
+		m = cachedMetrics
+		cacheMu.RUnlock()
+
+		// Debug: для отладки можно включить через env CATOPS_DEBUG_DELTA=1
+		if os.Getenv("CATOPS_DEBUG_DELTA") == "1" {
+			fmt.Printf("[Delta Tracking] Skipping send - no significant changes\n")
+		}
+	}
 
 	if len(errs) > 0 {
 		return m, errs[0]

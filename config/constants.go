@@ -46,7 +46,7 @@ const (
 
 // Default monitoring configuration
 const (
-	DEFAULT_COLLECTION_INTERVAL = 15 // seconds
+	DEFAULT_COLLECTION_INTERVAL = 30 // seconds (optimized from 15 for better resource usage)
 )
 
 // File paths

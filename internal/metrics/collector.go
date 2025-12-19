@@ -690,6 +690,35 @@ func registerSystemSummaryMetrics() error {
 		return err
 	}
 
+	// Network connection states
+	_, err = meter.Int64ObservableGauge(
+		"catops.system.network.connections",
+		metric.WithDescription("Network connection states"),
+		metric.WithUnit("{connections}"),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			cacheMu.RLock()
+			m := cachedMetrics
+			cacheMu.RUnlock()
+			if m == nil || m.Summary == nil {
+				return nil
+			}
+			s := m.Summary
+			o.Observe(int64(s.NetConnections), metric.WithAttributes(attribute.String("state", "total")))
+			o.Observe(int64(s.NetConnectionsEstablished), metric.WithAttributes(attribute.String("state", "established")))
+			o.Observe(int64(s.NetConnectionsTimeWait), metric.WithAttributes(attribute.String("state", "time_wait")))
+			o.Observe(int64(s.NetConnectionsCloseWait), metric.WithAttributes(attribute.String("state", "close_wait")))
+			o.Observe(int64(s.NetConnectionsListen), metric.WithAttributes(attribute.String("state", "listen")))
+			o.Observe(int64(s.NetConnectionsSynSent), metric.WithAttributes(attribute.String("state", "syn_sent")))
+			o.Observe(int64(s.NetConnectionsSynRecv), metric.WithAttributes(attribute.String("state", "syn_recv")))
+			o.Observe(int64(s.NetConnectionsFinWait1), metric.WithAttributes(attribute.String("state", "fin_wait1")))
+			o.Observe(int64(s.NetConnectionsFinWait2), metric.WithAttributes(attribute.String("state", "fin_wait2")))
+			return nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
 	_, err = meter.Int64ObservableGauge(
 		"catops.system.processes",
 		metric.WithDescription("System process counts"),

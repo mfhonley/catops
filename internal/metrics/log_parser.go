@@ -73,6 +73,11 @@ func (p *LogParser) ParseLogLine(line string) *ParsedLogEntry {
 		return entry
 	}
 
+	// Try Docker daemon / logrus format (time="..." level="..." msg="...")
+	if p.tryParseDockerLogrus(line, entry) {
+		return entry
+	}
+
 	// Try logfmt (key=value format)
 	if p.tryParseLogfmt(line, entry) {
 		return entry
@@ -220,6 +225,77 @@ func (p *LogParser) tryParseJSON(line string, entry *ParsedLogEntry) bool {
 	}
 
 	return true
+}
+
+// tryParseDockerLogrus attempts to parse Docker daemon / logrus format
+// Example: time="2025-12-14T18:46:41.577890076Z" level=error msg="copy stream failed" error="reading from a closed fifo" stream=stderr spanID=abc traceID=xyz
+func (p *LogParser) tryParseDockerLogrus(line string, entry *ParsedLogEntry) bool {
+	// Must have time= or level= or msg= to be considered logrus format
+	if !strings.Contains(line, "time=") && !strings.Contains(line, "level=") && !strings.Contains(line, "msg=") {
+		return false
+	}
+
+	// Parse key=value or key="value" pairs
+	pattern := regexp.MustCompile(`(\w+)=(\"([^\"]*)\"|([^\s]+))`)
+	matches := pattern.FindAllStringSubmatch(line, -1)
+
+	if len(matches) < 1 {
+		return false
+	}
+
+	data := make(map[string]string)
+	for _, match := range matches {
+		key := match[1]
+		value := match[3] // quoted value
+		if value == "" {
+			value = match[4] // unquoted value
+		}
+		data[key] = value
+	}
+
+	// Extract timestamp
+	if timestamp, ok := data["time"]; ok {
+		// Try RFC3339 format first
+		if t, err := time.Parse(time.RFC3339Nano, timestamp); err == nil {
+			entry.Timestamp = t
+		} else if t, err := time.Parse(time.RFC3339, timestamp); err == nil {
+			entry.Timestamp = t
+		}
+	}
+
+	// Extract level
+	if level, ok := data["level"]; ok {
+		entry.Level = strings.ToUpper(level)
+	}
+
+	// Extract message
+	if msg, ok := data["msg"]; ok {
+		entry.Message = msg
+	}
+
+	// Extract trace context
+	if traceID, ok := data["traceID"]; ok {
+		entry.TraceID = traceID
+	}
+	if spanID, ok := data["spanID"]; ok {
+		entry.SpanID = spanID
+	}
+
+	// Extract error info
+	if errorMsg, ok := data["error"]; ok {
+		entry.ErrorType = errorMsg
+	}
+
+	// Store all fields in attributes
+	for key, value := range data {
+		// Skip fields we've already extracted
+		if key != "time" && key != "level" && key != "msg" && key != "traceID" && key != "spanID" {
+			entry.Attributes[key] = value
+		}
+	}
+
+	// If we found at least a message or level, consider it parsed
+	return entry.Message != "" || entry.Level != ""
 }
 
 // tryParseLogfmt attempts to parse logfmt format (key=value key=value)

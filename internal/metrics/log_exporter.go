@@ -137,6 +137,9 @@ type LogExporter struct {
 	// Patterns for log level detection
 	levelPatterns map[LogLevel]*regexp.Regexp
 
+	// Log parser for structured fields extraction
+	logParser *LogParser
+
 	// Multiline patterns for stack traces
 	multilineStart *regexp.Regexp
 	multilineCont  *regexp.Regexp
@@ -255,6 +258,7 @@ func NewLogExporter(cfg *LogExporterConfig) (*LogExporter, error) {
 		},
 		multilineStart: regexp.MustCompile(`(?i)^(\d{4}[-/]\d{2}[-/]\d{2}|[A-Z][a-z]{2}\s+\d{1,2}|\d{2}:\d{2}:\d{2}|Traceback|Exception|Error|Caused by|panic:)`),
 		multilineCont:  regexp.MustCompile(`(?i)^\s+(at\s|in\s|File\s|from\s|\.\.\.|goroutine\s|\t)`),
+		logParser:      NewLogParser(),
 	}
 
 	// Auto-detect sources if not provided
@@ -672,6 +676,9 @@ func (le *LogExporter) collectJournaldLogs(source LogSource) {
 			AppName:    entry.SyslogIdentifier,
 		}
 
+		// Enrich with parsed structured fields
+		le.enrichLogEntry(&logEntry)
+
 		le.addEntry(logEntry)
 	}
 }
@@ -744,6 +751,9 @@ func (le *LogExporter) collectContainerLogs(containerID, containerName string) {
 			Hostname:    le.hostname,
 		}
 
+		// Enrich with parsed structured fields
+		le.enrichLogEntry(&logEntry)
+
 		le.addEntry(logEntry)
 	}
 }
@@ -766,6 +776,9 @@ func (le *LogExporter) addLogEntry(message, service, source, sourcePath string, 
 		Service:    service,
 		Hostname:   le.hostname,
 	}
+
+	// Enrich with parsed structured fields
+	le.enrichLogEntry(&entry)
 
 	le.addEntry(entry)
 }
@@ -1186,6 +1199,107 @@ func (le *LogExporter) GetStats() LogExporterStats {
 	le.mu.RLock()
 	defer le.mu.RUnlock()
 	return le.stats
+}
+
+// enrichLogEntry parses the log message and extracts structured fields for AI analysis
+func (le *LogExporter) enrichLogEntry(entry *LogEntry) {
+	if le.logParser == nil {
+		return
+	}
+
+	// Parse the log message
+	parsed := le.logParser.ParseLogLine(entry.Message)
+	if parsed == nil {
+		return
+	}
+
+	// Initialize Fields map if nil
+	if entry.Fields == nil {
+		entry.Fields = make(map[string]string)
+	}
+
+	// Extract trace context
+	if parsed.TraceID != "" {
+		entry.Fields["trace_id"] = parsed.TraceID
+	}
+	if parsed.SpanID != "" {
+		entry.Fields["span_id"] = parsed.SpanID
+	}
+	if parsed.RequestID != "" {
+		entry.Fields["request_id"] = parsed.RequestID
+	}
+	if parsed.UserID != "" {
+		entry.Fields["user_id"] = parsed.UserID
+	}
+	if parsed.SessionID != "" {
+		entry.Fields["session_id"] = parsed.SessionID
+	}
+
+	// Extract HTTP fields
+	if parsed.HTTPMethod != "" {
+		entry.Fields["http_method"] = parsed.HTTPMethod
+	}
+	if parsed.HTTPPath != "" {
+		entry.Fields["http_path"] = parsed.HTTPPath
+	}
+	if parsed.HTTPStatus > 0 {
+		entry.Fields["http_status"] = strconv.Itoa(parsed.HTTPStatus)
+	}
+	if parsed.HTTPDuration > 0 {
+		entry.Fields["http_duration_ms"] = strconv.FormatInt(parsed.HTTPDuration, 10)
+	}
+
+	// Extract error fields
+	if parsed.ErrorType != "" {
+		entry.Fields["error_type"] = parsed.ErrorType
+	}
+	if parsed.StackTrace != "" {
+		entry.Fields["stack_trace"] = parsed.StackTrace
+	}
+
+	// Extract context
+	if parsed.SourceIP != "" {
+		entry.Fields["source_ip"] = parsed.SourceIP
+	}
+	if parsed.UserAgent != "" {
+		entry.Fields["user_agent"] = parsed.UserAgent
+	}
+
+	// Add custom attributes
+	for key, value := range parsed.Attributes {
+		// Convert interface{} to string
+		if strVal, ok := value.(string); ok {
+			entry.Fields[key] = strVal
+		} else {
+			entry.Fields[key] = fmt.Sprintf("%v", value)
+		}
+	}
+
+	// Override level if parsed level is more specific
+	if parsed.Level != "" && parsed.Level != "INFO" {
+		switch strings.ToUpper(parsed.Level) {
+		case "FATAL", "CRITICAL", "EMERGENCY":
+			entry.Level = LogLevelFatal
+		case "ERROR", "ERR":
+			entry.Level = LogLevelError
+		case "WARN", "WARNING":
+			entry.Level = LogLevelWarn
+		case "DEBUG", "DBG":
+			entry.Level = LogLevelDebug
+		case "TRACE":
+			entry.Level = LogLevelTrace
+		}
+	}
+
+	// Use parsed timestamp if available and more precise
+	if !parsed.Timestamp.IsZero() {
+		entry.Timestamp = parsed.Timestamp
+	}
+
+	// Use parsed message if cleaner
+	if parsed.Message != "" && parsed.Message != entry.Message {
+		entry.Message = parsed.Message
+	}
 }
 
 // execCommandContext wraps os/exec.CommandContext

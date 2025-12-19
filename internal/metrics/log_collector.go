@@ -16,9 +16,11 @@ import (
 )
 
 const (
-	maxLogLines    = 20  // Maximum log lines to collect per service
-	logTimeout     = 5   // Timeout in seconds for log collection
-	maxLogLineLen  = 500 // Maximum length per log line
+	maxLogLines    = 100  // Maximum log lines to collect per service (increased for AI analysis)
+	logTimeout     = 10   // Timeout in seconds for log collection (increased for thorough collection)
+	maxLogLineLen  = 2000 // Maximum length per log line (increased to capture full stack traces)
+	errorLogLines  = 50   // Priority lines for errors/warnings
+	normalLogLines = 50   // Remaining lines for normal logs
 )
 
 // DockerContainer represents a running docker container
@@ -226,8 +228,8 @@ func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get last 100 lines and filter for errors
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", "100", "--timestamps", containerID)
+	// Get last N lines (increased for better AI analysis)
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", fmt.Sprintf("%d", maxLogLines*2), "--timestamps", containerID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err
@@ -246,8 +248,8 @@ func (lc *LogCollector) collectJournaldLogs(serviceType ServiceType) ([]string, 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get last 100 lines from journald
-	cmd := exec.CommandContext(ctx, "journalctl", "-u", unitName, "-n", "100", "--no-pager", "-o", "short-iso")
+	// Get last N lines from journald (increased for better AI analysis)
+	cmd := exec.CommandContext(ctx, "journalctl", "-u", unitName, "-n", fmt.Sprintf("%d", maxLogLines*2), "--no-pager", "-o", "short-iso")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err
@@ -261,8 +263,8 @@ func (lc *LogCollector) collectJournaldByPID(pid int) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get logs by PID - useful for apps that write to stdout/stderr
-	cmd := exec.CommandContext(ctx, "journalctl", "_PID="+fmt.Sprintf("%d", pid), "-n", "100", "--no-pager", "-o", "short-iso")
+	// Get logs by PID - useful for apps that write to stdout/stderr (increased for better AI analysis)
+	cmd := exec.CommandContext(ctx, "journalctl", "_PID="+fmt.Sprintf("%d", pid), "-n", fmt.Sprintf("%d", maxLogLines*2), "--no-pager", "-o", "short-iso")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err

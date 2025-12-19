@@ -275,6 +275,16 @@ type SystemSummary struct {
 	NetDropsOut    uint32 `json:"net_drops_out"`
 	NetConnections uint32 `json:"net_connections"`
 
+	// Connection states
+	NetConnectionsEstablished uint32 `json:"net_connections_established"`
+	NetConnectionsTimeWait    uint32 `json:"net_connections_time_wait"`
+	NetConnectionsCloseWait   uint32 `json:"net_connections_close_wait"`
+	NetConnectionsListen      uint32 `json:"net_connections_listen"`
+	NetConnectionsSynSent     uint32 `json:"net_connections_syn_sent"`
+	NetConnectionsSynRecv     uint32 `json:"net_connections_syn_recv"`
+	NetConnectionsFinWait1    uint32 `json:"net_connections_fin_wait1"`
+	NetConnectionsFinWait2    uint32 `json:"net_connections_fin_wait2"`
+
 	// Processes
 	ProcessesTotal    uint32 `json:"processes_total"`
 	ProcessesRunning  uint32 `json:"processes_running"`
@@ -1465,9 +1475,31 @@ func collectSystemSummary() (*SystemSummary, error) {
 		s.NetDropsOut = uint32(n.Dropout)
 	}
 
-	// Connections count
+	// Connections count and states
 	if conns, err := net.Connections("tcp"); err == nil {
 		s.NetConnections = uint32(len(conns))
+
+		// Count connection states
+		for _, conn := range conns {
+			switch conn.Status {
+			case "ESTABLISHED":
+				s.NetConnectionsEstablished++
+			case "TIME_WAIT":
+				s.NetConnectionsTimeWait++
+			case "CLOSE_WAIT":
+				s.NetConnectionsCloseWait++
+			case "LISTEN":
+				s.NetConnectionsListen++
+			case "SYN_SENT":
+				s.NetConnectionsSynSent++
+			case "SYN_RECV":
+				s.NetConnectionsSynRecv++
+			case "FIN_WAIT1":
+				s.NetConnectionsFinWait1++
+			case "FIN_WAIT2":
+				s.NetConnectionsFinWait2++
+			}
+		}
 	}
 
 	// Process counts

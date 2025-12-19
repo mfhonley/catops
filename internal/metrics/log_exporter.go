@@ -939,24 +939,35 @@ func (le *LogExporter) toOTLPRequest(logs []LogEntry) OTLPLogsRequest {
 	records := make([]OTLPLogRecord, len(logs))
 
 	for i, log := range logs {
+		// Build attributes starting with standard fields
+		attributes := []OTLPKeyValue{
+			// Standard OTLP semantic conventions
+			{Key: "log.source", Value: OTLPAnyValue{StringValue: log.Source}},
+			{Key: "log.file.path", Value: OTLPAnyValue{StringValue: log.SourcePath}},
+			{Key: "service.name", Value: OTLPAnyValue{StringValue: log.Service}},
+			{Key: "container.id", Value: OTLPAnyValue{StringValue: log.ContainerID}},
+			{Key: "process.pid", Value: OTLPAnyValue{StringValue: strconv.Itoa(log.PID)}},
+			{Key: "syslog.facility", Value: OTLPAnyValue{StringValue: log.Facility}},
+			{Key: "syslog.appname", Value: OTLPAnyValue{StringValue: log.AppName}},
+			{Key: "host.name", Value: OTLPAnyValue{StringValue: log.Hostname}},
+			// CatOps specific
+			{Key: "catops.message_hash", Value: OTLPAnyValue{StringValue: log.MessageHash}},
+		}
+
+		// Add extracted fields from log parser (trace_id, http_status, etc.)
+		for key, value := range log.Fields {
+			attributes = append(attributes, OTLPKeyValue{
+				Key:   key,
+				Value: OTLPAnyValue{StringValue: value},
+			})
+		}
+
 		records[i] = OTLPLogRecord{
 			TimeUnixNano:   log.Timestamp.UnixNano(),
 			SeverityNumber: le.levelToSeverity(log.Level),
 			SeverityText:   string(log.Level),
 			Body:           OTLPAnyValue{StringValue: log.Message},
-			Attributes: []OTLPKeyValue{
-				// Standard OTLP semantic conventions
-				{Key: "log.source", Value: OTLPAnyValue{StringValue: log.Source}},
-				{Key: "log.file.path", Value: OTLPAnyValue{StringValue: log.SourcePath}},
-				{Key: "service.name", Value: OTLPAnyValue{StringValue: log.Service}},
-				{Key: "container.id", Value: OTLPAnyValue{StringValue: log.ContainerID}},
-				{Key: "process.pid", Value: OTLPAnyValue{StringValue: strconv.Itoa(log.PID)}},
-				{Key: "syslog.facility", Value: OTLPAnyValue{StringValue: log.Facility}},
-				{Key: "syslog.appname", Value: OTLPAnyValue{StringValue: log.AppName}},
-				{Key: "host.name", Value: OTLPAnyValue{StringValue: log.Hostname}},
-				// CatOps specific
-				{Key: "catops.message_hash", Value: OTLPAnyValue{StringValue: log.MessageHash}},
-			},
+			Attributes:     attributes,
 		}
 	}
 

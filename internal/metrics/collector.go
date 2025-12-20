@@ -1453,7 +1453,6 @@ func collectSystemSummary() (*SystemSummary, error) {
 
 	// Disk - aggregate all mounts (filter pseudo filesystems)
 	if partitions, err := disk.Partitions(false); err == nil {
-		var maxUsage float64
 		for _, p := range partitions {
 			// Skip pseudo filesystems that report 100% or have no real storage
 			if shouldSkipPartition(p) {
@@ -1463,12 +1462,12 @@ func collectSystemSummary() (*SystemSummary, error) {
 				s.DiskTotal += usage.Total
 				s.DiskUsed += usage.Used
 				s.DiskFree += usage.Free
-				if usage.UsedPercent > maxUsage {
-					maxUsage = usage.UsedPercent
-				}
 			}
 		}
-		s.DiskUsage = maxUsage
+		// Calculate percentage from aggregated values (consistent with Total/Used sums)
+		if s.DiskTotal > 0 {
+			s.DiskUsage = float64(s.DiskUsed) / float64(s.DiskTotal) * 100
+		}
 	}
 
 	// Disk IOPS

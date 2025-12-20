@@ -4,6 +4,7 @@ import (
 	"math"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 )
@@ -22,9 +23,12 @@ type CPUMetrics struct {
 var (
 	lastCpuTimes         cpu.TimesStat
 	lastPerCoreCpuTimes  []cpu.TimesStat
+	lastCpuMetrics       CPUMetrics
 	cpuCacheMu           sync.RWMutex
 	cpuCacheInitialized  bool
 	perCoreCacheInit     bool
+	lastCpuSampleTime    time.Time
+	minCPUSampleInterval = 100 * time.Millisecond // Minimum time between samples for accurate delta
 )
 
 // init initializes CPU monitoring by storing initial CPU times
@@ -33,6 +37,7 @@ func init() {
 	if times, err := cpu.Times(false); err == nil && len(times) > 0 {
 		lastCpuTimes = times[0]
 		cpuCacheInitialized = true
+		lastCpuSampleTime = time.Now()
 	}
 
 	// Initialize per-core baseline
@@ -42,50 +47,81 @@ func init() {
 	}
 }
 
-// GetCPUMetrics calculates detailed CPU usage metrics using cached previous measurements.
-// Returns percentages for total, user, system, iowait, steal, and idle time.
-// This is a non-blocking call that returns instant results using delta calculation.
+// GetCPUMetrics calculates detailed CPU usage metrics.
+// Uses gopsutil's built-in cpu.Percent for accurate cross-platform CPU measurement.
+// On first call or when cache is stale, performs a blocking measurement (100ms).
+// Subsequent calls within the sample interval return cached values instantly.
 func GetCPUMetrics() (CPUMetrics, error) {
-	times, err := cpu.Times(false)
-	if err != nil || len(times) == 0 {
-		return CPUMetrics{}, err
-	}
-
 	cpuCacheMu.Lock()
 	defer cpuCacheMu.Unlock()
 
-	// If not initialized yet, initialize and return zeros (first call)
-	if !cpuCacheInitialized {
-		lastCpuTimes = times[0]
+	// Check if we have a recent enough measurement WITH valid data
+	// lastCpuMetrics.Total > 0 ensures we don't return empty cache from init()
+	if cpuCacheInitialized && lastCpuMetrics.Total > 0 && time.Since(lastCpuSampleTime) < minCPUSampleInterval {
+		// Return last calculated metrics (avoid too frequent measurements)
+		return lastCpuMetrics, nil
+	}
+
+	// Use gopsutil's built-in Percent function which handles all platform differences
+	// This is the most accurate way to measure CPU on macOS/Linux/Windows
+	percentages, err := cpu.Percent(100*time.Millisecond, false)
+	if err != nil || len(percentages) == 0 {
+		return CPUMetrics{}, err
+	}
+
+	totalCPU := percentages[0]
+
+	// Get CPU times for breakdown (user/system/idle/iowait)
+	times, err := cpu.Times(false)
+	if err != nil || len(times) == 0 {
+		// If times fail, at least return total CPU
+		metrics := CPUMetrics{
+			Total: totalCPU,
+			Idle:  100 - totalCPU,
+		}
+		lastCpuMetrics = metrics
+		lastCpuSampleTime = time.Now()
 		cpuCacheInitialized = true
-		return CPUMetrics{}, nil
+		return metrics, nil
 	}
 
-	t1 := lastCpuTimes
-	t2 := times[0]
+	// Calculate breakdown if we have previous sample
+	var metrics CPUMetrics
+	if cpuCacheInitialized {
+		t1 := lastCpuTimes
+		t2 := times[0]
 
-	// Calculate deltas
-	t1All, _ := getAllBusy(t1)
-	t2All, _ := getAllBusy(t2)
+		t1All, _ := getAllBusy(t1)
+		t2All, _ := getAllBusy(t2)
+		totalDelta := t2All - t1All
 
-	totalDelta := t2All - t1All
-	if totalDelta <= 0 {
-		// No time passed or clock issue, return zeros
-		return CPUMetrics{}, nil
+		if totalDelta > 0 {
+			metrics = CPUMetrics{
+				Total:  totalCPU, // Use gopsutil's accurate total
+				User:   clampPercent((t2.User - t1.User) / totalDelta * 100),
+				System: clampPercent((t2.System - t1.System) / totalDelta * 100),
+				Iowait: clampPercent((t2.Iowait - t1.Iowait) / totalDelta * 100),
+				Steal:  clampPercent((t2.Steal - t1.Steal) / totalDelta * 100),
+				Idle:   clampPercent((t2.Idle - t1.Idle) / totalDelta * 100),
+			}
+		} else {
+			metrics = CPUMetrics{
+				Total: totalCPU,
+				Idle:  100 - totalCPU,
+			}
+		}
+	} else {
+		metrics = CPUMetrics{
+			Total: totalCPU,
+			Idle:  100 - totalCPU,
+		}
 	}
 
-	// Calculate percentages for each metric
-	metrics := CPUMetrics{
-		Total:  calculateBusy(t1, t2),
-		User:   clampPercent((t2.User - t1.User) / totalDelta * 100),
-		System: clampPercent((t2.System - t1.System) / totalDelta * 100),
-		Iowait: clampPercent((t2.Iowait - t1.Iowait) / totalDelta * 100),
-		Steal:  clampPercent((t2.Steal - t1.Steal) / totalDelta * 100), // Critical for AWS/GCP!
-		Idle:   clampPercent((t2.Idle - t1.Idle) / totalDelta * 100),
-	}
-
-	// Update cache for next call
+	// Update cache
 	lastCpuTimes = times[0]
+	lastCpuMetrics = metrics
+	lastCpuSampleTime = time.Now()
+	cpuCacheInitialized = true
 
 	return metrics, nil
 }

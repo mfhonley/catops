@@ -339,6 +339,11 @@ var (
 	cycleConnections  []net.ConnectionStat
 	cycleCacheMu      sync.RWMutex
 	cycleCacheTime    time.Time
+
+	// Process CPU tracking for delta-based calculation (like htop does)
+	prevProcCPUTimes map[int32]float64 // PID -> total CPU time (user + system)
+	prevProcCPUTime  time.Time
+	prevProcCPUMu    sync.RWMutex
 )
 
 // OTelConfig holds configuration for OpenTelemetry exporter
@@ -1830,6 +1835,18 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 		return nil, err
 	}
 
+	// Get timing info for CPU delta calculation
+	prevProcCPUMu.RLock()
+	prevTimes := prevProcCPUTimes
+	prevTime := prevProcCPUTime
+	prevProcCPUMu.RUnlock()
+
+	elapsed := time.Since(prevTime).Seconds()
+	numCPU := float64(runtime.NumCPU())
+
+	// Current CPU times map for next cycle
+	currentTimes := make(map[int32]float64)
+
 	var processes []ProcessInfo
 
 	for _, p := range procs {
@@ -1838,11 +1855,9 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 			continue
 		}
 
-		// Only use MemoryPercent for filtering (non-blocking)
-		// Skip CPUPercent - it blocks for 100ms per process!
 		memPercent, _ := p.MemoryPercent()
 
-		// Filter by memory only (processes with < 0.1% memory are not interesting)
+		// Filter by memory (processes with < 0.1% memory are not interesting)
 		if memPercent < 0.1 {
 			continue
 		}
@@ -1853,6 +1868,26 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 		}
 
 		pi.MemoryPercent = float64(memPercent)
+
+		// Get CPU times for delta calculation (non-blocking, just reads /proc/[pid]/stat)
+		if times, err := p.Times(); err == nil && times != nil {
+			totalTime := times.User + times.System
+			currentTimes[p.Pid] = totalTime
+
+			// Calculate CPU% from delta if we have previous data
+			if prevTimes != nil && elapsed > 0 {
+				if prevTotal, ok := prevTimes[p.Pid]; ok {
+					// CPU% = (delta CPU time / elapsed time) * 100 / numCPU
+					deltaTime := totalTime - prevTotal
+					if deltaTime >= 0 {
+						pi.CPUPercent = (deltaTime / elapsed) * 100.0 / numCPU
+						if pi.CPUPercent > 100 {
+							pi.CPUPercent = 100
+						}
+					}
+				}
+			}
+		}
 
 		// Minimal syscalls: only cmdline and memory info
 		if cmdline, err := p.Cmdline(); err == nil {
@@ -1869,14 +1904,26 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 			pi.Status = string(status[0])
 		}
 
+		// Legacy fields
+		pi.CPUUsage = pi.CPUPercent
 		pi.MemoryUsage = pi.MemoryPercent
 		pi.MemoryKB = int64(pi.MemoryRSS / 1024)
 
 		processes = append(processes, pi)
 	}
 
-	// Sort by memory usage (since we don't have CPU anymore)
+	// Save current times for next cycle
+	prevProcCPUMu.Lock()
+	prevProcCPUTimes = currentTimes
+	prevProcCPUTime = time.Now()
+	prevProcCPUMu.Unlock()
+
+	// Sort by CPU+Memory combined (prioritize CPU, then memory)
 	sort.Slice(processes, func(i, j int) bool {
+		// Primary sort by CPU, secondary by memory
+		if processes[i].CPUPercent != processes[j].CPUPercent {
+			return processes[i].CPUPercent > processes[j].CPUPercent
+		}
 		return processes[i].MemoryPercent > processes[j].MemoryPercent
 	})
 

@@ -393,7 +393,7 @@ func StartOTelCollector(cfg *OTelConfig) error {
 
 	interval := cfg.CollectionInterval
 	if interval == 0 {
-		interval = 15 * time.Second
+		interval = 30 * time.Second
 	}
 
 	meterProvider = sdkmetric.NewMeterProvider(
@@ -1776,10 +1776,12 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 			continue
 		}
 
-		cpuPercent, _ := p.CPUPercent()
+		// Only use MemoryPercent for filtering (non-blocking)
+		// Skip CPUPercent - it blocks for 100ms per process!
 		memPercent, _ := p.MemoryPercent()
 
-		if cpuPercent < 0.1 && memPercent < 0.1 {
+		// Filter by memory only (processes with < 0.1% memory are not interesting)
+		if memPercent < 0.1 {
 			continue
 		}
 
@@ -1788,82 +1790,32 @@ func collectProcesses(limit int) ([]ProcessInfo, error) {
 			Name: name,
 		}
 
-		if ppid, err := p.Ppid(); err == nil {
-			pi.PPID = int(ppid)
-		}
-
-		pi.CPUPercent = cpuPercent
 		pi.MemoryPercent = float64(memPercent)
 
+		// Minimal syscalls: only cmdline and memory info
 		if cmdline, err := p.Cmdline(); err == nil {
 			pi.Command = truncateString(cmdline, 200)
 		} else {
 			pi.Command = name
 		}
 
-		if exe, err := p.Exe(); err == nil {
-			pi.Exe = exe
-		}
-
-		if uids, err := p.Uids(); err == nil && len(uids) > 0 {
-			pi.UID = uids[0]
-			pi.User = fmt.Sprintf("%d", uids[0])
-		}
-
-		if gids, err := p.Gids(); err == nil && len(gids) > 0 {
-			pi.GID = gids[0]
-		}
-
 		if memInfo, err := p.MemoryInfo(); err == nil && memInfo != nil {
 			pi.MemoryRSS = memInfo.RSS
-			pi.MemoryVMS = memInfo.VMS
 		}
 
 		if status, err := p.Status(); err == nil && len(status) > 0 {
 			pi.Status = string(status[0])
 		}
 
-		if threads, err := p.NumThreads(); err == nil {
-			pi.NumThreads = uint16(threads)
-		}
-
-		if fds, err := p.NumFDs(); err == nil {
-			pi.NumFDs = uint32(fds)
-		}
-
-		if ioCounters, err := p.IOCounters(); err == nil && ioCounters != nil {
-			pi.IOReadBytes = ioCounters.ReadBytes
-			pi.IOWriteBytes = ioCounters.WriteBytes
-		}
-
-		if createTime, err := p.CreateTime(); err == nil {
-			pi.CreateTime = createTime / 1000
-		}
-
-		if times, err := p.Times(); err == nil && times != nil {
-			pi.CPUTimeUser = times.User
-			pi.CPUTimeSystem = times.System
-		}
-
-		if nice, err := p.Nice(); err == nil {
-			pi.Nice = int8(nice)
-		}
-
-		if terminal, err := p.Terminal(); err == nil {
-			pi.TTY = terminal
-		}
-
-		pi.CPUUsage = pi.CPUPercent
 		pi.MemoryUsage = pi.MemoryPercent
 		pi.MemoryKB = int64(pi.MemoryRSS / 1024)
-		pi.Threads = int(pi.NumThreads)
 
 		processes = append(processes, pi)
 	}
 
-	// Sort by CPU usage
+	// Sort by memory usage (since we don't have CPU anymore)
 	sort.Slice(processes, func(i, j int) bool {
-		return processes[i].CPUPercent > processes[j].CPUPercent
+		return processes[i].MemoryPercent > processes[j].MemoryPercent
 	})
 
 	if len(processes) > limit {
@@ -1890,8 +1842,9 @@ func collectContainers() ([]ContainerMetrics, error) {
 }
 
 func collectDockerContainers() ([]ContainerMetrics, error) {
-	// Check if docker is available
-	cmd := exec.Command("docker", "ps", "-q")
+	// Single call to docker stats - gets all running containers at once
+	// Skip "docker ps" check - if no containers, stats returns empty
+	cmd := exec.Command("docker", "stats", "--no-stream", "--format", "{{json .}}")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -1899,13 +1852,6 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 
 	if len(output) == 0 {
 		return nil, nil
-	}
-
-	// Get container stats
-	cmd = exec.Command("docker", "stats", "--no-stream", "--format", "{{json .}}")
-	output, err = cmd.Output()
-	if err != nil {
-		return nil, err
 	}
 
 	var containers []ContainerMetrics
@@ -1917,14 +1863,11 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 		}
 
 		var stats struct {
-			ID        string `json:"ID"`
-			Name      string `json:"Name"`
-			CPUPerc   string `json:"CPUPerc"`
-			MemUsage  string `json:"MemUsage"`
-			MemPerc   string `json:"MemPerc"`
-			NetIO     string `json:"NetIO"`
-			BlockIO   string `json:"BlockIO"`
-			PIDs      string `json:"PIDs"`
+			ID       string `json:"ID"`
+			Name     string `json:"Name"`
+			CPUPerc  string `json:"CPUPerc"`
+			MemUsage string `json:"MemUsage"`
+			MemPerc  string `json:"MemPerc"`
 		}
 
 		if err := json.Unmarshal([]byte(line), &stats); err != nil {
@@ -1953,38 +1896,8 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 		containers = append(containers, c)
 	}
 
-	// Get more details with docker inspect
-	for i := range containers {
-		cmd := exec.Command("docker", "inspect", "--format", "{{json .}}", containers[i].ContainerID)
-		output, err := cmd.Output()
-		if err != nil {
-			continue
-		}
-
-		var inspect struct {
-			Config struct {
-				Image  string            `json:"Image"`
-				Labels map[string]string `json:"Labels"`
-			} `json:"Config"`
-			State struct {
-				Status     string `json:"Status"`
-				Health     *struct{ Status string } `json:"Health"`
-				StartedAt  string `json:"StartedAt"`
-				ExitCode   int16  `json:"ExitCode"`
-			} `json:"State"`
-		}
-
-		if err := json.Unmarshal(output, &inspect); err == nil {
-			containers[i].ImageName = inspect.Config.Image
-			containers[i].Status = inspect.State.Status
-			if inspect.State.Health != nil {
-				containers[i].Health = inspect.State.Health.Status
-			}
-			if labels, err := json.Marshal(inspect.Config.Labels); err == nil {
-				containers[i].Labels = string(labels)
-			}
-		}
-	}
+	// Skip docker inspect for each container - too expensive (N syscalls)
+	// Basic stats from "docker stats" are enough for monitoring
 
 	return containers, nil
 }

@@ -146,7 +146,7 @@ func runDaemon() {
 	// OTel SDK calls callbacks at CollectionInterval, we collect slightly faster
 	metricsInterval := time.Duration(cfg.CollectionInterval) * time.Second
 	if metricsInterval == 0 {
-		metricsInterval = 15 * time.Second
+		metricsInterval = 30 * time.Second
 	}
 	metricsTicker := time.NewTicker(metricsInterval)
 	defer metricsTicker.Stop()
@@ -202,7 +202,7 @@ func runDaemon() {
 func startMetricsCollection(cfg *config.Config, hostname string) bool {
 	interval := time.Duration(cfg.CollectionInterval) * time.Second
 	if interval == 0 {
-		interval = 15 * time.Second
+		interval = 30 * time.Second
 	}
 
 	otelCfg := &metrics.OTelConfig{

@@ -21,14 +21,13 @@ type CPUMetrics struct {
 
 // CPU state cache for delta-based calculation
 var (
-	lastCpuTimes         cpu.TimesStat
-	lastPerCoreCpuTimes  []cpu.TimesStat
-	lastCpuMetrics       CPUMetrics
-	cpuCacheMu           sync.RWMutex
-	cpuCacheInitialized  bool
-	perCoreCacheInit     bool
-	lastCpuSampleTime    time.Time
-	minCPUSampleInterval = 100 * time.Millisecond // Minimum time between samples for accurate delta
+	lastCpuTimes        cpu.TimesStat
+	lastPerCoreCpuTimes []cpu.TimesStat
+	lastCpuMetrics      CPUMetrics
+	cpuCacheMu          sync.RWMutex
+	cpuCacheInitialized bool
+	perCoreCacheInit    bool
+	lastCpuSampleTime   time.Time
 )
 
 // init initializes CPU monitoring by storing initial CPU times
@@ -47,73 +46,48 @@ func init() {
 	}
 }
 
-// GetCPUMetrics calculates detailed CPU usage metrics.
-// Uses gopsutil's built-in cpu.Percent for accurate cross-platform CPU measurement.
-// On first call or when cache is stale, performs a blocking measurement (100ms).
-// Subsequent calls within the sample interval return cached values instantly.
+// GetCPUMetrics calculates detailed CPU usage metrics using delta-based calculation.
+// Uses cpu.Times() which is non-blocking (reads /proc/stat on Linux, sysctl on macOS).
+// Calculates CPU usage as delta between current and previous sample.
+// First call returns zero values (baseline), subsequent calls return accurate metrics.
 func GetCPUMetrics() (CPUMetrics, error) {
 	cpuCacheMu.Lock()
 	defer cpuCacheMu.Unlock()
 
-	// Check if we have a recent enough measurement WITH valid data
-	// lastCpuMetrics.Total > 0 ensures we don't return empty cache from init()
-	if cpuCacheInitialized && lastCpuMetrics.Total > 0 && time.Since(lastCpuSampleTime) < minCPUSampleInterval {
-		// Return last calculated metrics (avoid too frequent measurements)
-		return lastCpuMetrics, nil
-	}
-
-	// Use gopsutil's built-in Percent function which handles all platform differences
-	// This is the most accurate way to measure CPU on macOS/Linux/Windows
-	percentages, err := cpu.Percent(100*time.Millisecond, false)
-	if err != nil || len(percentages) == 0 {
+	// Get current CPU times (non-blocking)
+	times, err := cpu.Times(false)
+	if err != nil || len(times) == 0 {
 		return CPUMetrics{}, err
 	}
 
-	totalCPU := percentages[0]
-
-	// Get CPU times for breakdown (user/system/idle/iowait)
-	times, err := cpu.Times(false)
-	if err != nil || len(times) == 0 {
-		// If times fail, at least return total CPU
-		metrics := CPUMetrics{
-			Total: totalCPU,
-			Idle:  100 - totalCPU,
-		}
-		lastCpuMetrics = metrics
+	// First call - just store baseline and return zeros
+	if !cpuCacheInitialized {
+		lastCpuTimes = times[0]
 		lastCpuSampleTime = time.Now()
 		cpuCacheInitialized = true
-		return metrics, nil
+		return CPUMetrics{}, nil
 	}
 
-	// Calculate breakdown if we have previous sample
+	// Calculate delta from previous sample
+	t1 := lastCpuTimes
+	t2 := times[0]
+
+	t1All, t1Busy := getAllBusy(t1)
+	t2All, t2Busy := getAllBusy(t2)
+	totalDelta := t2All - t1All
+
 	var metrics CPUMetrics
-	if cpuCacheInitialized {
-		t1 := lastCpuTimes
-		t2 := times[0]
+	if totalDelta > 0 {
+		// Calculate total CPU usage
+		totalCPU := clampPercent((t2Busy - t1Busy) / totalDelta * 100)
 
-		t1All, _ := getAllBusy(t1)
-		t2All, _ := getAllBusy(t2)
-		totalDelta := t2All - t1All
-
-		if totalDelta > 0 {
-			metrics = CPUMetrics{
-				Total:  totalCPU, // Use gopsutil's accurate total
-				User:   clampPercent((t2.User - t1.User) / totalDelta * 100),
-				System: clampPercent((t2.System - t1.System) / totalDelta * 100),
-				Iowait: clampPercent((t2.Iowait - t1.Iowait) / totalDelta * 100),
-				Steal:  clampPercent((t2.Steal - t1.Steal) / totalDelta * 100),
-				Idle:   clampPercent((t2.Idle - t1.Idle) / totalDelta * 100),
-			}
-		} else {
-			metrics = CPUMetrics{
-				Total: totalCPU,
-				Idle:  100 - totalCPU,
-			}
-		}
-	} else {
 		metrics = CPUMetrics{
-			Total: totalCPU,
-			Idle:  100 - totalCPU,
+			Total:  totalCPU,
+			User:   clampPercent((t2.User - t1.User) / totalDelta * 100),
+			System: clampPercent((t2.System - t1.System) / totalDelta * 100),
+			Iowait: clampPercent((t2.Iowait - t1.Iowait) / totalDelta * 100),
+			Steal:  clampPercent((t2.Steal - t1.Steal) / totalDelta * 100),
+			Idle:   clampPercent((t2.Idle - t1.Idle) / totalDelta * 100),
 		}
 	}
 
@@ -121,7 +95,6 @@ func GetCPUMetrics() (CPUMetrics, error) {
 	lastCpuTimes = times[0]
 	lastCpuMetrics = metrics
 	lastCpuSampleTime = time.Now()
-	cpuCacheInitialized = true
 
 	return metrics, nil
 }

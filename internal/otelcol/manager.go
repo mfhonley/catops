@@ -199,7 +199,7 @@ func (m *Manager) extractBinary(r io.Reader) error {
 func (m *Manager) GenerateConfig(cfg *Config) error {
 	interval := cfg.CollectionInterval
 	if interval == 0 {
-		interval = 15
+		interval = 30
 	}
 
 	config := fmt.Sprintf(`# CatOps OTel Collector Configuration

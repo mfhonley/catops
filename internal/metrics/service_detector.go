@@ -3,10 +3,77 @@ package metrics
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/shirou/gopsutil/v3/net"
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/v4/net"
+	"github.com/shirou/gopsutil/v4/process"
 )
+
+// Cache for process CPU times (for delta calculation)
+var (
+	procCpuTimesCache   = make(map[int32]procCpuCacheEntry)
+	procCpuTimesCacheMu sync.RWMutex
+)
+
+type procCpuCacheEntry struct {
+	userTime   float64
+	sysTime    float64
+	sampleTime time.Time
+}
+
+// getProcessCPUPercent calculates CPU% for a process using delta from cached values.
+// Non-blocking - uses process.Times() which just reads /proc/[pid]/stat.
+func getProcessCPUPercent(proc *process.Process) float64 {
+	times, err := proc.Times()
+	if err != nil || times == nil {
+		return 0
+	}
+
+	now := time.Now()
+	pid := proc.Pid
+	currentTotal := times.User + times.System
+
+	procCpuTimesCacheMu.Lock()
+	defer procCpuTimesCacheMu.Unlock()
+
+	prev, exists := procCpuTimesCache[pid]
+	if !exists {
+		// First call - store baseline, return 0
+		procCpuTimesCache[pid] = procCpuCacheEntry{
+			userTime:   times.User,
+			sysTime:    times.System,
+			sampleTime: now,
+		}
+		return 0
+	}
+
+	elapsed := now.Sub(prev.sampleTime).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+
+	prevTotal := prev.userTime + prev.sysTime
+	cpuDelta := currentTotal - prevTotal
+
+	// Update cache
+	procCpuTimesCache[pid] = procCpuCacheEntry{
+		userTime:   times.User,
+		sysTime:    times.System,
+		sampleTime: now,
+	}
+
+	// CPU% = (cpu time delta / wall time delta) * 100
+	cpuPercent := (cpuDelta / elapsed) * 100
+	if cpuPercent < 0 {
+		cpuPercent = 0
+	}
+	if cpuPercent > 100 {
+		cpuPercent = 100
+	}
+
+	return cpuPercent
+}
 
 // ListeningPort represents a port that is being listened on
 type ListeningPort struct {
@@ -61,8 +128,8 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 			continue // Skip unknown services
 		}
 
-		// Get process stats
-		cpuPercent, _ := proc.CPUPercent()
+		// Get process stats using non-blocking delta calculation
+		cpuPercent := getProcessCPUPercent(proc)
 		memoryPercent, _ := proc.MemoryPercent()
 		memoryInfo, _ := proc.MemoryInfo()
 		status, _ := proc.Status()

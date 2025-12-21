@@ -333,6 +333,12 @@ var (
 	lastSentMetrics *AllMetrics
 	lastSentTime    time.Time
 	deltaTrackingMu sync.RWMutex
+
+	// Per-cycle cache for expensive operations (reused within single collection cycle)
+	cycleProcesses    []*process.Process
+	cycleConnections  []net.ConnectionStat
+	cycleCacheMu      sync.RWMutex
+	cycleCacheTime    time.Time
 )
 
 // OTelConfig holds configuration for OpenTelemetry exporter
@@ -1264,6 +1270,9 @@ func absFloat64(x float64) float64 {
 }
 
 func CollectAllMetrics() (*AllMetrics, error) {
+	// Clear per-cycle cache at start of each collection
+	clearCycleCache()
+
 	m := &AllMetrics{
 		Timestamp: time.Now().UTC(),
 	}
@@ -1407,6 +1416,67 @@ func CollectAllMetrics() (*AllMetrics, error) {
 	return m, nil
 }
 
+// =============================================================================
+// Cached Expensive Operations (called once per collection cycle)
+// =============================================================================
+
+// getCachedProcesses returns cached process list or fetches new one
+// Cache is valid for 5 seconds (covers entire collection cycle)
+func getCachedProcesses() ([]*process.Process, error) {
+	cycleCacheMu.RLock()
+	if cycleProcesses != nil && time.Since(cycleCacheTime) < 5*time.Second {
+		procs := cycleProcesses
+		cycleCacheMu.RUnlock()
+		return procs, nil
+	}
+	cycleCacheMu.RUnlock()
+
+	// Fetch new
+	procs, err := process.Processes()
+	if err != nil {
+		return nil, err
+	}
+
+	cycleCacheMu.Lock()
+	cycleProcesses = procs
+	cycleCacheTime = time.Now()
+	cycleCacheMu.Unlock()
+
+	return procs, nil
+}
+
+// getCachedConnections returns cached TCP connections or fetches new ones
+// Cache is valid for 5 seconds (covers entire collection cycle)
+func getCachedConnections() ([]net.ConnectionStat, error) {
+	cycleCacheMu.RLock()
+	if cycleConnections != nil && time.Since(cycleCacheTime) < 5*time.Second {
+		conns := cycleConnections
+		cycleCacheMu.RUnlock()
+		return conns, nil
+	}
+	cycleCacheMu.RUnlock()
+
+	// Fetch new
+	conns, err := net.Connections("tcp")
+	if err != nil {
+		return nil, err
+	}
+
+	cycleCacheMu.Lock()
+	cycleConnections = conns
+	cycleCacheMu.Unlock()
+
+	return conns, nil
+}
+
+// clearCycleCache clears the per-cycle cache (call at start of each collection)
+func clearCycleCache() {
+	cycleCacheMu.Lock()
+	cycleProcesses = nil
+	cycleConnections = nil
+	cycleCacheMu.Unlock()
+}
+
 func collectSystemSummary() (*SystemSummary, error) {
 	s := &SystemSummary{
 		CPUCores: uint16(runtime.NumCPU()),
@@ -1503,8 +1573,8 @@ func collectSystemSummary() (*SystemSummary, error) {
 		s.NetDropsOut = uint32(n.Dropout)
 	}
 
-	// Connections count and states
-	if conns, err := net.Connections("tcp"); err == nil {
+	// Connections count and states (use cached)
+	if conns, err := getCachedConnections(); err == nil {
 		s.NetConnections = uint32(len(conns))
 
 		// Count connection states
@@ -1530,21 +1600,13 @@ func collectSystemSummary() (*SystemSummary, error) {
 		}
 	}
 
-	// Process counts
-	if procs, err := process.Processes(); err == nil {
+	// Process counts - just count total from cached list
+	// Skip per-process Status() calls - too expensive for 200+ processes
+	// Running/sleeping/zombie stats are nice-to-have, not critical
+	if procs, err := getCachedProcesses(); err == nil {
 		s.ProcessesTotal = uint32(len(procs))
-		for _, p := range procs {
-			if status, err := p.Status(); err == nil && len(status) > 0 {
-				switch status[0] {
-				case "R":
-					s.ProcessesRunning++
-				case "S":
-					s.ProcessesSleeping++
-				case "Z":
-					s.ProcessesZombie++
-				}
-			}
-		}
+		// Note: ProcessesRunning/Sleeping/Zombie left as 0 for performance
+		// These require p.Status() syscall on each process which is expensive
 	}
 
 	// Uptime
@@ -1763,7 +1825,7 @@ func collectNetworks() ([]NetworkInterfaceMetrics, error) {
 }
 
 func collectProcesses(limit int) ([]ProcessInfo, error) {
-	procs, err := process.Processes()
+	procs, err := getCachedProcesses()
 	if err != nil {
 		return nil, err
 	}
@@ -2172,21 +2234,25 @@ func convertToLegacyNetworkMetrics(networks []NetworkInterfaceMetrics) *NetworkM
 // =============================================================================
 
 // GetServerSpecs returns server specifications for registration
+// Memory and storage are returned in GB as float64 for precision
 func GetServerSpecs() (map[string]interface{}, error) {
 	specs := make(map[string]interface{})
 
 	specs["cpu_cores"] = runtime.NumCPU()
 
 	if vm, err := mem.VirtualMemory(); err == nil {
-		specs["total_memory"] = int64(vm.Total / (1024 * 1024 * 1024))
+		// Store in GB as float64 to preserve precision for small VMs (<1GB)
+		// This keeps backward compatibility with existing data format
+		specs["total_memory"] = float64(vm.Total) / (1024 * 1024 * 1024)
 	} else {
-		specs["total_memory"] = 0
+		specs["total_memory"] = 0.0
 	}
 
 	if usage, err := disk.Usage("/"); err == nil {
-		specs["total_storage"] = int64(usage.Total / (1024 * 1024 * 1024))
+		// Store in GB as float64 for consistency
+		specs["total_storage"] = float64(usage.Total) / (1024 * 1024 * 1024)
 	} else {
-		specs["total_storage"] = 0
+		specs["total_storage"] = 0.0
 	}
 
 	return specs, nil

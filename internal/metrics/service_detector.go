@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shirou/gopsutil/v4/net"
 	"github.com/shirou/gopsutil/v4/process"
 )
 
@@ -103,8 +102,8 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 		// Continue even if we can't get ports - we can still detect by cmdline
 	}
 
-	// Get all processes
-	allProcesses, err := process.Processes()
+	// Get all processes (use cached from collector)
+	allProcesses, err := getCachedProcesses()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get processes: %w", err)
 	}
@@ -117,18 +116,25 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 			continue
 		}
 
+		// Quick check by name first - skip unknown processes early
+		// This avoids expensive Cmdline() call for most processes
+		serviceType, framework := d.detectServiceTypeByName(name)
+		if serviceType == ServiceTypeUnknown {
+			continue // Skip unknown services - no need for Cmdline()
+		}
+
+		// Only get cmdline for known service types (for framework detection)
 		cmdline, _ := proc.Cmdline()
 		if cmdline == "" {
 			cmdline = name
 		}
 
-		// Detect service type
-		serviceType, framework := d.detectServiceType(name, cmdline)
-		if serviceType == ServiceTypeUnknown {
-			continue // Skip unknown services
+		// Refine detection with cmdline if needed
+		if framework == "" {
+			_, framework = d.detectServiceType(name, cmdline)
 		}
 
-		// Get process stats using non-blocking delta calculation
+		// Get process stats - only for detected services (not all 200+ processes)
 		cpuPercent := getProcessCPUPercent(proc)
 		memoryPercent, _ := proc.MemoryPercent()
 		memoryInfo, _ := proc.MemoryInfo()
@@ -194,7 +200,7 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 
 // collectListeningPorts collects all listening ports on the system
 func (d *ServiceDetector) collectListeningPorts() error {
-	connections, err := net.Connections("tcp")
+	connections, err := getCachedConnections()
 	if err != nil {
 		return fmt.Errorf("failed to get connections: %w", err)
 	}
@@ -227,6 +233,40 @@ func (d *ServiceDetector) getPortsForPID(pid int) []int {
 		}
 	}
 	return ports
+}
+
+// detectServiceTypeByName is a fast check using only process name (no cmdline syscall)
+// Returns ServiceTypeUnknown for processes that definitely aren't services
+func (d *ServiceDetector) detectServiceTypeByName(name string) (ServiceType, string) {
+	nameLower := strings.ToLower(name)
+
+	// Known service process names - quick lookup
+	switch nameLower {
+	case "nginx":
+		return ServiceTypeNginx, ""
+	case "apache2", "httpd":
+		return ServiceTypeApache, ""
+	case "redis-server":
+		return ServiceTypeRedis, ""
+	case "postgres", "postgresql":
+		return ServiceTypePostgres, ""
+	case "mysqld", "mariadbd":
+		return ServiceTypeMySQL, ""
+	case "mongod":
+		return ServiceTypeMongoDB, ""
+	case "node", "nodejs":
+		return ServiceTypeNodeApp, ""
+	case "python", "python3", "python3.8", "python3.9", "python3.10", "python3.11", "python3.12":
+		return ServiceTypePythonApp, ""
+	case "java":
+		return ServiceTypeJavaApp, ""
+	case "containerd", "dockerd", "docker":
+		return ServiceTypeDocker, ""
+	case "kubelet", "kube-proxy", "kube-apiserver":
+		return ServiceTypeKubernetes, ""
+	}
+
+	return ServiceTypeUnknown, ""
 }
 
 // detectServiceType determines the service type from process name and command line

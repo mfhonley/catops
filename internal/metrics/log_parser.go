@@ -531,20 +531,10 @@ func (p *LogParser) extractCommonFields(line string, entry *ParsedLogEntry) {
 	// Extract user from text
 	p.extractUserFromText(line, entry)
 
-	// Detect level from keywords
-	lineLower := strings.ToLower(line)
-	switch {
-	case strings.Contains(lineLower, "error") || strings.Contains(lineLower, " err ") || strings.Contains(lineLower, "[error]"):
-		entry.Level = "ERROR"
-	case strings.Contains(lineLower, "warn") || strings.Contains(lineLower, "warning") || strings.Contains(lineLower, "[warn]"):
-		entry.Level = "WARN"
-	case strings.Contains(lineLower, "fatal") || strings.Contains(lineLower, "panic") || strings.Contains(lineLower, "critical"):
-		entry.Level = "FATAL"
-	case strings.Contains(lineLower, "debug") || strings.Contains(lineLower, "[debug]"):
-		entry.Level = "DEBUG"
-	default:
-		entry.Level = "INFO"
-	}
+	// Default to INFO - don't try to guess level from text
+	// This avoids false positives like "no error occurred" being marked as ERROR
+	// AI will analyze the full log context and determine if there are real issues
+	entry.Level = "INFO"
 }
 
 // ExtractStackTrace extracts multi-line stack traces from logs

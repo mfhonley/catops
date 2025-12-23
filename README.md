@@ -24,33 +24,38 @@ curl -sfL https://get.catops.app/install.sh | bash
   - [Kubernetes Clusters](#kubernetes-clusters)
 - [Usage](#-usage)
   - [Basic Commands](#basic-commands)
-  - [Telegram Bot](#telegram-bot-integration)
+  - [AI Assistant](#ai-assistant)
+  - [Telegram Alerts](#telegram-alerts)
   - [Cloud Mode](#cloud-mode-web-dashboard)
 - [Kubernetes Guide](#-kubernetes-guide)
 - [Configuration](#-configuration)
+- [Log Collection](#-log-collection)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
 
 ---
 
-## 🚀 Features
+## Features
 
 **Core Monitoring:**
 - System metrics (CPU, Memory, Disk, Network, I/O)
 - Process monitoring with resource usage
+- **Log collection** from Docker, journald, and log files
 - Real-time Telegram alerts
 - Beautiful web dashboard
 - Cross-platform (Linux, macOS, Kubernetes)
-- AI assistant for troubleshooting
+
+**AI-Powered:**
+- **AI Assistant** - Ask questions about your server directly from CLI
+- Smart alert analysis
+- Troubleshooting recommendations
 
 **Deployment Options:**
 - **Standalone**: Monitor individual servers (Linux/macOS)
 - **Kubernetes**: Monitor entire clusters with DaemonSet
 
 **Alerting:**
-- Telegram bot integration with remote commands
-- Configurable thresholds (CPU, Memory, Disk)
-- Intelligent spike detection (sudden spikes, gradual rises, anomalies)
+- Telegram bot integration
 - Alert deduplication (no spam)
 - Interactive Telegram buttons (Acknowledge, Silence)
 - Instant notifications with detailed context
@@ -63,7 +68,7 @@ curl -sfL https://get.catops.app/install.sh | bash
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### Standalone Server
 
@@ -97,7 +102,7 @@ That's it! Your servers/nodes appear in the dashboard within 60 seconds.
 
 ---
 
-## 🛠️ Installation
+## Installation
 
 ### Standalone Servers
 
@@ -131,7 +136,7 @@ catops auth login YOUR_TOKEN
 
 ```bash
 git clone https://github.com/mfhonley/catops.git
-cd catops
+cd catops/cli
 go build -o catops ./cmd/catops
 ./catops --version
 ```
@@ -177,11 +182,9 @@ kubectl get pods -n catops-system
 kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=20
 ```
 
-📖 **Detailed Kubernetes guide:** See [Kubernetes Guide](#-kubernetes-guide) below
-
 ---
 
-## 📊 Usage
+## Usage
 
 ### Basic Commands
 
@@ -192,14 +195,17 @@ catops processes           # Top processes by resource usage
 catops restart             # Restart monitoring service
 ```
 
+**AI Assistant:**
+```bash
+catops ask "Why is my CPU high?"           # Ask AI about your server
+catops ask "What's causing memory spikes?"  # Analyze issues
+catops ask "Should I be worried?"           # Get recommendations
+```
+
 **Configuration:**
 ```bash
-catops config show                              # Show current config
-catops set cpu=85 mem=90 disk=95                # Set alert thresholds
-catops set spike=30 gradual=15                  # Set spike detection sensitivity
-catops set anomaly=4.0                          # Set anomaly detection (std deviations)
-catops set renotify=120                         # Set re-notification interval (minutes)
-catops set interval=30 buffer=40 resolution=10  # Advanced monitoring config
+catops config show                  # Show current config
+catops set interval=30              # Set metrics collection interval (10-300 seconds)
 ```
 
 **Service Management:**
@@ -216,7 +222,25 @@ catops uninstall           # Remove CatOps completely
 catops --version           # Show version
 ```
 
-### Telegram Alerts (Cloud Mode)
+### AI Assistant
+
+CatOps includes a **FREE** AI assistant that analyzes your server metrics and provides intelligent answers.
+
+**Features:**
+- Context-aware - Analyzes current CPU, Memory, Disk, and top processes
+- Fast responses - Optimized for CLI
+- Privacy-first - Only sends metrics, not logs
+- No subscription required
+
+**Examples:**
+```bash
+catops ask "Why is my CPU usage high?"
+catops ask "What's causing memory spikes?"
+catops ask "Should I be worried about disk usage?"
+catops ask "Explain what's happening on my server"
+```
+
+### Telegram Alerts
 
 **Setup:**
 1. Enable Cloud Mode: `catops auth login YOUR_TOKEN`
@@ -229,33 +253,24 @@ catops --version           # Show version
 When connected to [catops.app](https://catops.app), alerts include interactive buttons:
 
 ```
-🔴 CPU Spike Detected
+CPU Spike Detected
 
 server-prod-01
-📈 5.2% → 35.8% (+30.6% spike)
+5.2% -> 35.8% (+30.6% spike)
 
-[Acknowledge] [Silence ▼] [Details]
+[Acknowledge] [Silence] [Details]
 ```
 
 - **Acknowledge** - Mark alert as seen, stop re-notifications
 - **Silence** - Mute alerts for 30m/1h/2h/24h (useful for maintenance)
 - **Details** - Open web dashboard for full metrics and history
 
-**Alert Types:**
-- **Threshold** - Metric exceeded configured limit (CPU > 85%)
-- **Sudden Spike** - Rapid increase detected (5% → 40% in 15 seconds)
-- **Gradual Rise** - Sustained increase over time (15% → 32% over 5 minutes)
-- **Anomaly** - Statistical outlier (configurable, default: 4.0σ from average)
-  - Uses standard deviation to detect unusual values
-  - Adjust with `catops set anomaly=5.0` for less sensitivity
-- **Recovery** - Alert resolved, metrics back to normal
-
 ### Cloud Mode (Web Dashboard)
 
 **Enable web dashboard at [catops.app](https://catops.app):**
 
 ```bash
-# 1. Get token from https://catops.app (Profile → Generate Auth Token)
+# 1. Get token from https://catops.app (Profile -> Generate Auth Token)
 
 # 2. Login
 catops auth login YOUR_AUTH_TOKEN
@@ -265,19 +280,20 @@ catops auth info
 ```
 
 **Benefits:**
-- ✅ Real-time metrics accessible from anywhere
-- ✅ Historical data and trends
-- ✅ Multi-server monitoring
-- ✅ Team collaboration
-- ✅ Mobile-friendly interface
+- Real-time metrics accessible from anywhere
+- Historical data and trends
+- Log collection and analysis
+- Multi-server monitoring
+- Team collaboration
+- Mobile-friendly interface
 
 **Operation Modes:**
 - **Local Mode** (default): Metrics collected locally, no alerts, works offline
-- **Cloud Mode**: Telegram alerts + Web dashboard + Multi-server monitoring
+- **Cloud Mode**: Telegram alerts + Web dashboard + Multi-server monitoring + Log collection
 
 ---
 
-## ☸️ Kubernetes Guide
+## Kubernetes Guide
 
 ### Installation
 
@@ -340,51 +356,11 @@ helm install catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
 
 ### Managing CatOps
 
-**Stop Monitoring (Temporary):**
-
-```bash
-# Option 1: Stop only CatOps connector (Prometheus continues)
-kubectl delete daemonset catops -n catops-system
-
-# Option 2: Stop everything including Prometheus
-kubectl scale deployment catops-prometheus-server --replicas=0 -n catops-system
-kubectl scale deployment catops-kube-state-metrics --replicas=0 -n catops-system
-kubectl delete daemonset catops-prometheus-node-exporter -n catops-system
-kubectl delete daemonset catops -n catops-system
-
-# Resume later
-helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --namespace catops-system \
-  --reuse-values
-```
-
-**Reduce Resource Usage:**
-
-```bash
-# Disable Prometheus (saves ~500 MB RAM)
-helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --namespace catops-system \
-  --reuse-values \
-  --set prometheus.enabled=false
-
-# Reduce collection frequency (saves ~40% CPU)
-helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --namespace catops-system \
-  --reuse-values \
-  --set collection.interval=120  # Collect every 2 minutes instead of 1
-```
-
 **Update:**
 
 ```bash
 # Update to latest version
 helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --namespace catops-system \
-  --reuse-values
-
-# Update to specific version
-helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
-  --version 0.2.7 \
   --namespace catops-system \
   --reuse-values
 ```
@@ -399,49 +375,9 @@ helm uninstall catops -n catops-system
 kubectl delete namespace catops-system
 ```
 
-### Resource Consumption
-
-**Basic Configuration (without Prometheus):**
-- Minimal resource footprint per node
-- Perfect for small clusters and development environments
-
-**With Prometheus:**
-- Enhanced metrics with labels and owner information
-- Recommended for production environments needing full observability
-
-**Best suited for:**
-- Basic: Small clusters, Docker Desktop, dev/staging
-- With Prometheus: Production clusters, comprehensive monitoring
-
-### Common Kubernetes Issues
-
-**Pods not starting:**
-```bash
-# Check pod status
-kubectl get pods -n catops-system
-
-# Check logs
-kubectl logs -n catops-system -l app.kubernetes.io/name=catops --tail=50
-
-# Common fix: Verify metrics-server is working
-kubectl top nodes
-```
-
-**Metrics not appearing in dashboard:**
-```bash
-# Verify auth token is correct
-kubectl get secret catops -n catops-system -o jsonpath='{.data.auth-token}' | base64 -d
-
-# Check network connectivity
-kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernetes.io/name=catops -o name | head -1) -- \
-  wget -O- https://api.catops.app/health
-```
-
-📖 **Advanced Kubernetes topics:** See [docs/KUBERNETES_ADVANCED.md](docs/KUBERNETES_ADVANCED.md)
-
 ---
 
-## 🔧 Configuration
+## Configuration
 
 **Configuration file:** `~/.catops/config.yaml`
 
@@ -451,326 +387,60 @@ kubectl exec -n catops-system $(kubectl get pod -n catops-system -l app.kubernet
 auth_token: "your_auth_token"
 server_id: "507f1f77bcf86cd799439011"
 
-# Alert Thresholds
-cpu_threshold: 85.0
-mem_threshold: 90.0
-disk_threshold: 95.0
-
-# Alert Sensitivity (Advanced)
-sudden_spike_threshold: 30.0      # Alert on CPU/Memory changes > 30%
-gradual_rise_threshold: 15.0      # Alert on sustained increases > 15%
-anomaly_threshold: 4.0            # Alert on statistical anomalies > 4σ (std deviations)
-alert_renotify_interval: 120      # Re-notify every 2 hours (minutes)
-alert_deduplication: true         # Enable alert deduplication (prevents spam, recommended: true)
-
-# Monitoring Configuration (Advanced)
-collection_interval: 15           # Collect metrics every 15 seconds
-buffer_size: 20                   # Store 20 data points for statistics
-alert_resolution_timeout: 5       # Mark alerts resolved after 5 minutes
+# Monitoring Configuration
+collection_interval: 30   # Collect metrics every 30 seconds (default)
 ```
 
 **Edit configuration:**
 ```bash
-# Via CLI commands (recommended)
-catops set cpu=85 mem=90 disk=95
-
-# Configure alert sensitivity
-catops set spike=30 gradual=15 anomaly=4.0 renotify=120
-
-# Configure monitoring (advanced)
-catops set interval=30 buffer=40 resolution=10
+# Via CLI command (recommended)
+catops set interval=30
 
 # Or edit file directly
 nano ~/.catops/config.yaml
 ```
 
-### Alert Sensitivity Settings
+### Metrics Collection Interval
 
-Control how often you receive alerts:
-
-**For production servers (default, balanced):**
-```bash
-catops set cpu=85 spike=30 gradual=15 anomaly=4.0 renotify=120
-catops restart
-```
-
-**For critical servers (more sensitive):**
-```bash
-catops set cpu=75 spike=25 gradual=12 anomaly=3.0 renotify=60
-catops restart
-```
-
-### Understanding Alert Sensitivity Parameters
-
-#### 1. **`spike` - Sudden Spike Threshold**
-**Default:** 30% | **Range:** 0-100%
-
-Detects rapid changes in CPU/Memory usage between consecutive measurements.
-
-**How it works:**
-- Compares current metric value vs the immediately previous measurement
-- Uses single point-to-point percentage change across one collection interval
-- Example: CPU jumps from 5% to 35% in one interval (15s) = 30% spike
-- Calculation: `((current - previous) / previous) × 100`
-
-**When to adjust:**
-- **Too many spike alerts?** Increase to 35-40%
-- **Missing sudden issues?** Decrease to 20-25%
-
-**Real-world scenarios:**
-- `spike=25%`: More sensitive, detects most sudden problems
-- `spike=30%`: Production default (balanced)
-- `spike=40%`: Dev/staging (only extreme cases)
-
----
-
-#### 2. **`gradual` - Gradual Rise Threshold**
-**Default:** 15% | **Range:** 0-100%
-
-Detects sustained increases over a fixed 5-minute analysis window.
-
-**How it works:**
-- Compares oldest value in 5-minute window vs current value
-- Window duration is **FIXED at 5 minutes** (not affected by buffer/interval settings)
-- Triggers if percentage change exceeds threshold
-- Example: CPU at 15% five minutes ago, now at 30% = 15% gradual rise
-- Note: Algorithm compares only start vs end; the path between doesn't affect detection
-
-**When to adjust:**
-- **Too many gradual alerts?** Increase to 18-20%
-- **Want early warning?** Decrease to 10-12%
-
-**Real-world scenarios:**
-- `gradual=10%`: More sensitive, catch slow memory leaks early
-- `gradual=15%`: Production default (balanced)
-- `gradual=20%`: Servers with expected load variations
-
----
-
-#### 3. **`anomaly` - Statistical Anomaly Threshold**
-**Default:** 4.0σ | **Range:** 1.0-10.0 standard deviations
-
-Detects values that are statistically unusual compared to historical average.
-
-**How it works:**
-- Calculates average (μ) and standard deviation (σ) over 5 minutes
-- Measures how many σ current value deviates from average
-- Triggers if deviation exceeds threshold
-
-**Mathematical explanation:**
-```
-Current value: 25%
-Historical avg (μ): 8%
-Std deviation (σ): 4%
-
-Deviation = |25 - 8| / 4 = 4.25σ
-If anomaly=4.0 → Alert triggered (4.25 > 4.0)
-If anomaly=5.0 → No alert (4.25 < 5.0)
-```
-
-**When to adjust:**
-- **Too many anomaly alerts for small changes?** Increase to 4.5-5.0σ
-- **Missing unusual patterns?** Decrease to 2.5-3.0σ
-- **Getting alerts like "13.2% (4.5σ)"?** Your threshold is 4.0σ, increase to 5.0σ
-
-**Statistical context:**
-- **1σ**: ~68% of values fall within ±1σ (very common)
-- **2σ**: ~95% of values fall within ±2σ (common)
-- **3σ**: ~99.7% of values fall within ±3σ (rare)
-- **4σ**: ~99.99% of values fall within ±4σ (very rare, default)
-- **5σ**: Extreme outlier (once in 1.7 million events)
-
-**Real-world scenarios:**
-- `anomaly=3.0σ`: Critical servers (catch more unusual patterns)
-- `anomaly=4.0σ`: Production default (balanced)
-- `anomaly=5.0σ`: Less sensitive (reduce noise further)
-- `anomaly=6.0σ`: Dev/staging (only extreme anomalies)
-
----
-
-#### 4. **`renotify` - Re-notification Interval**
-**Default:** 120 minutes | **Range:** Any positive integer
-
-How often to resend alert if problem persists.
-
-**How it works:**
-- After initial alert, wait N minutes before sending same alert again
-- Only applies to unacknowledged, active alerts
-- Stops if alert is acknowledged or resolved
-
-**When to adjust:**
-- **Alert fatigue?** Increase to 180-240 minutes
-- **Need frequent reminders?** Decrease to 60 minutes
-- **Critical systems?** Decrease to 30-60 minutes
-
-**Real-world scenarios:**
-- `renotify=30`: Critical infrastructure (frequent reminders)
-- `renotify=60`: More frequent notifications
-- `renotify=120`: Production default (balanced)
-- `renotify=240`: Dev/staging (occasional reminders)
-
----
-
-### Advanced Monitoring Configuration
-
-#### 5. **`interval` - Metrics Collection Interval**
-**Default:** 15 seconds | **Range:** 10-300 seconds
+**Default:** 30 seconds | **Range:** 10-300 seconds
 
 How often to collect system metrics (CPU, Memory, Disk).
 
-**How it works:**
-- Collects metrics every N seconds
-- Lower interval = more frequent measurements, catches short-lived spikes
-- Higher interval = less CPU overhead, may miss brief spikes
-- **Note:** Gradual rise window is FIXED at 5 minutes regardless of interval
-
-**Impact on detection:**
-```
-interval=15s → Checks every 15 seconds (more sensitive to brief spikes)
-interval=30s → Checks every 30 seconds (half the overhead)
-interval=60s → Checks every 60 seconds (minimal overhead, may miss brief spikes)
-
-Note: Gradual rise detection always uses 5-minute window
+```bash
+catops set interval=30    # Default - balanced
+catops set interval=15    # More frequent - catches brief spikes
+catops set interval=60    # Less frequent - minimal resource usage
 ```
 
 **When to adjust:**
-- **CatOps using too much CPU?** Increase to 30-60 seconds
-- **Missing short-lived spikes?** Keep at 15 seconds
+- **Missing short-lived spikes?** Decrease to 15 seconds
+- **Want minimal overhead?** Increase to 60-120 seconds
 - **Development environment?** Increase to 60 seconds
-- **Critical production?** Keep at 15 seconds for accuracy
-
-**Real-world scenarios:**
-- `interval=15`: Production default (accurate spike detection)
-- `interval=30`: Low-resource servers (half the overhead)
-- `interval=60`: Dev/staging (minimal overhead)
-- `interval=120`: Very lightweight monitoring (background only)
 
 ---
 
-#### 6. **`buffer` - Historical Data Buffer Size**
-**Default:** 20 data points | **Range:** 10-100 data points
+## Log Collection
 
-How many historical metric values to store for statistical analysis and anomaly detection.
+CatOps automatically collects logs from various sources when in Cloud Mode:
 
-**How it works:**
-- Stores last N metric readings in memory
-- Used for calculating averages, standard deviation for anomaly detection
-- Provides historical context for status display and trend analysis
-- **Note:** Does NOT affect gradual rise window (fixed at 5 minutes)
+**Supported Sources:**
+- **Docker containers** - Logs from all running containers
+- **Docker Compose** - Service logs with container name detection
+- **Journald** - System logs on Linux (systemd)
+- **Log files** - Common log file locations
 
-**Buffer size guidelines:**
-- Buffer should hold at least 5 minutes of data: `buffer_size ≥ 300 / interval`
-- Examples:
-  - interval=15s → buffer≥20 points (covers 5 minutes)
-  - interval=30s → buffer≥10 points (covers 5 minutes)
-  - interval=60s → buffer≥5 points (covers 5 minutes)
+**Log Parsing:**
+- Automatic format detection (JSON, logfmt, syslog, common log formats)
+- Uvicorn/Gunicorn access logs
+- Error and warning detection
+- HTTP request parsing (method, path, status, duration)
+- Stack trace extraction
 
-**When to adjust:**
-- **Memory-constrained systems?** Decrease to 10-15 points
-- **Need longer trend analysis?** Increase to 40-60 points
-- **Servers with stable load?** Keep at 20 points
-- **Highly variable workloads?** Increase to 30-40 points
-
-**Real-world scenarios:**
-- `buffer=10`: Minimal memory (sufficient for 30s intervals, marginal for 15s)
-- `buffer=20`: Production default (holds 5 minutes at 15s interval)
-- `buffer=40`: Better statistics (more data points for anomaly detection)
-- `buffer=60`: Best statistics (maximum historical data for trend analysis)
-
-**Memory usage:**
-Each data point uses ~24 bytes. Per metric type (CPU/Memory/Disk):
-- `buffer=10` → ~240 bytes × 3 metrics = ~720 bytes
-- `buffer=20` → ~480 bytes × 3 metrics = ~1.4 KB
-- `buffer=60` → ~1.4 KB × 3 metrics = ~4.2 KB
-
-**Important:** Buffer size does NOT change detection windows (always 5 minutes). It only affects:
-1. Statistical accuracy - more data points = better anomaly detection
-2. Minimum required to hold 5-minute window data for gradual rise detection
-3. If buffer is too small for your interval, gradual rise may not work properly
+**View logs in web dashboard at [catops.app](https://catops.app)**
 
 ---
 
-#### 7. **`resolution` - Alert Resolution Timeout**
-**Default:** 5 minutes | **Range:** 1-60 minutes
-
-How long to wait before marking an alert as resolved after metrics return to normal.
-
-**How it works:**
-- When metric drops below threshold, starts timer
-- If metric stays below threshold for N minutes → sends "RESOLVED" notification
-- If metric spikes again within N minutes → doesn't send resolved (prevents spam)
-- Prevents flapping alerts (on/off/on/off)
-
-**Example timeline:**
-```
-Time 0:00 - CPU = 95% → Alert triggered
-Time 0:05 - CPU drops to 70%
-Time 0:10 - Still at 70% for 5 minutes → "RESOLVED" sent (with resolution=5)
-```
-
-**Flapping prevention:**
-```
-Time 0:00 - CPU = 95% → Alert triggered
-Time 0:02 - CPU drops to 70%
-Time 0:04 - CPU spikes to 90% again
-→ No "RESOLVED" sent, alert continues (prevents spam)
-```
-
-**When to adjust:**
-- **Flapping alerts (on/off frequently)?** Increase to 10-15 minutes
-- **Need immediate resolution notifications?** Decrease to 2-3 minutes
-- **Stable servers?** Keep at 5 minutes
-- **Unstable workloads?** Increase to 10 minutes
-
-**Real-world scenarios:**
-- `resolution=2`: Fast resolution notifications (may cause flapping)
-- `resolution=5`: Production default (balanced)
-- `resolution=10`: High-variability workloads (prevents flapping)
-- `resolution=15`: Very unstable systems (maximum stability)
-
----
-
-### Quick Reference Table
-
-**Alert Sensitivity:**
-
-| Scenario | spike | gradual | anomaly | renotify |
-|----------|-------|---------|---------|----------|
-| **Critical production** | 25% | 12% | 3.0σ | 60min |
-| **Standard production (default)** | 30% | 15% | 4.0σ | 120min |
-| **Dev/Staging** | 40% | 20% | 5.0σ | 240min |
-| **High traffic (expected spikes)** | 35% | 18% | 4.5σ | 120min |
-| **Low traffic (stable)** | 28% | 13% | 3.5σ | 90min |
-
-**Monitoring Configuration:**
-
-| Scenario | interval | buffer | resolution |
-|----------|----------|--------|------------|
-| **Critical production** | 15s | 20 | 5min |
-| **Standard production (default)** | 15s | 20 | 5min |
-| **Low-resource servers** | 30s | 20 | 10min |
-| **Dev/Staging** | 60s | 15 | 10min |
-| **Extended analysis** | 15s | 40 | 5min |
-| **Minimal overhead** | 120s | 10 | 15min |
-
----
-
-### How Alert Types Interact
-
-**Priority order (highest to lowest):**
-1. **Sudden Spike** - Immediate danger (memory leak, attack)
-2. **Gradual Rise** - Growing problem (slow leak, increasing load)
-3. **Anomaly** - Unusual pattern (statistical outlier)
-4. **Threshold** - Limit exceeded (only sent if NO spikes/anomalies)
-
-**Why threshold alerts might not appear:**
-- If CPU constantly fluctuates by small amounts, anomaly alerts fire
-- Increase `anomaly` threshold to reduce sensitivity
-- This allows threshold alerts to be sent when CPU > configured limit
-
----
-
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Standalone Issues
 
@@ -788,6 +458,9 @@ journalctl -u catops --since "10 minutes ago"
 
 # Check logs (macOS)
 tail -f ~/Library/Logs/catops.log
+
+# Or check default log location
+cat /tmp/catops.log
 ```
 
 **Telegram alerts not working:**
@@ -810,29 +483,6 @@ catops auth info
 # Re-login
 catops auth logout
 catops auth login YOUR_NEW_TOKEN
-```
-
-**Too many alerts (alert spam):**
-```bash
-# Note: Defaults are already balanced (spike=30, gradual=15, anomaly=4.0, renotify=120)
-# If still getting too many alerts, increase thresholds:
-
-# For even less noise (dev/staging servers)
-catops set spike=40 gradual=20 anomaly=5.0 renotify=240
-catops restart
-
-# If getting too many anomaly alerts for small changes:
-catops set anomaly=5.0  # Increase anomaly threshold
-catops restart
-```
-
-**Not receiving threshold alerts:**
-```bash
-# Threshold alerts only send when there are NO spikes/anomalies
-# Defaults are already configured for production use
-# To allow more threshold alerts, increase spike detection thresholds:
-catops set spike=35 gradual=18 anomaly=5.0
-catops restart
 ```
 
 ### Kubernetes Issues
@@ -858,11 +508,9 @@ helm upgrade catops oci://ghcr.io/mfhonley/catops/helm-charts/catops \
   --set prometheus.enabled=false
 ```
 
-📖 **More troubleshooting:** See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions!
 
@@ -870,7 +518,7 @@ We welcome contributions!
 ```bash
 # Fork and clone
 git clone https://github.com/YOUR_USERNAME/catops.git
-cd catops
+cd catops/cli
 
 # Build
 go build -o catops ./cmd/catops
@@ -885,21 +533,19 @@ go build -o catops ./cmd/catops
 - Platform support (Windows, FreeBSD)
 - Feature requests
 
-📖 **Development guide:** See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
-
 ---
 
-## 📞 Support
+## Support
 
 **Get Help:**
-- 💬 Telegram: [@mfhonley](https://t.me/mfhonley) - Fastest response
-- 📧 Email: me@thehonley.org
-- 🐛 Issues: [GitHub Issues](https://github.com/mfhonley/catops/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/mfhonley/catops/discussions)
+- Telegram: [@mfhonley](https://t.me/mfhonley) - Fastest response
+- Email: me@thehonley.org
+- Issues: [GitHub Issues](https://github.com/mfhonley/catops/issues)
+- Discussions: [GitHub Discussions](https://github.com/mfhonley/catops/discussions)
 
 ---
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
@@ -910,7 +556,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 🔗 Links
+## Links
 
 - **Website**: [catops.app](https://catops.app)
 - **Documentation**: [GitHub](https://github.com/mfhonley/catops)
@@ -918,4 +564,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Built with ❤️ by the open source community**
+**Built with love by the open source community**

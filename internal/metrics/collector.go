@@ -450,6 +450,22 @@ func StopOTelCollector() error {
 	return err
 }
 
+// ForceFlush forces immediate export of all pending metrics
+// Call this after initial metrics collection to send data immediately
+func ForceFlush() error {
+	otelMu.Lock()
+	defer otelMu.Unlock()
+
+	if !otelStarted || meterProvider == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return meterProvider.ForceFlush(ctx)
+}
+
 // =============================================================================
 // OTel Metrics Registration
 // =============================================================================

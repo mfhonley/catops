@@ -157,6 +157,12 @@ func runDaemon() {
 			logger.Warning("Initial metrics collection failed: %v", err)
 		} else {
 			logger.Debug("Initial metrics collected successfully")
+			// Force immediate export so dashboard shows data right away
+			if err := metrics.ForceFlush(); err != nil {
+				logger.Warning("Initial metrics flush failed: %v", err)
+			} else {
+				logger.Info("Initial metrics sent to backend")
+			}
 		}
 	}
 

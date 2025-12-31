@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"os/exec"
 
 	"github.com/spf13/cobra"
@@ -38,7 +37,7 @@ Examples:
 			killCmd.Run() // Ignore errors
 
 			ui.PrintStatus("success", "Force cleanup completed.")
-			ui.PrintStatus("info", fmt.Sprintf("Run 'catops service start' to start fresh."))
+			ui.PrintStatus("info", "Run 'catops service start' to start fresh.")
 			ui.PrintSectionEnd()
 		},
 	}

@@ -16,11 +16,9 @@ import (
 )
 
 const (
-	maxLogLines    = 100  // Maximum log lines to collect per service (increased for AI analysis)
-	logTimeout     = 10   // Timeout in seconds for log collection (increased for thorough collection)
-	maxLogLineLen  = 2000 // Maximum length per log line (increased to capture full stack traces)
-	errorLogLines  = 50   // Priority lines for errors/warnings
-	normalLogLines = 50   // Remaining lines for normal logs
+	maxLogLines   = 100  // Maximum log lines to collect per service (increased for AI analysis)
+	logTimeout    = 10   // Timeout in seconds for log collection (increased for thorough collection)
+	maxLogLineLen = 2000 // Maximum length per log line (increased to capture full stack traces)
 )
 
 // DockerContainer represents a running docker container

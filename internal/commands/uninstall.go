@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"catops/internal/config"
-	"catops/internal/process"
 	"catops/internal/server"
+	"catops/internal/service"
 	"catops/internal/ui"
 )
 
@@ -79,32 +79,30 @@ Examples:
 				ui.PrintStatus("warning", "No auth token or server ID found - skipping backend notification")
 			}
 
-			// remove autostart services FIRST (before stopping service)
+			// Remove service using new service manager
+			svc, err := service.New()
+			if err == nil {
+				svc.Stop()
+				svc.Remove()
+				ui.PrintStatus("success", "Service removed")
+			}
+
+			// Fallback: also try to remove legacy autostart services
 			switch runtime.GOOS {
 			case "linux":
 				homeDir, _ := os.UserHomeDir()
 				systemdService := homeDir + "/.config/systemd/user/catops.service"
 				if _, err := os.Stat(systemdService); err == nil {
-					if err := exec.Command("systemctl", "--user", "disable", "catops.service").Run(); err != nil {
-						ui.PrintStatus("warning", "Failed to disable systemd service (may already be disabled)")
-					}
-					if err := exec.Command("systemctl", "--user", "stop", "catops.service").Run(); err != nil {
-						ui.PrintStatus("warning", "Failed to stop systemd service (may already be stopped)")
-					}
-					if err := os.Remove(systemdService); err != nil {
-						ui.PrintStatus("warning", fmt.Sprintf("Failed to remove systemd service file: %v", err))
-					}
+					exec.Command("systemctl", "--user", "disable", "catops.service").Run()
+					exec.Command("systemctl", "--user", "stop", "catops.service").Run()
+					os.Remove(systemdService)
 				}
 			case "darwin":
 				homeDir, _ := os.UserHomeDir()
 				launchAgent := homeDir + "/Library/LaunchAgents/com.catops.monitor.plist"
 				if _, err := os.Stat(launchAgent); err == nil {
-					if err := exec.Command("launchctl", "unload", launchAgent).Run(); err != nil {
-						ui.PrintStatus("warning", "Failed to unload launchd service (may already be unloaded)")
-					}
-					if err := os.Remove(launchAgent); err != nil {
-						ui.PrintStatus("warning", fmt.Sprintf("Failed to remove launchd plist: %v", err))
-					}
+					exec.Command("launchctl", "unload", launchAgent).Run()
+					os.Remove(launchAgent)
 				}
 			}
 
@@ -139,8 +137,8 @@ Examples:
 				ui.PrintStatus("info", "Keeping log files for debugging (backend not notified)")
 			}
 
-			// stop ALL catops processes (after removing config)
-			process.KillAll()
+			// Kill any remaining processes
+			exec.Command("pkill", "-9", "-f", "catops daemon").Run()
 			ui.PrintStatus("success", "All processes stopped")
 
 			// remove ALL CatOps binaries from PATH LAST

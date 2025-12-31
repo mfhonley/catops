@@ -8,7 +8,7 @@ import (
 
 	"catops/internal/config"
 	"catops/internal/metrics"
-	"catops/internal/process"
+	"catops/internal/service"
 	"catops/internal/ui"
 	"catops/pkg/utils"
 )
@@ -84,10 +84,16 @@ Examples:
 
 			// daemon status
 			ui.PrintSection("Daemon Status")
-			if process.IsRunning() {
-				ui.PrintStatus("success", "Monitoring daemon is running")
+			svc, svcErr := service.New()
+			if svcErr == nil {
+				status, statusErr := svc.Status()
+				if statusErr == nil && status != "" {
+					ui.PrintStatus("success", "Monitoring daemon is running")
+				} else {
+					ui.PrintStatus("warning", "Monitoring daemon is not running")
+				}
 			} else {
-				ui.PrintStatus("warning", "Monitoring daemon is not running")
+				ui.PrintStatus("warning", "Could not check daemon status")
 			}
 			ui.PrintSectionEnd()
 		},

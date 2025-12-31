@@ -2,10 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
-	"catops/internal/process"
+	"catops/internal/service"
 	"catops/internal/ui"
 )
 
@@ -17,33 +18,31 @@ func NewStartCmd() *cobra.Command {
 		Long: `Start the monitoring service in the background.
 The service will continuously collect system metrics and send them to the cloud.
 
-To run in background (recommended):
-  nohup catops start > /dev/null 2>&1 &
-
-To run in foreground (for testing):
-  catops start
+For first-time setup, use 'catops service install' to install as a system service.
 
 Examples:
-  catops start           # Start monitoring service (foreground)
-  nohup catops start &   # Start monitoring service (background)`,
+  catops start              # Start the monitoring service
+  catops service install    # Install as system service (recommended)`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
 			ui.PrintSection("Starting Monitoring Service")
 
-			if process.IsRunning() {
-				ui.PrintStatus("warning", "Monitoring service is already running")
+			svc, err := service.New()
+			if err != nil {
+				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to create service: %v", err))
 				ui.PrintSectionEnd()
-				return
+				os.Exit(1)
 			}
 
-			err := process.StartProcess()
+			status, err := svc.Start()
 			if err != nil {
 				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
+				ui.PrintStatus("info", "Try 'catops service install' to install the service first")
 				ui.PrintSectionEnd()
-				return
+				os.Exit(1)
 			}
 
-			ui.PrintStatus("success", "Monitoring service started successfully")
+			ui.PrintStatus("success", status)
 			ui.PrintSectionEnd()
 		},
 	}

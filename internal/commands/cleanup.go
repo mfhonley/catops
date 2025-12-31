@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"catops/internal/process"
 	"catops/internal/ui"
 )
 
@@ -15,22 +14,15 @@ import (
 func NewCleanupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cleanup",
-		Short: "Clean up old backup files and duplicate processes",
-		Long: `Clean up old backup files created during updates and kill duplicate catops processes.
-This will remove specific old backup files, clean up files older than 30 days, and ensure only one catops daemon is running.
+		Short: "Clean up old backup files",
+		Long: `Clean up old backup files created during updates.
+This will remove specific old backup files and clean up files older than 30 days.
 
 Examples:
-  catops cleanup          # Clean up old backups and processes`,
+  catops cleanup          # Clean up old backups`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ui.PrintHeader()
-			ui.PrintSection("Cleaning Up Old Backups and Processes")
-
-			// clean up stale lock files
-			if err := process.CleanupStale(); err != nil {
-				ui.PrintStatus("warning", fmt.Sprintf("Process cleanup: %v", err))
-			} else {
-				ui.PrintStatus("success", "Process cleanup completed")
-			}
+			ui.PrintSection("Cleaning Up Old Backups")
 
 			// clean up old backup files
 			executable, err := os.Executable()

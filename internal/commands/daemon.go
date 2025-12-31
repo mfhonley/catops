@@ -17,8 +17,8 @@ import (
 	"catops/internal/config"
 	"catops/internal/logger"
 	"catops/internal/metrics"
-	"catops/internal/process"
 	"catops/internal/server"
+	"catops/internal/service"
 	"catops/pkg/utils"
 )
 
@@ -52,20 +52,9 @@ func runDaemon() {
 			buf := make([]byte, 4096)
 			n := runtime.Stack(buf, false)
 			logger.Error("Stack trace:\n%s", string(buf[:n]))
-			process.ReleaseLock()
+			service.NotifyStopping()
 			os.Exit(1)
 		}
-	}()
-
-	// Acquire lock file
-	if _, err := process.AcquireLock(); err != nil {
-		logger.Error("Failed to start daemon: %v", err)
-		logger.Error("Another CatOps instance may already be running")
-		os.Exit(1)
-	}
-	defer func() {
-		logger.Info("Releasing lock file")
-		process.ReleaseLock()
 	}()
 
 	logger.Info("========================================")
@@ -130,6 +119,10 @@ func runDaemon() {
 		logger.Info("  Logs: not started (local mode or missing credentials)")
 	}
 
+	// Notify systemd that we're ready (for Type=notify services)
+	service.NotifyReady()
+	service.NotifyStatus("Monitoring active")
+
 	// Signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
@@ -178,12 +171,15 @@ func runDaemon() {
 			}
 
 		case <-healthTicker.C:
-			// Log health status
+			// Log health status and notify systemd watchdog
 			var memStats runtime.MemStats
 			runtime.ReadMemStats(&memStats)
 			logger.Debug("Health check - goroutines: %d, memory: %.1f MB",
 				runtime.NumGoroutine(),
 				float64(memStats.Alloc)/1024/1024)
+
+			// Ping systemd watchdog (keeps service alive)
+			service.NotifyWatchdog()
 
 		case <-updateTicker.C:
 			checkForUpdates()
@@ -193,6 +189,9 @@ func runDaemon() {
 			logger.Info("=== SIGNAL RECEIVED: %v ===", sig)
 			logger.Info("Initiating graceful shutdown...")
 			logger.Info("========================================")
+
+			// Notify systemd we're stopping
+			service.NotifyStopping()
 
 			// Send service stop event
 			if cfg.IsCloudMode() {

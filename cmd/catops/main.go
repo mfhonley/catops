@@ -128,9 +128,9 @@ Need help? Telegram: @mfhonley`,
 	cleanupCmd := commands.NewCleanupCmd()
 	forceCleanupCmd := commands.NewForceCleanupCmd()
 	configCmd := commands.NewConfigCmd()
-	autostartCmd := commands.NewAutostartCmd()
 	authCmd := commands.NewAuthCmd()
 	askCmd := commands.NewAskCmd()
+	serviceCmd := commands.NewServiceCmd() // New: system service management
 
 	// add commands to root
 	rootCmd.AddCommand(statusCmd)
@@ -144,9 +144,9 @@ Need help? Telegram: @mfhonley`,
 	rootCmd.AddCommand(uninstallCmd)
 	rootCmd.AddCommand(cleanupCmd)
 	rootCmd.AddCommand(forceCleanupCmd)
-	rootCmd.AddCommand(autostartCmd)
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(askCmd)
+	rootCmd.AddCommand(serviceCmd) // New: catops service install/start/stop/status
 
 	// execute
 	if err := rootCmd.Execute(); err != nil {

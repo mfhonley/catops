@@ -1,299 +1,89 @@
 package ui
 
 import (
-	"catops/internal/metrics"
 	"fmt"
 	"sort"
 	"strings"
+
+	"catops/internal/metrics"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
-// Color constants - Simple Blue Theme
+// Legacy color constants - kept for backward compatibility
+// These will be phased out in favor of lipgloss styles
 const (
-	// Main theme color
-	ORANGE = "\033[38;5;75m" // Blue (kept variable name for compatibility)
-
-	// Status colors
-	SUCCESS = "\033[38;5;46m"  // Green
-	WARNING = "\033[38;5;226m" // Yellow
-	ERROR   = "\033[38;5;196m" // Red
-	INFO    = "\033[38;5;75m"  // Blue
-
-	// Text colors
-	WHITE = "\033[38;5;15m"  // White
-	GRAY  = "\033[38;5;250m" // Light gray
-	DARK  = "\033[38;5;240m" // Dark gray
-
-	// Special effects
-	BOLD = "\033[1m"
-
-	// Reset
-	NC = "\033[0m" // No Color
+	ORANGE  = "\033[38;5;75m"
+	SUCCESS = "\033[38;5;46m"
+	WARNING = "\033[38;5;226m"
+	ERROR   = "\033[38;5;196m"
+	INFO    = "\033[38;5;75m"
+	WHITE   = "\033[38;5;15m"
+	GRAY    = "\033[38;5;250m"
+	DARK    = "\033[38;5;240m"
+	BOLD    = "\033[1m"
+	NC      = "\033[0m"
 )
 
-// PrintHeader prints the application header
+// PrintHeader prints the application header using lipgloss
 func PrintHeader() {
-	fmt.Printf("%s%s ██████╗ █████╗ ████████╗ ██████╗ ██████╗ ███████╗%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s██╔════╝██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗██╔════╝%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s██║     ███████║   ██║   ██║   ██║██████╔╝███████╗%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s██║     ██╔══██║   ██║   ██║   ██║██╔═══╝ ╚════██║%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s╚██████╗██║  ██║   ██║   ╚██████╔╝██║     ███████║%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s ╚═════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝     ╚══════╝%s\n", BOLD, ORANGE, NC)
-	fmt.Printf("%s%s                    Server Monitor%s\n", BOLD, WHITE, NC)
+	fmt.Println(RenderBanner())
+	fmt.Println(RenderSubtitle())
 }
 
-// PrintSection prints a section header
+// PrintSection prints a section header using lipgloss
 func PrintSection(title string) {
-	titleWidth := len(title) + 4 // 4 for "┌─ " and " ─"
-	totalWidth := 60             // Fixed total width
-	dashCount := totalWidth - titleWidth
-	if dashCount < 0 {
-		dashCount = 0
-	}
-	fmt.Printf("%s%s┌─ %s%s%s ─%s%s┐%s\n",
-		ORANGE,
-		BOLD,
-		WHITE, title, ORANGE,
-		strings.Repeat("─", dashCount),
-		BOLD,
-		NC)
+	fmt.Println(RenderSectionStart(title))
 }
 
-// PrintSectionEnd prints a section footer
+// PrintSectionEnd prints a section footer using lipgloss
 func PrintSectionEnd() {
-	totalWidth := 60 // Same fixed total width as PrintSection
-	fmt.Printf("%s%s└%s%s┘%s\n", ORANGE, BOLD, strings.Repeat("─", totalWidth), BOLD, NC)
+	fmt.Println(RenderSectionEnd())
 }
 
 // PrintTableSectionEnd prints a section footer for tables
 func PrintTableSectionEnd() {
-	totalWidth := 100 // Same width as table separators
-	fmt.Printf("%s%s└%s%s┘%s\n", ORANGE, BOLD, strings.Repeat("─", totalWidth), BOLD, NC)
+	fmt.Println(RenderTableSectionEnd())
 }
 
-// PrintStatus prints a status message
+// PrintStatus prints a status message using lipgloss
 func PrintStatus(status, message string) {
-	switch status {
-	case "success":
-		fmt.Printf("  %s%s✓%s %s%s\n", SUCCESS, BOLD, NC, WHITE, message)
-	case "warning":
-		fmt.Printf("  %s%s⚠%s %s%s\n", WARNING, BOLD, NC, WHITE, message)
-	case "error":
-		fmt.Printf("  %s%s✗%s %s%s\n", ERROR, BOLD, NC, WHITE, message)
-	case "info":
-		fmt.Printf("  %s%sℹ%s %s%s\n", INFO, BOLD, NC, WHITE, message)
+	// Handle debug status separately (not displayed)
+	if status == "debug" {
+		return
 	}
+	fmt.Println(RenderStatus(status, message))
 }
 
 // PrintErrorWithSupport prints an error message with support contact
 func PrintErrorWithSupport(message string) {
-	fmt.Printf("  %s%s✗%s %s%s\n", ERROR, BOLD, NC, WHITE, message)
-	fmt.Printf("  %s%s💬%s %sNeed help? Telegram: @mfhonley%s\n", INFO, BOLD, NC, GRAY, NC)
+	fmt.Println(RenderStatus("error", message))
+	supportMsg := GrayStyle.Render("Need help? Telegram: @mfhonley")
+	fmt.Println("  " + InfoStyle.Render("💬") + " " + supportMsg)
 }
 
-// CreateTable creates a formatted table
+// CreateTable creates a formatted table using lipgloss
 func CreateTable(data map[string]string) string {
-	var result strings.Builder
-	var items []struct {
-		key   string
-		value string
-	}
-
-	// Convert map to slice for sorting
-	for key, value := range data {
-		items = append(items, struct {
-			key   string
-			value string
-		}{key, value})
-	}
-
-	// Sort by key
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].key < items[j].key
-	})
-
-	// Find max key length
-	maxKeyLen := 0
-	for _, item := range items {
-		if len(item.key) > maxKeyLen {
-			maxKeyLen = len(item.key)
-		}
-	}
-
-	// Find max value length
-	maxValueLen := 0
-	for _, item := range items {
-		if len(item.value) > maxValueLen {
-			maxValueLen = len(item.value)
-		}
-	}
-
-	// Limit lengths to prevent overflow
-	if maxKeyLen > 30 {
-		maxKeyLen = 30
-	}
-	if maxValueLen > 40 {
-		maxValueLen = 40
-	}
-
-	// Build table
-	for _, item := range items {
-		displayKey := item.key
-		displayValue := item.value
-
-		// Truncate if too long
-		if len(displayKey) > maxKeyLen {
-			displayKey = displayKey[:maxKeyLen-5] + "..."
-		}
-		if len(displayValue) > maxValueLen {
-			displayValue = displayValue[:maxValueLen-5] + "..."
-		}
-
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, displayKey, NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, displayValue, NC))
-		result.WriteString("\n")
-	}
-
-	return result.String()
+	return createStyledList(data, true)
 }
 
-// CreateFixedTable creates a fixed-width table
+// CreateFixedTable creates a fixed-width table using lipgloss
 func CreateFixedTable(data map[string]string) string {
-	var result strings.Builder
-	var items []struct {
-		key   string
-		value string
-	}
-
-	// Convert map to slice for sorting
-	for key, value := range data {
-		items = append(items, struct {
-			key   string
-			value string
-		}{key, value})
-	}
-
-	// Sort by key
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].key < items[j].key
-	})
-
-	// Fixed widths
-	keyWidth := 20
-	valueWidth := 35
-
-	// Build table
-	for _, item := range items {
-		displayKey := item.key
-		displayValue := item.value
-
-		// Truncate if too long
-		if len(displayKey) > keyWidth-4 {
-			displayKey = displayKey[:keyWidth-4] + "..."
-		}
-		if len(displayValue) > valueWidth-4 {
-			displayValue = displayValue[:valueWidth-4] + "..."
-		}
-
-		paddedKey := fmt.Sprintf("%-*s", keyWidth, displayKey)
-		paddedValue := fmt.Sprintf("%-*s", valueWidth, displayValue)
-
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, paddedKey, NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, paddedValue, NC))
-		result.WriteString("\n")
-	}
-
-	return result.String()
+	return createStyledList(data, true)
 }
 
-// CreatePerfectTable creates a perfectly aligned table
+// CreatePerfectTable creates a perfectly aligned table using lipgloss
 func CreatePerfectTable(data map[string]string) string {
-	var result strings.Builder
-	var items []struct {
-		key   string
-		value string
-	}
-
-	// Convert map to slice for sorting
-	for key, value := range data {
-		items = append(items, struct {
-			key   string
-			value string
-		}{key, value})
-	}
-
-	// Sort by key
-	sort.Slice(items, func(i, j int) bool {
-		return items[i].key < items[j].key
-	})
-
-	// Find max key length
-	maxKeyLen := 0
-	for _, item := range items {
-		if len(item.key) > maxKeyLen {
-			maxKeyLen = len(item.key)
-		}
-	}
-
-	// Find max value length
-	maxValueLen := 0
-	for _, item := range items {
-		if len(item.value) > maxValueLen {
-			maxValueLen = len(item.value)
-		}
-	}
-
-	// Limit lengths
-	if maxKeyLen > 25 {
-		maxKeyLen = 25
-	}
-	if maxValueLen > 35 {
-		maxValueLen = 35
-	}
-
-	// Build table
-	for _, item := range items {
-		displayKey := item.key
-		displayValue := item.value
-
-		// Truncate if too long
-		if len(displayKey) > maxKeyLen {
-			displayKey = displayKey[:maxKeyLen-3] + "..."
-		}
-		if len(displayValue) > maxValueLen {
-			displayValue = displayValue[:maxValueLen-3] + "..."
-		}
-
-		paddedKey := fmt.Sprintf("%-*s", maxKeyLen, displayKey)
-		paddedValue := fmt.Sprintf("%-*s", maxValueLen, displayValue)
-
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, paddedKey, NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, paddedValue, NC))
-		result.WriteString("\n")
-	}
-
-	return result.String()
+	return createStyledList(data, true)
 }
 
-// CreateBeautifulList creates a beautiful bulleted list
+// CreateBeautifulList creates a beautiful bulleted list using lipgloss
 func CreateBeautifulList(data map[string]string) string {
+	return createStyledList(data, false)
+}
+
+// createStyledList is the internal function for creating styled lists
+func createStyledList(data map[string]string, align bool) string {
 	var result strings.Builder
 	var items []struct {
 		key   string
@@ -312,17 +102,39 @@ func CreateBeautifulList(data map[string]string) string {
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].key < items[j].key
 	})
+
+	// Find max key length for alignment
+	maxKeyLen := 0
+	if align {
+		for _, item := range items {
+			if len(item.key) > maxKeyLen {
+				maxKeyLen = len(item.key)
+			}
+		}
+		if maxKeyLen > 25 {
+			maxKeyLen = 25
+		}
+	}
 
 	// Build list
 	for _, item := range items {
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s%s", ORANGE, "•", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", WHITE, item.key, NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", DARK, ":", NC))
-		result.WriteString(" ")
-		result.WriteString(fmt.Sprintf("%s%s%s", GRAY, item.value, NC))
+		displayKey := item.key
+		displayValue := item.value
+
+		// Truncate if too long
+		if len(displayKey) > 25 {
+			displayKey = displayKey[:22] + "..."
+		}
+		if len(displayValue) > 40 {
+			displayValue = displayValue[:37] + "..."
+		}
+
+		// Pad key if aligning
+		if align && maxKeyLen > 0 {
+			displayKey = fmt.Sprintf("%-*s", maxKeyLen, displayKey)
+		}
+
+		result.WriteString(RenderKeyValue(displayKey, displayValue))
 		result.WriteString("\n")
 	}
 
@@ -331,73 +143,74 @@ func CreateBeautifulList(data map[string]string) string {
 
 // GetAlertEmoji returns an emoji based on usage percentage
 func GetAlertEmoji(usage float64) string {
-	if usage >= 90 {
+	switch {
+	case usage >= 90:
 		return "🚨"
-	} else if usage >= 70 {
+	case usage >= 70:
 		return "⚠️"
-	} else if usage >= 50 {
+	case usage >= 50:
 		return "📊"
-	} else {
+	default:
 		return "✅"
 	}
 }
 
-// CreateProcessTable creates a formatted table for processes with centered alignment
+// CreateProcessTable creates a formatted table for processes
 func CreateProcessTable(processes []metrics.ProcessInfo) string {
 	var result strings.Builder
 
 	if len(processes) == 0 {
-		result.WriteString("  No processes found\n")
+		result.WriteString("  " + GrayStyle.Render("No processes found") + "\n")
 		return result.String()
 	}
 
-	// Calculate total CPU usage of shown processes
+	// Calculate total CPU usage
 	var totalCPU float64
 	for _, proc := range processes {
 		totalCPU += proc.CPUUsage
 	}
 
 	// Header with summary
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%sTop %d processes using %.1f%% of total system CPU%s\n",
-		GRAY, len(processes), totalCPU, NC))
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		ORANGE, strings.Repeat("─", 100), NC))
-
-	// Column headers with centered alignment
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%6s %15s %8s %8s %12s %8s %8s %s%s\n",
-		BOLD, WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
+	summaryStyle := lipgloss.NewStyle().Foreground(SubtextColor)
+	result.WriteString("  " + summaryStyle.Render(fmt.Sprintf("Top %d processes using %.1f%% of total system CPU", len(processes), totalCPU)) + "\n")
 
 	// Separator
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		ORANGE, strings.Repeat("─", 100), NC))
+	result.WriteString("  " + BorderStyle.Render(repeatChar(BoxHorizontal, TableWidth)) + "\n")
 
-	// Process rows with centered alignment
+	// Column headers
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(TextColor)
+	result.WriteString("  " + headerStyle.Render(fmt.Sprintf("%6s %15s %8s %8s %12s %8s %8s %s",
+		"PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND")) + "\n")
+
+	// Separator
+	result.WriteString("  " + BorderStyle.Render(repeatChar(BoxHorizontal, TableWidth)) + "\n")
+
+	// Process rows
 	for _, proc := range processes {
-		// Color code for status
-		statusColor := DARK
+		var statusStyle lipgloss.Style
 		switch proc.Status {
 		case "R":
-			statusColor = SUCCESS // Running
+			statusStyle = SuccessStyle // Running
 		case "S":
-			statusColor = WARNING // Sleeping
+			statusStyle = WarningStyle // Sleeping
 		case "Z":
-			statusColor = ERROR // Zombie
+			statusStyle = ErrorStyle // Zombie
 		case "D":
-			statusColor = INFO // Disk sleep
+			statusStyle = InfoStyle // Disk sleep
+		default:
+			statusStyle = MutedStyle
 		}
 
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%6d %15s %8.1f %8.1f %12s %s%8s%s %8s %s\n",
+		row := fmt.Sprintf("%6d %15s %8.1f %8.1f %12s ",
 			proc.PID,
 			truncateString(proc.User, 15),
 			proc.CPUUsage,
 			proc.MemoryUsage,
-			formatKB(proc.MemoryKB),
-			statusColor, proc.Status, NC,
+			formatKB(proc.MemoryKB))
+
+		result.WriteString("  " + row)
+		result.WriteString(statusStyle.Render(fmt.Sprintf("%8s", proc.Status)))
+		result.WriteString(fmt.Sprintf(" %8s %s\n",
 			truncateString(proc.TTY, 8),
 			truncateString(proc.Command, 25)))
 	}
@@ -405,62 +218,62 @@ func CreateProcessTable(processes []metrics.ProcessInfo) string {
 	return result.String()
 }
 
-// CreateProcessTableByMemory creates a formatted table for processes sorted by memory usage
+// CreateProcessTableByMemory creates a formatted table for processes sorted by memory
 func CreateProcessTableByMemory(processes []metrics.ProcessInfo) string {
 	var result strings.Builder
 
 	if len(processes) == 0 {
-		result.WriteString("  No processes found\n")
+		result.WriteString("  " + GrayStyle.Render("No processes found") + "\n")
 		return result.String()
 	}
 
-	// Calculate total memory usage of shown processes
+	// Calculate total memory usage
 	var totalMemory float64
 	for _, proc := range processes {
 		totalMemory += proc.MemoryUsage
 	}
 
 	// Header with summary
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%sTop %d processes using %.1f%% of total system memory%s\n",
-		GRAY, len(processes), totalMemory, NC))
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		ORANGE, strings.Repeat("─", 100), NC))
-
-	// Column headers with centered alignment
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%6s %15s %8s %8s %12s %8s %8s %s%s\n",
-		BOLD, WHITE, "PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND", NC))
+	summaryStyle := lipgloss.NewStyle().Foreground(SubtextColor)
+	result.WriteString("  " + summaryStyle.Render(fmt.Sprintf("Top %d processes using %.1f%% of total system memory", len(processes), totalMemory)) + "\n")
 
 	// Separator
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s\n",
-		ORANGE, strings.Repeat("─", 100), NC))
+	result.WriteString("  " + BorderStyle.Render(repeatChar(BoxHorizontal, TableWidth)) + "\n")
 
-	// Process rows with centered alignment
+	// Column headers
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(TextColor)
+	result.WriteString("  " + headerStyle.Render(fmt.Sprintf("%6s %15s %8s %8s %12s %8s %8s %s",
+		"PID", "USER", "CPU%", "MEM%", "MEMORY", "STATUS", "TTY", "COMMAND")) + "\n")
+
+	// Separator
+	result.WriteString("  " + BorderStyle.Render(repeatChar(BoxHorizontal, TableWidth)) + "\n")
+
+	// Process rows
 	for _, proc := range processes {
-		// Color code for status
-		statusColor := DARK
+		var statusStyle lipgloss.Style
 		switch proc.Status {
 		case "R":
-			statusColor = SUCCESS // Running
+			statusStyle = SuccessStyle
 		case "S":
-			statusColor = WARNING // Sleeping
+			statusStyle = WarningStyle
 		case "Z":
-			statusColor = ERROR // Zombie
+			statusStyle = ErrorStyle
 		case "D":
-			statusColor = INFO // Disk sleep
+			statusStyle = InfoStyle
+		default:
+			statusStyle = MutedStyle
 		}
 
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%6d %15s %8.1f %8.1f %12s %s%8s%s %8s %s\n",
+		row := fmt.Sprintf("%6d %15s %8.1f %8.1f %12s ",
 			proc.PID,
 			truncateString(proc.User, 15),
 			proc.CPUUsage,
 			proc.MemoryUsage,
-			formatKB(proc.MemoryKB),
-			statusColor, proc.Status, NC,
+			formatKB(proc.MemoryKB))
+
+		result.WriteString("  " + row)
+		result.WriteString(statusStyle.Render(fmt.Sprintf("%8s", proc.Status)))
+		result.WriteString(fmt.Sprintf(" %8s %s\n",
 			truncateString(proc.TTY, 8),
 			truncateString(proc.Command, 25)))
 	}
@@ -472,32 +285,27 @@ func CreateProcessTableByMemory(processes []metrics.ProcessInfo) string {
 func CreateDetailedResourceTable(title string, usage metrics.ResourceUsage, formatFunc func(float64, int64, int64) string) string {
 	var result strings.Builder
 
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s%s%s\n", BOLD, WHITE, title, NC))
+	// Title
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(TextColor)
+	result.WriteString("  " + titleStyle.Render(title) + "\n")
 
-	// Main usage line
-	result.WriteString("  ")
-	result.WriteString(fmt.Sprintf("%s%s•%s %sUsage: %s%s\n",
-		ORANGE, BOLD, NC, WHITE, GRAY, formatFunc(usage.Usage, usage.Used, usage.Total)))
+	// Main usage line with progress bar
+	usageText := formatFunc(usage.Usage, usage.Used, usage.Total)
+	result.WriteString(RenderKeyValue("Usage", usageText) + "\n")
+
+	// Progress bar
+	result.WriteString("  " + BulletStyle.Render(IconBullet) + " ")
+	result.WriteString(RenderProgressBar(usage.Usage, 30))
+	result.WriteString(fmt.Sprintf(" %.1f%%\n", usage.Usage))
 
 	// Detailed breakdown
 	if usage.Total > 0 {
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s•%s %sTotal: %s%s\n",
-			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Total)))
-
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s•%s %sUsed: %s%s\n",
-			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Used)))
-
-		result.WriteString("  ")
-		result.WriteString(fmt.Sprintf("%s%s•%s %sFree: %s%s\n",
-			ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Free)))
+		result.WriteString(RenderKeyValue("Total", formatKB(usage.Total)) + "\n")
+		result.WriteString(RenderKeyValue("Used", formatKB(usage.Used)) + "\n")
+		result.WriteString(RenderKeyValue("Free", formatKB(usage.Free)) + "\n")
 
 		if usage.Available != usage.Free {
-			result.WriteString("  ")
-			result.WriteString(fmt.Sprintf("%s%s•%s %sAvailable: %s%s\n",
-				ORANGE, BOLD, NC, WHITE, GRAY, formatKB(usage.Available)))
+			result.WriteString(RenderKeyValue("Available", formatKB(usage.Available)) + "\n")
 		}
 	}
 
@@ -505,21 +313,26 @@ func CreateDetailedResourceTable(title string, usage metrics.ResourceUsage, form
 }
 
 // Helper functions
+
 func truncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
 }
 
 func formatKB(kb int64) string {
-	if kb < 1024 {
+	switch {
+	case kb < 1024:
 		return fmt.Sprintf("%d KB", kb)
-	} else if kb < 1024*1024 {
+	case kb < 1024*1024:
 		return fmt.Sprintf("%.1f MB", float64(kb)/1024)
-	} else if kb < 1024*1024*1024 {
+	case kb < 1024*1024*1024:
 		return fmt.Sprintf("%.1f GB", float64(kb)/(1024*1024))
-	} else {
+	default:
 		return fmt.Sprintf("%.1f TB", float64(kb)/(1024*1024*1024))
 	}
 }

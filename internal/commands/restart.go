@@ -7,7 +7,7 @@ import (
 
 	"catops/internal/analytics"
 	"catops/internal/config"
-	"catops/internal/process"
+	"catops/internal/service"
 	"catops/internal/ui"
 )
 
@@ -34,26 +34,27 @@ Examples:
 				return
 			}
 
-			// stop current process
-			if process.IsRunning() {
-				err := process.StopProcess()
-				if err != nil {
-					ui.PrintErrorWithSupport(fmt.Sprintf("Failed to stop: %v", err))
-					ui.PrintSectionEnd()
-					return
-				}
-				ui.PrintStatus("success", "Monitoring service stopped")
-			}
-
-			// start new process
-			err = process.StartProcess()
+			svc, err := service.New()
 			if err != nil {
-				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
+				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to create service: %v", err))
 				ui.PrintSectionEnd()
 				return
 			}
 
-			ui.PrintStatus("success", "Monitoring service restarted successfully")
+			// Stop current service
+			svc.Stop()
+			ui.PrintStatus("info", "Service stopped")
+
+			// Start service
+			status, err := svc.Start()
+			if err != nil {
+				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
+				ui.PrintStatus("info", "Try 'catops service install' first")
+				ui.PrintSectionEnd()
+				return
+			}
+
+			ui.PrintStatus("success", status)
 
 			// Send service_restart event
 			if cfg.AuthToken != "" && cfg.ServerID != "" {

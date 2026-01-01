@@ -61,7 +61,16 @@ func newServiceInstallCmd() *cobra.Command {
 			}
 
 			ui.PrintStatus("success", status)
-			ui.PrintStatus("info", "Run 'catops service start' to start monitoring")
+
+			// Auto-start the service after installation
+			ui.PrintStatus("info", "Starting service...")
+			startStatus, err := svc.Start()
+			if err != nil {
+				ui.PrintStatus("warning", fmt.Sprintf("Service installed but failed to start: %v", err))
+				ui.PrintStatus("info", "Run 'catops service start' manually")
+			} else {
+				ui.PrintStatus("success", startStatus)
+			}
 			ui.PrintSectionEnd()
 		},
 	}

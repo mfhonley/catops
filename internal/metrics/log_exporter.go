@@ -34,7 +34,7 @@ const (
 	LogCollectionInterval = 30 * time.Second
 	MaxLogsPerBatch       = 500
 	MaxLogMessageLength   = 2048
-	MaxBufferSize         = 10000 // Max logs in memory buffer
+	MaxBufferSize         = 5000 // Max logs in memory buffer (reduced to save memory)
 
 	// File tailing
 	DefaultTailLines  = 100
@@ -50,6 +50,10 @@ const (
 	HTTPTimeout    = 30 * time.Second
 	MaxRetries     = 3
 	RetryBaseDelay = 1 * time.Second
+
+	// Deduplication settings
+	DeduplicationWindow    = 5 * time.Minute  // Don't send same message within this window
+	MaxDeduplicationHashes = 10000            // Max hashes to track
 )
 
 // =============================================================================
@@ -783,18 +787,29 @@ func (le *LogExporter) addLogEntry(message, service, source, sourcePath string, 
 	le.addEntry(entry)
 }
 
-// addEntry adds a log entry to the buffer with deduplication
+// addEntry adds a log entry to the buffer with deduplication and filtering
 func (le *LogExporter) addEntry(entry LogEntry) {
-	// Generate hash for deduplication
-	hash := le.hashEntry(entry)
+	// 1. Filter by log level - only collect warn, error, fatal
+	if !le.isImportantLevel(entry.Level) {
+		return
+	}
+
+	// 2. Filter noise logs (health checks, access logs, etc.)
+	if le.isNoiseLog(entry.Message) {
+		return
+	}
+
+	// 3. Generate hash for deduplication (normalize message first)
+	normalizedMsg := le.normalizeMessage(entry.Message)
+	hash := le.hashEntryNormalized(entry.Source, entry.Service, string(entry.Level), normalizedMsg)
 	entry.MessageHash = hash
 
 	le.bufferMu.Lock()
 	defer le.bufferMu.Unlock()
 
-	// Check for duplicate (same hash within 1 minute)
+	// 4. Check for duplicate (same hash within deduplication window)
 	if lastSeen, ok := le.seenHashes[hash]; ok {
-		if time.Since(lastSeen) < time.Minute {
+		if time.Since(lastSeen) < DeduplicationWindow {
 			return // Skip duplicate
 		}
 	}
@@ -812,9 +827,88 @@ func (le *LogExporter) addEntry(entry LogEntry) {
 	}
 
 	// Clean old hashes
-	if len(le.seenHashes) > MaxBufferSize*2 {
+	if len(le.seenHashes) > MaxDeduplicationHashes {
 		le.cleanSeenHashes()
 	}
+}
+
+// isImportantLevel returns true if log level should be collected
+func (le *LogExporter) isImportantLevel(level LogLevel) bool {
+	switch level {
+	case LogLevelWarn, LogLevelError, LogLevelFatal:
+		return true
+	default:
+		return false
+	}
+}
+
+// isNoiseLog returns true if message is noise that should be filtered
+func (le *LogExporter) isNoiseLog(message string) bool {
+	msgLower := strings.ToLower(message)
+
+	// Health check endpoints
+	noisePatterns := []string{
+		"/health",
+		"/healthz",
+		"/ready",
+		"/readyz",
+		"/live",
+		"/livez",
+		"/ping",
+		"/metrics",
+		"/favicon.ico",
+		"health check",
+		"healthcheck",
+		// Common access log patterns (200 OK responses)
+		"\" 200 ",
+		"\" 204 ",
+		"\" 301 ",
+		"\" 302 ",
+		"\" 304 ",
+		// Routine messages
+		"request completed",
+		"request started",
+		"connection accepted",
+		"connection closed",
+	}
+
+	for _, pattern := range noisePatterns {
+		if strings.Contains(msgLower, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// normalizeMessage removes variable parts (timestamps, PIDs, IPs) for better deduplication
+func (le *LogExporter) normalizeMessage(message string) string {
+	// Remove timestamps like 2025-01-02T10:30:45
+	msg := regexp.MustCompile(`\d{4}[-/]\d{2}[-/]\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:?\d{2}|Z)?`).ReplaceAllString(message, "")
+
+	// Remove PIDs like [12345] or pid=12345
+	msg = regexp.MustCompile(`\[\d+\]|\bpid[=:]\d+`).ReplaceAllString(msg, "")
+
+	// Remove IP addresses
+	msg = regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`).ReplaceAllString(msg, "")
+
+	// Remove port numbers like :8080
+	msg = regexp.MustCompile(`:\d{2,5}\b`).ReplaceAllString(msg, "")
+
+	// Remove hex IDs (container IDs, request IDs)
+	msg = regexp.MustCompile(`\b[a-f0-9]{12,}\b`).ReplaceAllString(msg, "")
+
+	// Collapse multiple spaces
+	msg = regexp.MustCompile(`\s+`).ReplaceAllString(msg, " ")
+
+	return strings.TrimSpace(msg)
+}
+
+// hashEntryNormalized generates hash from normalized components
+func (le *LogExporter) hashEntryNormalized(source, service, level, normalizedMsg string) string {
+	data := fmt.Sprintf("%s|%s|%s|%s", source, service, level, normalizedMsg)
+	hash := md5.Sum([]byte(data))
+	return hex.EncodeToString(hash[:8])
 }
 
 // hashEntry generates a hash for deduplication

@@ -48,10 +48,23 @@ Examples:
 			// Start service
 			status, err := svc.Start()
 			if err != nil {
-				ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
-				ui.PrintStatus("info", "Try 'catops service install' first")
-				ui.PrintSectionEnd()
-				return
+				// Service might not be installed, try installing it first
+				ui.PrintStatus("warning", "Service not installed, installing...")
+				installStatus, installErr := svc.Install()
+				if installErr != nil {
+					ui.PrintErrorWithSupport(fmt.Sprintf("Failed to install service: %v", installErr))
+					ui.PrintSectionEnd()
+					return
+				}
+				ui.PrintStatus("success", installStatus)
+
+				// Now try starting again
+				status, err = svc.Start()
+				if err != nil {
+					ui.PrintErrorWithSupport(fmt.Sprintf("Failed to start: %v", err))
+					ui.PrintSectionEnd()
+					return
+				}
 			}
 
 			ui.PrintStatus("success", status)

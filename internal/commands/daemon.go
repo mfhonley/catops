@@ -90,19 +90,6 @@ func runDaemon() {
 		}
 	}()
 
-	// Start log collection (sends logs to backend via OTLP)
-	var logExporter *metrics.LogExporter
-	if cfg.IsCloudMode() && cfg.AuthToken != "" && cfg.ServerID != "" {
-		logExporter = startLogCollection(cfg, hostname)
-	}
-	defer func() {
-		if logExporter != nil {
-			logger.Info("Stopping log collection...")
-			if err := logExporter.Stop(); err != nil {
-				logger.Warning("Failed to stop log collection: %v", err)
-			}
-		}
-	}()
 
 	logger.Info("Daemon initialized:")
 	logger.Info("  Mode: %s", cfg.Mode)
@@ -112,11 +99,6 @@ func runDaemon() {
 		logger.Info("  Alerts: processed on backend")
 	} else {
 		logger.Info("  Metrics: not started (local mode or missing credentials)")
-	}
-	if logExporter != nil {
-		logger.Info("  Logs: collecting and sending via OTLP")
-	} else {
-		logger.Info("  Logs: not started (local mode or missing credentials)")
 	}
 
 	// Notify systemd that we're ready (for Type=notify services)
@@ -225,29 +207,6 @@ func startMetricsCollection(cfg *config.Config, hostname string) bool {
 
 	logger.Info("Metrics collection started successfully")
 	return true
-}
-
-// startLogCollection initializes and starts the log collection and export
-func startLogCollection(cfg *config.Config, hostname string) *metrics.LogExporter {
-	logCfg := &metrics.LogExporterConfig{
-		ServerID:  cfg.ServerID,
-		AuthToken: cfg.AuthToken,
-		Hostname:  hostname,
-	}
-
-	exporter, err := metrics.NewLogExporter(logCfg)
-	if err != nil {
-		logger.Error("Failed to create log exporter: %v", err)
-		return nil
-	}
-
-	if err := exporter.Start(); err != nil {
-		logger.Error("Failed to start log collection: %v", err)
-		return nil
-	}
-
-	logger.Info("Log collection started successfully")
-	return exporter
 }
 
 // checkForUpdates checks for new CLI versions

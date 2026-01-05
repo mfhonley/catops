@@ -9,16 +9,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	maxLogLines   = 100  // Maximum log lines to collect per service (increased for AI analysis)
-	logTimeout    = 10   // Timeout in seconds for log collection (increased for thorough collection)
-	maxLogLineLen = 2000 // Maximum length per log line (increased to capture full stack traces)
+	maxLogLines   = 500  // Maximum log lines to collect per container
+	logTimeout    = 10   // Timeout in seconds for log collection
+	maxLogLineLen = 2000 // Maximum length per log line
 )
 
 // DockerContainer represents a running docker container
@@ -169,21 +168,22 @@ func (lc *LogCollector) findContainerForService(service *ServiceInfo) *DockerCon
 	return nil
 }
 
-// CollectServiceLogs collects logs for a service based on its type and container status
+// CollectServiceLogs collects logs for a service - only Docker containers
 func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, string) {
+	// Only collect Docker container logs (simple approach like self-hosted)
+
 	// 1. Try to find docker container for this service
 	container := lc.findContainerForService(service)
 	if container != nil {
 		logs, _ := lc.collectDockerLogs(container.ID)
 		if len(logs) > 0 {
-			// Update service with container info
 			service.ContainerID = container.ID
 			service.IsContainer = true
 			return logs, "docker"
 		}
 	}
 
-	// 2. If explicitly marked as container but no logs yet, try by container ID
+	// 2. If explicitly marked as container, try by container ID
 	if service.IsContainer && service.ContainerID != "" {
 		logs, err := lc.collectDockerLogs(service.ContainerID)
 		if err == nil && len(logs) > 0 {
@@ -191,43 +191,16 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 		}
 	}
 
-	// 3. Try pm2 logs for Node.js apps
-	if service.ServiceType == ServiceTypeNodeApp {
-		logs := lc.collectPM2Logs(service.PID)
-		if len(logs) > 0 {
-			return logs, "pm2"
-		}
-	}
-
-	// Skip journald on non-Linux systems (macOS, Windows don't have journalctl)
-	if runtime.GOOS != "linux" {
-		return nil, ""
-	}
-
-	// 4. Try journald for system services (nginx, redis, postgres, etc.)
-	if lc.isSystemService(service.ServiceType) {
-		logs, err := lc.collectJournaldLogs(service.ServiceType)
-		if err == nil && len(logs) > 0 {
-			return logs, "journald"
-		}
-	}
-
-	// 5. Try journald by PID for any service
-	logs, err := lc.collectJournaldByPID(service.PID)
-	if err == nil && len(logs) > 0 {
-		return logs, "journald"
-	}
-
 	return nil, ""
 }
 
-// collectDockerLogs collects recent error logs from a Docker container
+// collectDockerLogs collects recent logs from a Docker container (last 1 minute only)
 func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get last N lines (increased for better AI analysis)
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", fmt.Sprintf("%d", maxLogLines*2), "--timestamps", containerID)
+	// Get logs from last 1 minute only (to avoid duplicates on each 30s collection)
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--since", "1m", "--tail", fmt.Sprintf("%d", maxLogLines), "--timestamps", containerID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err

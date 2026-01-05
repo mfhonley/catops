@@ -3,6 +3,8 @@ package metrics
 import (
 	"bufio"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +21,12 @@ const (
 	maxLogLines   = 500  // Maximum log lines to collect per container
 	logTimeout    = 10   // Timeout in seconds for log collection
 	maxLogLineLen = 2000 // Maximum length per log line
+)
+
+// Package-level singleton for log collector to maintain deduplication state across collection cycles
+var (
+	globalLogCollector     *LogCollector
+	globalLogCollectorOnce sync.Once
 )
 
 // DockerContainer represents a running docker container
@@ -39,6 +48,10 @@ type LogCollector struct {
 	// Cache of running docker containers (container name/id -> DockerContainer)
 	dockerContainers map[string]DockerContainer
 	dockerLoaded     bool
+
+	// Deduplication: track sent log hashes to avoid sending same logs twice
+	sentLogHashes   map[string]time.Time // hash -> when it was sent
+	sentLogHashesMu sync.Mutex
 }
 
 // NewLogCollector creates a new LogCollector
@@ -52,10 +65,22 @@ func NewLogCollector() *LogCollector {
 			regexp.MustCompile(`(?i)(denied|unauthorized|forbidden|permission)`),
 		},
 		dockerContainers: make(map[string]DockerContainer),
+		sentLogHashes:    make(map[string]time.Time),
 	}
 	// Pre-load docker containers
 	lc.loadDockerContainers()
 	return lc
+}
+
+// GetLogCollector returns the global log collector singleton
+// This ensures deduplication state is maintained across collection cycles
+func GetLogCollector() *LogCollector {
+	globalLogCollectorOnce.Do(func() {
+		globalLogCollector = NewLogCollector()
+	})
+	// Refresh docker containers list on each call (they might have changed)
+	globalLogCollector.loadDockerContainers()
+	return globalLogCollector
 }
 
 // loadDockerContainers loads all running docker containers
@@ -194,19 +219,55 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	return nil, ""
 }
 
-// collectDockerLogs collects recent logs from a Docker container (last 1 minute only)
+// collectDockerLogs collects recent logs from a Docker container
 func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get logs from last 1 minute only (to avoid duplicates on each 30s collection)
-	cmd := exec.CommandContext(ctx, "docker", "logs", "--since", "1m", "--tail", fmt.Sprintf("%d", maxLogLines), "--timestamps", containerID)
+	// Get last N lines of logs
+	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", fmt.Sprintf("%d", maxLogLines), "--timestamps", containerID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, err
 	}
 
-	return lc.filterLogLines(string(output)), nil
+	// Filter for error/warning lines, then deduplicate
+	filtered := lc.filterLogLines(string(output))
+	return lc.deduplicateLogs(filtered), nil
+}
+
+// hashLogLine creates a hash of a log line for deduplication
+func (lc *LogCollector) hashLogLine(line string) string {
+	hash := md5.Sum([]byte(line))
+	return hex.EncodeToString(hash[:])
+}
+
+// deduplicateLogs filters out logs that have already been sent
+func (lc *LogCollector) deduplicateLogs(logs []string) []string {
+	lc.sentLogHashesMu.Lock()
+	defer lc.sentLogHashesMu.Unlock()
+
+	// Clean up old hashes (older than 10 minutes) to prevent memory growth
+	cutoff := time.Now().Add(-10 * time.Minute)
+	for hash, sentAt := range lc.sentLogHashes {
+		if sentAt.Before(cutoff) {
+			delete(lc.sentLogHashes, hash)
+		}
+	}
+
+	var newLogs []string
+	now := time.Now()
+
+	for _, log := range logs {
+		hash := lc.hashLogLine(log)
+		if _, alreadySent := lc.sentLogHashes[hash]; !alreadySent {
+			// This is a new log line, mark it as sent
+			lc.sentLogHashes[hash] = now
+			newLogs = append(newLogs, log)
+		}
+	}
+
+	return newLogs
 }
 
 // collectJournaldLogs collects recent error logs from journald

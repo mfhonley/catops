@@ -523,8 +523,8 @@ func GetServices() ([]ServiceInfo, error) {
 		return nil, err
 	}
 
-	// Collect logs for each service
-	logCollector := NewLogCollector()
+	// Collect logs for each service (using singleton to maintain deduplication state)
+	logCollector := GetLogCollector()
 	services = logCollector.GetAllServiceLogs(services)
 
 	return services, nil

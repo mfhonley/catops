@@ -219,12 +219,13 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 	return nil, ""
 }
 
-// collectDockerLogs collects recent logs from a Docker container
-func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) {
+// CollectContainerLogs collects logs directly from a container by ID
+// This is the simple approach like self-hosted - just get docker logs
+func (lc *LogCollector) CollectContainerLogs(containerID string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
-	// Get last N lines of logs
+	// Get last N lines of logs with timestamps
 	cmd := exec.CommandContext(ctx, "docker", "logs", "--tail", fmt.Sprintf("%d", maxLogLines), "--timestamps", containerID)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -234,6 +235,11 @@ func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) 
 	// Filter for error/warning lines, then deduplicate
 	filtered := lc.filterLogLines(string(output))
 	return lc.deduplicateLogs(filtered), nil
+}
+
+// collectDockerLogs collects recent logs from a Docker container (legacy method for services)
+func (lc *LogCollector) collectDockerLogs(containerID string) ([]string, error) {
+	return lc.CollectContainerLogs(containerID)
 }
 
 // hashLogLine creates a hash of a log line for deduplication

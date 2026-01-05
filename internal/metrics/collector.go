@@ -199,28 +199,29 @@ type ServiceInfo struct {
 
 // ContainerMetrics contains Docker/Podman container metrics
 type ContainerMetrics struct {
-	ContainerID      string  `json:"container_id"`
-	ContainerName    string  `json:"container_name"`
-	ImageName        string  `json:"image_name"`
-	ImageTag         string  `json:"image_tag"`
-	Runtime          string  `json:"runtime"`
-	Status           string  `json:"status"`
-	Health           string  `json:"health"`
-	StartedAt        int64   `json:"started_at"`
-	ExitCode         *int16  `json:"exit_code"`
-	CPUPercent       float64 `json:"cpu_percent"`
-	CPUSystemPercent float64 `json:"cpu_system_percent"`
-	MemoryUsage      uint64  `json:"memory_usage"`
-	MemoryLimit      uint64  `json:"memory_limit"`
-	MemoryPercent    float64 `json:"memory_percent"`
-	NetRxBytes       uint64  `json:"net_rx_bytes"`
-	NetTxBytes       uint64  `json:"net_tx_bytes"`
-	BlockReadBytes   uint64  `json:"block_read_bytes"`
-	BlockWriteBytes  uint64  `json:"block_write_bytes"`
-	PIDsCurrent      uint32  `json:"pids_current"`
-	PIDsLimit        uint32  `json:"pids_limit"`
-	Ports            string  `json:"ports"`
-	Labels           string  `json:"labels"`
+	ContainerID      string   `json:"container_id"`
+	ContainerName    string   `json:"container_name"`
+	ImageName        string   `json:"image_name"`
+	ImageTag         string   `json:"image_tag"`
+	Runtime          string   `json:"runtime"`
+	Status           string   `json:"status"`
+	Health           string   `json:"health"`
+	StartedAt        int64    `json:"started_at"`
+	ExitCode         *int16   `json:"exit_code"`
+	CPUPercent       float64  `json:"cpu_percent"`
+	CPUSystemPercent float64  `json:"cpu_system_percent"`
+	MemoryUsage      uint64   `json:"memory_usage"`
+	MemoryLimit      uint64   `json:"memory_limit"`
+	MemoryPercent    float64  `json:"memory_percent"`
+	NetRxBytes       uint64   `json:"net_rx_bytes"`
+	NetTxBytes       uint64   `json:"net_tx_bytes"`
+	BlockReadBytes   uint64   `json:"block_read_bytes"`
+	BlockWriteBytes  uint64   `json:"block_write_bytes"`
+	PIDsCurrent      uint32   `json:"pids_current"`
+	PIDsLimit        uint32   `json:"pids_limit"`
+	Ports            string   `json:"ports"`
+	Labels           string   `json:"labels"`
+	RecentLogs       []string `json:"recent_logs"` // Container logs (errors/warnings)
 }
 
 // SystemSummary contains aggregated system metrics for the main dashboard
@@ -1189,10 +1190,10 @@ func registerContainerMetrics() error {
 }
 
 func registerLogMetrics() error {
-	// catops.log - Log entries from services (sent as individual metrics)
+	// catops.log - Log entries from containers (sent as individual metrics)
 	_, err := meter.Int64ObservableGauge(
 		"catops.log",
-		metric.WithDescription("Log entries from services"),
+		metric.WithDescription("Log entries from containers"),
 		metric.WithUnit("{entries}"),
 		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
 			cacheMu.RLock()
@@ -1202,22 +1203,22 @@ func registerLogMetrics() error {
 				return nil
 			}
 
-			// Send logs from services
-			for _, s := range m.Services {
-				if len(s.RecentLogs) == 0 {
+			// Send logs from containers (simple approach like self-hosted)
+			for _, c := range m.Containers {
+				if len(c.RecentLogs) == 0 {
 					continue
 				}
 
-				for idx, logLine := range s.RecentLogs {
+				for idx, logLine := range c.RecentLogs {
 					level := detectLogLevel(logLine)
 					attrs := []attribute.KeyValue{
-						attribute.String("source", s.LogSource),
-						attribute.String("source_path", s.ServiceName),
+						attribute.String("source", "docker"),
+						attribute.String("source_path", c.ContainerName),
 						attribute.String("level", level),
 						attribute.String("message", truncateString(logLine, 500)),
-						attribute.String("service", s.ServiceName),
-						attribute.String("container_id", s.ContainerID),
-						attribute.Int("pid", s.PID),
+						attribute.String("service", c.ContainerName),
+						attribute.String("container_id", c.ContainerID),
+						attribute.Int("pid", 0),
 					}
 					o.Observe(int64(idx), metric.WithAttributes(attrs...))
 				}
@@ -2021,8 +2022,12 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 		containers = append(containers, c)
 	}
 
-	// Skip docker inspect for each container - too expensive (N syscalls)
-	// Basic stats from "docker stats" are enough for monitoring
+	// Collect logs for containers using global log collector (for deduplication)
+	logCollector := GetLogCollector()
+	for i := range containers {
+		logs, _ := logCollector.CollectContainerLogs(containers[i].ContainerID)
+		containers[i].RecentLogs = logs
+	}
 
 	return containers, nil
 }

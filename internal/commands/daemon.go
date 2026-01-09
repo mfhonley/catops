@@ -160,6 +160,13 @@ func runDaemon() {
 				runtime.NumGoroutine(),
 				float64(memStats.Alloc)/1024/1024)
 
+			// Check OTLP connection health and force flush
+			if metricsStarted {
+				if err := metrics.CheckOTelHealth(); err != nil {
+					logger.Warning("OTLP health check failed: %v - metrics may not be sending", err)
+				}
+			}
+
 			// Ping systemd watchdog (keeps service alive)
 			service.NotifyWatchdog()
 

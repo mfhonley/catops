@@ -320,6 +320,9 @@ var (
 	otelMu        sync.Mutex
 	otelStarted   bool
 
+	// Current OTel config for health checks
+	currentOTelConfig *OTelConfig
+
 	// Cached metrics for OTel callbacks
 	cachedMetrics *AllMetrics
 	cacheMu       sync.RWMutex
@@ -382,10 +385,21 @@ func StartOTelCollector(cfg *OTelConfig) error {
 			"Authorization":      "Bearer " + cfg.AuthToken,
 			"X-CatOps-Server-ID": cfg.ServerID,
 		}),
+		// Retry configuration for resilience
+		otlpmetrichttp.WithRetry(otlpmetrichttp.RetryConfig{
+			Enabled:         true,
+			InitialInterval: 5 * time.Second,
+			MaxInterval:     30 * time.Second,
+			MaxElapsedTime:  2 * time.Minute,
+		}),
+		otlpmetrichttp.WithTimeout(30*time.Second),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create OTLP exporter: %w", err)
 	}
+
+	// Store config for health checks
+	currentOTelConfig = cfg
 
 	hostname := cfg.Hostname
 	if hostname == "" {
@@ -462,6 +476,40 @@ func ForceFlush() error {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	return meterProvider.ForceFlush(ctx)
+}
+
+// FlushWithLogging flushes metrics and logs the result
+// Returns true if flush was successful
+func FlushWithLogging() bool {
+	err := ForceFlush()
+	if err != nil {
+		// Log error but don't crash - will retry on next interval
+		fmt.Fprintf(os.Stderr, "[%s] ERROR: Failed to flush metrics to backend: %v\n",
+			time.Now().Format("2006-01-02 15:04:05"), err)
+		return false
+	}
+	return true
+}
+
+// CheckOTelHealth verifies the OTLP exporter can reach the backend
+// Returns nil if healthy, error otherwise
+func CheckOTelHealth() error {
+	otelMu.Lock()
+	defer otelMu.Unlock()
+
+	if !otelStarted || meterProvider == nil {
+		return fmt.Errorf("OTLP exporter not started")
+	}
+
+	if currentOTelConfig == nil {
+		return fmt.Errorf("OTLP config not available")
+	}
+
+	// Try to flush - if it fails, connection is unhealthy
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	return meterProvider.ForceFlush(ctx)

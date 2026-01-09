@@ -117,6 +117,10 @@ func runDaemon() {
 	healthTicker := time.NewTicker(5 * time.Minute)
 	defer healthTicker.Stop()
 
+	// OTel failure tracking for recovery logic
+	var consecutiveOTelFailures int
+	const maxOTelFailuresBeforeRestart = 3
+
 	// Metrics collection ticker - must run BEFORE OTel SDK reads the cache
 	// OTel SDK calls callbacks at CollectionInterval, we collect slightly faster
 	metricsInterval := time.Duration(cfg.CollectionInterval) * time.Second
@@ -147,8 +151,12 @@ func runDaemon() {
 		case <-metricsTicker.C:
 			// Collect metrics and update cache for OTel callbacks
 			if metricsStarted {
-				if _, err := metrics.CollectAllMetrics(); err != nil {
-					logger.Debug("Metrics collection error: %v", err)
+				if m, err := metrics.CollectAllMetrics(); err != nil {
+					logger.Warning("Metrics collection error: %v", err)
+				} else if m != nil && m.Summary != nil {
+					logger.Info("[COLLECT] CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%, Procs: %d, Containers: %d",
+						m.Summary.CPUUsage, m.Summary.MemoryUsage, m.Summary.DiskUsage,
+						len(m.Processes), len(m.Containers))
 				}
 			}
 
@@ -163,7 +171,43 @@ func runDaemon() {
 			// Check OTLP connection health and force flush
 			if metricsStarted {
 				if err := metrics.CheckOTelHealth(); err != nil {
-					logger.Warning("OTLP health check failed: %v - metrics may not be sending", err)
+					consecutiveOTelFailures++
+					logger.Warning("OTLP health check failed (%d/%d): %v",
+						consecutiveOTelFailures, maxOTelFailuresBeforeRestart, err)
+
+					// Recovery logic: restart OTel after consecutive failures
+					if consecutiveOTelFailures >= maxOTelFailuresBeforeRestart {
+						logger.Warning("OTLP repeatedly failing, attempting restart...")
+
+						// Stop current OTel collector
+						if err := metrics.StopOTelCollector(); err != nil {
+							logger.Warning("Failed to stop OTel collector: %v", err)
+						}
+
+						// Wait before restart
+						time.Sleep(5 * time.Second)
+
+						// Restart OTel collector
+						metricsStarted = startMetricsCollection(cfg, hostname)
+						if metricsStarted {
+							logger.Info("OTel collector restarted successfully")
+							// Collect and send initial metrics after restart
+							if _, err := metrics.CollectAllMetrics(); err == nil {
+								metrics.ForceFlush()
+							}
+						} else {
+							logger.Error("Failed to restart OTel collector")
+						}
+
+						consecutiveOTelFailures = 0
+					}
+				} else {
+					// Reset failure counter on success
+					if consecutiveOTelFailures > 0 {
+						logger.Info("[OTLP] Connection restored after %d failures", consecutiveOTelFailures)
+					}
+					consecutiveOTelFailures = 0
+					logger.Info("[OTLP] Health check OK - metrics sending normally")
 				}
 			}
 

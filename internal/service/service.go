@@ -6,7 +6,9 @@ package service
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/okzk/sdnotify"
 	"github.com/takama/daemon"
@@ -131,4 +133,69 @@ func NotifyStatus(status string) {
 	if runtime.GOOS == "linux" {
 		sdnotify.Status(status)
 	}
+}
+
+// MigrateServiceFile checks and fixes the systemd service file if it has the duplicate path bug
+// This is needed for systems that installed catops before the fix
+func MigrateServiceFile() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	servicePath := "/etc/systemd/system/catops.service"
+
+	// Read current service file
+	content, err := os.ReadFile(servicePath)
+	if err != nil {
+		// Service file doesn't exist or can't be read, nothing to migrate
+		return
+	}
+
+	contentStr := string(content)
+
+	// Check for the duplicate path bug pattern: ExecStart=/path/catops /path/catops daemon
+	// The bug was: s.daemon.Install(executable, "daemon") which passed the path twice
+	if !strings.Contains(contentStr, "catops daemon") {
+		return // No daemon argument found, might be a different issue
+	}
+
+	// Look for duplicate path pattern
+	lines := strings.Split(contentStr, "\n")
+	needsFix := false
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "ExecStart=") {
+			// Count how many times the path appears
+			// Bug pattern: ExecStart=/root/.local/bin/catops /root/.local/bin/catops daemon
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				// Check if second part looks like a path (contains catops)
+				if strings.Contains(parts[1], "catops") {
+					needsFix = true
+					break
+				}
+			}
+		}
+	}
+
+	if !needsFix {
+		return
+	}
+
+	logger.Info("Detected outdated service file, migrating...")
+
+	// Fix using sed (safer than rewriting the whole file)
+	cmd := exec.Command("sed", "-i", `s|ExecStart=.*/catops .*/catops daemon|ExecStart=/root/.local/bin/catops daemon|`, servicePath)
+	if err := cmd.Run(); err != nil {
+		logger.Warning("Failed to migrate service file: %v", err)
+		return
+	}
+
+	// Reload systemd
+	cmd = exec.Command("systemctl", "daemon-reload")
+	if err := cmd.Run(); err != nil {
+		logger.Warning("Failed to reload systemd: %v", err)
+		return
+	}
+
+	logger.Info("Service file migrated successfully")
 }

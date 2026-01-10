@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	constants "catops/config"
@@ -135,6 +136,9 @@ func ExecuteUpdateScript(currentVersion string) {
 		return
 	}
 
+	// Migrate service file after update (fix for duplicate path bug)
+	MigrateServiceFile()
+
 	// Note: Version update is handled by daemon on restart (new CLI version will update on daemon start)
 	// Send analytics event
 	cfg, err := config.LoadConfig()
@@ -215,4 +219,61 @@ func UpdateServerVersion(userToken, currentVersion string, cfg *config.Config) b
 	}
 
 	return resp.StatusCode == 200
+}
+
+// MigrateServiceFile checks and fixes the systemd service file if it has the duplicate path bug
+func MigrateServiceFile() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	servicePath := "/etc/systemd/system/catops.service"
+
+	// Read current service file
+	content, err := os.ReadFile(servicePath)
+	if err != nil {
+		return
+	}
+
+	contentStr := string(content)
+
+	// Check for the duplicate path bug pattern
+	if !strings.Contains(contentStr, "catops daemon") {
+		return
+	}
+
+	// Look for duplicate path pattern
+	lines := strings.Split(contentStr, "\n")
+	needsFix := false
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "ExecStart=") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 && strings.Contains(parts[1], "catops") {
+				needsFix = true
+				break
+			}
+		}
+	}
+
+	if !needsFix {
+		return
+	}
+
+	ui.PrintStatus("info", "Migrating service file...")
+
+	// Fix using sed
+	cmd := exec.Command("sed", "-i", `s|ExecStart=.*/catops .*/catops daemon|ExecStart=/root/.local/bin/catops daemon|`, servicePath)
+	if err := cmd.Run(); err != nil {
+		ui.PrintStatus("warning", "Failed to migrate service file")
+		return
+	}
+
+	// Reload systemd
+	cmd = exec.Command("systemctl", "daemon-reload")
+	if err := cmd.Run(); err != nil {
+		ui.PrintStatus("warning", "Failed to reload systemd")
+		return
+	}
+
+	ui.PrintStatus("success", "Service file migrated")
 }

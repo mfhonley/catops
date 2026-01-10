@@ -61,6 +61,9 @@ func runDaemon() {
 	logger.Info("=== DAEMON STARTING - PID: %d ===", os.Getpid())
 	logger.Info("========================================")
 
+	// Migrate service file if needed (fix for duplicate path bug in older versions)
+	service.MigrateServiceFile()
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {

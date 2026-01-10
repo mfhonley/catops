@@ -38,11 +38,29 @@ func (cfg *Config) IsLocalMode() bool {
 	return cfg.Mode == constants.MODE_LOCAL
 }
 
+// getHomeDir returns the user's home directory with fallback for systemd
+// systemd services don't set HOME environment variable by default
+func getHomeDir() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		// Fallback for systemd services running as root
+		if os.Geteuid() == 0 {
+			home = "/root"
+		} else {
+			// Try os.UserHomeDir() for non-root users
+			if h, err := os.UserHomeDir(); err == nil {
+				home = h
+			}
+		}
+	}
+	return home
+}
+
 // LoadConfig loads configuration from file and environment
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath(os.Getenv("HOME") + constants.CONFIG_DIR_NAME)
+	viper.AddConfigPath(getHomeDir() + constants.CONFIG_DIR_NAME)
 	viper.AddConfigPath(".")
 
 	// Set defaults for monitoring configuration
@@ -64,7 +82,7 @@ func LoadConfig() (*Config, error) {
 
 // SaveConfig saves configuration to file
 func SaveConfig(cfg *Config) error {
-	configDir := os.Getenv("HOME") + "/.catops"
+	configDir := getHomeDir() + "/.catops"
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return err
 	}

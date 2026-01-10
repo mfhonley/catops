@@ -42,7 +42,7 @@ func (cfg *Config) IsLocalMode() bool {
 func LoadConfig() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
-	viper.AddConfigPath("$HOME" + constants.CONFIG_DIR_NAME)
+	viper.AddConfigPath(os.Getenv("HOME") + constants.CONFIG_DIR_NAME)
 	viper.AddConfigPath(".")
 
 	// Set defaults for monitoring configuration

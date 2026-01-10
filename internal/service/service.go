@@ -43,14 +43,10 @@ func New() (*Service, error) {
 
 // Install installs the service (creates systemd/launchd config)
 func (s *Service) Install() (string, error) {
-	// Get the executable path
-	executable, err := os.Executable()
-	if err != nil {
-		return "", fmt.Errorf("failed to get executable path: %w", err)
-	}
-
-	// Install with "daemon" argument
-	status, err := s.daemon.Install(executable, "daemon")
+	// Install with "daemon" argument only
+	// Note: takama/daemon automatically determines the executable path,
+	// we only need to pass the command arguments
+	status, err := s.daemon.Install("daemon")
 	if err != nil {
 		return status, err
 	}

@@ -1,17 +1,19 @@
-# CatOps
+# CatOps CLI
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Kubernetes-lightgrey.svg)]()
 
-**Fast and convenient monitoring with AI.** One command to install, zero configuration needed.
+**Fast and convenient server monitoring with AI.** One command to install, zero configuration needed.
 
-Set up in 5 minutes. Get a beautiful dashboard. AI helps you troubleshoot. Monitor standalone servers or entire Kubernetes clusters with Telegram alerts and web dashboard at [catops.app](https://catops.app).
+Monitor standalone servers or Kubernetes clusters. Get Telegram/Slack/Email alerts and a beautiful web dashboard at [catops.app](https://catops.app).
 
 ```bash
 # Install in seconds
 curl -sfL https://get.catops.app/install.sh | bash
 ```
+
+> **Looking for Self-Hosted?** Check out [CatOps Self-Hosted](https://catops.app/self-hosted) - single binary with embedded dashboard, no cloud required.
 
 ---
 
@@ -40,8 +42,9 @@ curl -sfL https://get.catops.app/install.sh | bash
 **Core Monitoring:**
 - System metrics (CPU, Memory, Disk, Network, I/O)
 - Process monitoring with resource usage
-- **Log collection** from Docker, journald, and log files
-- Real-time Telegram alerts
+- Service detection (nginx, postgres, redis, docker, and 12+ more)
+- **Log collection** from Docker containers
+- Real-time Telegram/Slack/Email alerts
 - Beautiful web dashboard
 - Cross-platform (Linux, macOS, Kubernetes)
 
@@ -55,7 +58,7 @@ curl -sfL https://get.catops.app/install.sh | bash
 - **Kubernetes**: Monitor entire clusters with DaemonSet
 
 **Alerting:**
-- Telegram bot integration
+- Telegram, Slack, Email notifications
 - Alert deduplication (no spam)
 - Interactive Telegram buttons (Acknowledge, Silence)
 - Instant notifications with detailed context
@@ -204,21 +207,25 @@ catops ask "Should I be worried?"           # Get recommendations
 
 **Configuration:**
 ```bash
-catops config show                  # Show current config
+catops config                       # Show current config
 catops set interval=30              # Set metrics collection interval (10-300 seconds)
 ```
 
 **Service Management:**
 ```bash
-catops autostart enable    # Enable auto-start on boot
-catops autostart disable   # Disable auto-start
-catops autostart status    # Check auto-start status
+catops service install     # Install as system service (systemd/launchd)
+catops service start       # Start service
+catops service stop        # Stop service
+catops service restart     # Restart service
+catops service status      # Check service status
+catops service remove      # Remove service
 ```
 
 **System:**
 ```bash
 catops update              # Check for updates and install
 catops uninstall           # Remove CatOps completely
+catops cleanup             # Clean up old backup files
 catops --version           # Show version
 ```
 
@@ -290,6 +297,34 @@ catops auth info
 **Operation Modes:**
 - **Local Mode** (default): Metrics collected locally, no alerts, works offline
 - **Cloud Mode**: Telegram alerts + Web dashboard + Multi-server monitoring + Log collection
+
+### Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `catops` | Show help and available commands |
+| `catops status` | Display current system metrics |
+| `catops processes` | Show top processes by resource usage |
+| `catops ask "question"` | Ask AI about your server |
+| `catops start` | Start monitoring (foreground) |
+| `catops restart` | Restart monitoring service |
+| `catops config` | Show current configuration |
+| `catops set interval=N` | Set collection interval (10-300 sec) |
+| `catops auth login TOKEN` | Login with auth token |
+| `catops auth logout` | Clear authentication |
+| `catops auth info` | Show auth status |
+| `catops auth token` | Show full auth token |
+| `catops service install` | Install as system service |
+| `catops service remove` | Remove system service |
+| `catops service start` | Start service |
+| `catops service stop` | Stop service |
+| `catops service restart` | Restart service |
+| `catops service status` | Check service status |
+| `catops update` | Update to latest version |
+| `catops uninstall` | Remove CatOps completely |
+| `catops cleanup` | Clean up old backup files |
+| `catops force-cleanup` | Force cleanup stuck processes |
+| `catops --version` | Show version |
 
 ---
 

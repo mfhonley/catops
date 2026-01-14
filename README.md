@@ -13,7 +13,7 @@ Monitor standalone servers or Kubernetes clusters. Get Telegram/Slack/Email aler
 curl -sfL https://get.catops.app/install.sh | bash
 ```
 
-> **Looking for Self-Hosted?** Check out [CatOps Self-Hosted](https://catops.app/self-hosted) - single binary with embedded dashboard, no cloud required.
+> **Looking for Self-Hosted?** Check out [CatOps Hub](https://catops.app/hub) - single binary with embedded dashboard, no cloud required.
 
 ---
 

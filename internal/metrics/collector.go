@@ -827,6 +827,21 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 			c.MemoryPercent = memPerc
 		}
 
+		// Parse memory usage and limit (format: "256MiB / 2GiB")
+		if stats.MemUsage != "" {
+			parts := strings.Split(stats.MemUsage, " / ")
+			if len(parts) == 2 {
+				// Parse memory usage (first part)
+				if usage, err := parseMemorySize(strings.TrimSpace(parts[0])); err == nil {
+					c.MemoryUsage = usage
+				}
+				// Parse memory limit (second part)
+				if limit, err := parseMemorySize(strings.TrimSpace(parts[1])); err == nil {
+					c.MemoryLimit = limit
+				}
+			}
+		}
+
 		containers = append(containers, c)
 	}
 
@@ -859,10 +874,11 @@ func collectPodmanContainers() ([]ContainerMetrics, error) {
 	}
 
 	var stats []struct {
-		ID      string  `json:"id"`
-		Name    string  `json:"name"`
-		CPU     float64 `json:"cpu_percent"`
-		MemPerc float64 `json:"mem_percent"`
+		ID       string  `json:"id"`
+		Name     string  `json:"name"`
+		CPU      float64 `json:"cpu_percent"`
+		MemPerc  float64 `json:"mem_percent"`
+		MemUsage string  `json:"mem_usage"`
 	}
 
 	if err := json.Unmarshal(output, &stats); err != nil {
@@ -878,6 +894,21 @@ func collectPodmanContainers() ([]ContainerMetrics, error) {
 			Status:        "running",
 			CPUPercent:    s.CPU,
 			MemoryPercent: s.MemPerc,
+		}
+
+		// Parse memory usage and limit (format: "256MB / 2GB")
+		if s.MemUsage != "" {
+			parts := strings.Split(s.MemUsage, " / ")
+			if len(parts) == 2 {
+				// Parse memory usage (first part)
+				if usage, err := parseMemorySize(strings.TrimSpace(parts[0])); err == nil {
+					containers[i].MemoryUsage = usage
+				}
+				// Parse memory limit (second part)
+				if limit, err := parseMemorySize(strings.TrimSpace(parts[1])); err == nil {
+					containers[i].MemoryLimit = limit
+				}
+			}
 		}
 	}
 
@@ -929,4 +960,48 @@ func parseFloat(s string) (float64, error) {
 	var f float64
 	_, err := fmt.Sscanf(s, "%f", &f)
 	return f, err
+}
+
+// parseMemorySize parses memory size strings like "256MiB", "2GiB", "512KiB" to bytes
+func parseMemorySize(s string) (uint64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+
+	// Extract numeric value and unit
+	var value float64
+	var unit string
+
+	// Try to parse with unit (e.g., "256MiB")
+	_, err := fmt.Sscanf(s, "%f%s", &value, &unit)
+	if err != nil {
+		// If no unit, try parsing as plain number (bytes)
+		_, err := fmt.Sscanf(s, "%f", &value)
+		if err != nil {
+			return 0, err
+		}
+		return uint64(value), nil
+	}
+
+	// Convert to bytes based on unit
+	unit = strings.ToUpper(unit)
+	var multiplier uint64
+
+	switch unit {
+	case "B":
+		multiplier = 1
+	case "KIB", "KB", "K":
+		multiplier = 1024
+	case "MIB", "MB", "M":
+		multiplier = 1024 * 1024
+	case "GIB", "GB", "G":
+		multiplier = 1024 * 1024 * 1024
+	case "TIB", "TB", "T":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	default:
+		return 0, fmt.Errorf("unknown unit: %s", unit)
+	}
+
+	return uint64(value * float64(multiplier)), nil
 }

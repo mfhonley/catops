@@ -12,6 +12,7 @@
 package metrics
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -61,22 +62,39 @@ var (
 // Metrics Collection
 // =============================================================================
 
-// shouldUpdateMetrics проверяет нужно ли собирать и отправлять новые метрики
-// Возвращает true если:
-// - Это первый сбор метрик
-// - Прошло больше 60 секунд с последней отправки
-// - CPU, Memory или Disk изменились больше чем на 1%
-func shouldUpdateMetrics(current *AllMetrics) bool {
-	deltaTrackingMu.RLock()
-	defer deltaTrackingMu.RUnlock()
+// checkAndUpdateDelta atomically checks if metrics changed significantly and updates
+// the delta tracking state if so. Returns true if metrics should be sent.
+// Holding the write lock for the entire check-and-update prevents TOCTOU races
+// where two goroutines both see "should update" and both proceed to send.
+func checkAndUpdateDelta(current *AllMetrics) bool {
+	deltaTrackingMu.Lock()
+	defer deltaTrackingMu.Unlock()
 
 	// Первый сбор - всегда отправляем
 	if lastSentMetrics == nil {
+		lastSentMetrics = current
+		lastSentTime = time.Now()
 		return true
 	}
 
 	// Принудительная отправка каждые 60 секунд (даже если нет изменений)
 	if time.Since(lastSentTime) > 60*time.Second {
+		lastSentMetrics = current
+		lastSentTime = time.Now()
+		return true
+	}
+
+	// Если количество контейнеров изменилось — всегда обновляем
+	if len(current.Containers) != len(lastSentMetrics.Containers) {
+		lastSentMetrics = current
+		lastSentTime = time.Now()
+		return true
+	}
+
+	// Если количество сервисов изменилось — всегда обновляем
+	if len(current.Services) != len(lastSentMetrics.Services) {
+		lastSentMetrics = current
+		lastSentTime = time.Now()
 		return true
 	}
 
@@ -86,8 +104,11 @@ func shouldUpdateMetrics(current *AllMetrics) bool {
 		memDelta := absFloat64(current.Summary.MemoryUsage - lastSentMetrics.Summary.MemoryUsage)
 		diskDelta := absFloat64(current.Summary.DiskUsage - lastSentMetrics.Summary.DiskUsage)
 
-		// Отправляем если любая метрика изменилась больше чем на 1%
-		return cpuDelta > 1.0 || memDelta > 1.0 || diskDelta > 1.0
+		if cpuDelta > 1.0 || memDelta > 1.0 || diskDelta > 1.0 {
+			lastSentMetrics = current
+			lastSentTime = time.Now()
+			return true
+		}
 	}
 
 	return false
@@ -209,22 +230,18 @@ func CollectAllMetrics() (*AllMetrics, error) {
 
 	wg.Wait()
 
-	// Delta tracking: Проверяем нужно ли обновлять кэш
-	shouldUpdate := shouldUpdateMetrics(m)
-
-	if shouldUpdate {
+	// Delta tracking: атомарная проверка + обновление состояния под одним локом
+	// Это предотвращает TOCTOU гонку когда два горутина одновременно видят "надо обновить"
+	if checkAndUpdateDelta(m) {
 		// Обновляем кэш только если есть значительные изменения
 		SetCachedMetrics(m)
-
-		// Сохраняем как последние отправленные метрики
-		deltaTrackingMu.Lock()
-		lastSentMetrics = m
-		lastSentTime = time.Now()
-		deltaTrackingMu.Unlock()
 	} else {
 		// Нет значительных изменений - возвращаем старые метрики из кэша
-		// Это предотвратит отправку данных в OpenTelemetry
-		m = GetCachedMetrics()
+		cached := GetCachedMetrics()
+		if cached != nil {
+			m = cached
+		}
+		// Если кэш пустой (холодный старт) — возвращаем только что собранные метрики
 	}
 
 	if len(errs) > 0 {
@@ -778,7 +795,9 @@ func collectContainers() ([]ContainerMetrics, error) {
 func collectDockerContainers() ([]ContainerMetrics, error) {
 	// Single call to docker stats - gets all running containers at once
 	// Skip "docker ps" check - if no containers, stats returns empty
-	cmd := exec.Command("docker", "stats", "--no-stream", "--format", "{{json .}}")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{json .}}")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -802,6 +821,9 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 			CPUPerc  string `json:"CPUPerc"`
 			MemUsage string `json:"MemUsage"`
 			MemPerc  string `json:"MemPerc"`
+			NetIO    string `json:"NetIO"`
+			BlockIO  string `json:"BlockIO"`
+			PIDs     string `json:"PIDs"`
 		}
 
 		if err := json.Unmarshal([]byte(line), &stats); err != nil {
@@ -831,19 +853,53 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 		if stats.MemUsage != "" {
 			parts := strings.Split(stats.MemUsage, " / ")
 			if len(parts) == 2 {
-				// Parse memory usage (first part)
 				if usage, err := parseMemorySize(strings.TrimSpace(parts[0])); err == nil {
 					c.MemoryUsage = usage
 				}
-				// Parse memory limit (second part)
 				if limit, err := parseMemorySize(strings.TrimSpace(parts[1])); err == nil {
 					c.MemoryLimit = limit
 				}
 			}
 		}
 
+		// Parse network IO (format: "1.5kB / 2.3kB")
+		if stats.NetIO != "" {
+			parts := strings.Split(stats.NetIO, " / ")
+			if len(parts) == 2 {
+				if rx, err := parseMemorySize(strings.TrimSpace(parts[0])); err == nil {
+					c.NetRxBytes = rx
+				}
+				if tx, err := parseMemorySize(strings.TrimSpace(parts[1])); err == nil {
+					c.NetTxBytes = tx
+				}
+			}
+		}
+
+		// Parse block IO (format: "10.2MB / 5.1MB")
+		if stats.BlockIO != "" {
+			parts := strings.Split(stats.BlockIO, " / ")
+			if len(parts) == 2 {
+				if read, err := parseMemorySize(strings.TrimSpace(parts[0])); err == nil {
+					c.BlockReadBytes = read
+				}
+				if write, err := parseMemorySize(strings.TrimSpace(parts[1])); err == nil {
+					c.BlockWriteBytes = write
+				}
+			}
+		}
+
+		// Parse PIDs count
+		if stats.PIDs != "" {
+			if pids, err := parseFloat(stats.PIDs); err == nil {
+				c.PIDsCurrent = uint32(pids)
+			}
+		}
+
 		containers = append(containers, c)
 	}
+
+	// Enrich containers with image, health, ports, started_at via docker inspect
+	enrichDockerContainers(containers)
 
 	// Collect logs for containers using global log collector (for deduplication)
 	logCollector := GetLogCollector()
@@ -855,8 +911,97 @@ func collectDockerContainers() ([]ContainerMetrics, error) {
 	return containers, nil
 }
 
+// enrichDockerContainers fetches image, health, ports, started_at for each container via docker inspect
+func enrichDockerContainers(containers []ContainerMetrics) {
+	if len(containers) == 0 {
+		return
+	}
+
+	// Build list of IDs for a single docker inspect call
+	ids := make([]string, len(containers))
+	for i, c := range containers {
+		ids[i] = c.ContainerID
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	args := append([]string{"inspect", "--format",
+		`{"id":"{{.Id}}","image":"{{.Config.Image}}","health":"{{if .State.Health}}{{.State.Health.Status}}{{end}}","started_at":"{{.State.StartedAt}}","ports":"{{range $p,$b := .NetworkSettings.Ports}}{{$p}},{{end}}"}`},
+		ids...)
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	// docker inspect returns a JSON array, but with our format it's one JSON per line
+	// Build lookup map by container ID prefix
+	type inspectResult struct {
+		ID        string `json:"id"`
+		Image     string `json:"image"`
+		Health    string `json:"health"`
+		StartedAt string `json:"started_at"`
+		Ports     string `json:"ports"`
+	}
+
+	lookup := make(map[string]inspectResult)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "[" || line == "]" || line == "," {
+			continue
+		}
+		line = strings.TrimSuffix(line, ",")
+		var r inspectResult
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			continue
+		}
+		lookup[r.ID] = r
+		// also index by short ID (12 chars)
+		if len(r.ID) >= 12 {
+			lookup[r.ID[:12]] = r
+		}
+	}
+
+	for i := range containers {
+		id := containers[i].ContainerID
+		r, ok := lookup[id]
+		if !ok && len(id) >= 12 {
+			r, ok = lookup[id[:12]]
+		}
+		if !ok {
+			continue
+		}
+
+		// Parse image name and tag
+		if r.Image != "" {
+			parts := strings.SplitN(r.Image, ":", 2)
+			containers[i].ImageName = parts[0]
+			if len(parts) == 2 {
+				containers[i].ImageTag = parts[1]
+			} else {
+				containers[i].ImageTag = "latest"
+			}
+		}
+
+		containers[i].Health = r.Health
+		containers[i].Ports = strings.TrimSuffix(r.Ports, ",")
+
+		// Parse started_at RFC3339 → unix timestamp
+		if r.StartedAt != "" {
+			t, err := time.Parse(time.RFC3339Nano, r.StartedAt)
+			if err == nil {
+				containers[i].StartedAt = t.Unix()
+			}
+		}
+	}
+}
+
 func collectPodmanContainers() ([]ContainerMetrics, error) {
-	cmd := exec.Command("podman", "ps", "-q")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "podman", "ps", "-q")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, err
@@ -867,7 +1012,7 @@ func collectPodmanContainers() ([]ContainerMetrics, error) {
 	}
 
 	// Similar to docker but with podman
-	cmd = exec.Command("podman", "stats", "--no-stream", "--format", "json")
+	cmd = exec.CommandContext(ctx, "podman", "stats", "--no-stream", "--format", "json")
 	output, err = cmd.Output()
 	if err != nil {
 		return nil, err

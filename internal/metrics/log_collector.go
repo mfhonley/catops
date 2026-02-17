@@ -77,6 +77,21 @@ func NewLogCollector() *LogCollector {
 func GetLogCollector() *LogCollector {
 	globalLogCollectorOnce.Do(func() {
 		globalLogCollector = NewLogCollector()
+		// Background goroutine to periodically clean stale log hashes
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				globalLogCollector.sentLogHashesMu.Lock()
+				cutoff := time.Now().Add(-10 * time.Minute)
+				for hash, sentAt := range globalLogCollector.sentLogHashes {
+					if sentAt.Before(cutoff) {
+						delete(globalLogCollector.sentLogHashes, hash)
+					}
+				}
+				globalLogCollector.sentLogHashesMu.Unlock()
+			}
+		}()
 	})
 	// Refresh docker containers list on each call (they might have changed)
 	globalLogCollector.loadDockerContainers()
@@ -85,6 +100,10 @@ func GetLogCollector() *LogCollector {
 
 // loadDockerContainers loads all running docker containers
 func (lc *LogCollector) loadDockerContainers() {
+	// Reset cache before reloading to avoid stale entries from stopped containers
+	lc.dockerContainers = make(map[string]DockerContainer)
+	lc.dockerLoaded = false
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
 	defer cancel()
 
@@ -182,21 +201,21 @@ func (lc *LogCollector) findContainerForService(service *ServiceInfo) *DockerCon
 
 	// Try to match by service name in container name
 	serviceLower := strings.ToLower(service.ServiceName)
-	for _, container := range lc.dockerContainers {
+	for key, container := range lc.dockerContainers {
 		nameLower := strings.ToLower(container.Name)
 		if strings.Contains(nameLower, serviceLower) ||
 			strings.Contains(serviceLower, nameLower) {
-			return &container
+			// Return pointer to map entry, not to the range variable
+			c := lc.dockerContainers[key]
+			return &c
 		}
 	}
 
 	return nil
 }
 
-// CollectServiceLogs collects logs for a service - only Docker containers
+// CollectServiceLogs collects logs for a service
 func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, string) {
-	// Only collect Docker container logs (simple approach like self-hosted)
-
 	// 1. Try to find docker container for this service
 	container := lc.findContainerForService(service)
 	if container != nil {
@@ -213,6 +232,14 @@ func (lc *LogCollector) CollectServiceLogs(service *ServiceInfo) ([]string, stri
 		logs, err := lc.collectDockerLogs(service.ContainerID)
 		if err == nil && len(logs) > 0 {
 			return logs, "docker"
+		}
+	}
+
+	// 3. Try PM2 logs for Node.js services
+	if service.ServiceType == ServiceTypeNodeApp {
+		logs := lc.collectPM2Logs(service.PID)
+		if len(logs) > 0 {
+			return logs, "pm2"
 		}
 	}
 
@@ -276,111 +303,94 @@ func (lc *LogCollector) deduplicateLogs(logs []string) []string {
 	return newLogs
 }
 
-// collectJournaldLogs collects recent error logs from journald
-func (lc *LogCollector) collectJournaldLogs(serviceType ServiceType) ([]string, error) {
-	unitName := lc.getSystemdUnitName(serviceType)
-	if unitName == "" {
-		return nil, nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
-	defer cancel()
-
-	// Get last N lines from journald (increased for better AI analysis)
-	cmd := exec.CommandContext(ctx, "journalctl", "-u", unitName, "-n", fmt.Sprintf("%d", maxLogLines*2), "--no-pager", "-o", "short-iso")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, err
-	}
-
-	return lc.filterLogLines(string(output)), nil
-}
-
-// collectJournaldByPID collects recent logs from journald by process PID
-func (lc *LogCollector) collectJournaldByPID(pid int) ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(logTimeout)*time.Second)
-	defer cancel()
-
-	// Get logs by PID - useful for apps that write to stdout/stderr (increased for better AI analysis)
-	cmd := exec.CommandContext(ctx, "journalctl", "_PID="+fmt.Sprintf("%d", pid), "-n", fmt.Sprintf("%d", maxLogLines*2), "--no-pager", "-o", "short-iso")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, err
-	}
-
-	return lc.filterLogLines(string(output)), nil
-}
-
 // pm2Process represents a pm2 process from jlist output
 type pm2Process struct {
-	Name string `json:"name"`
-	PID  int    `json:"pid"`
+	Name   string `json:"name"`
+	PID    int    `json:"pid"`
+	PM2Env struct {
+		PM2Home    string `json:"PM2_HOME"`
+		ErrLogPath string `json:"pm_err_log_path"`
+		OutLogPath string `json:"pm_out_log_path"`
+	} `json:"pm2_env"`
 }
 
 // collectPM2Logs collects logs from pm2 for Node.js applications
 func (lc *LogCollector) collectPM2Logs(pid int) []string {
-	// First, try to find the pm2 app name by PID
-	appName := lc.findPM2AppByPID(pid)
-	if appName == "" {
+	proc := lc.findPM2AppByPID(pid)
+	if proc == nil {
 		return nil
 	}
 
-	// Get pm2 home directory (usually ~/.pm2)
-	pm2Home := os.Getenv("PM2_HOME")
-	if pm2Home == "" {
-		// Try default locations
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil
-		}
-		pm2Home = filepath.Join(homeDir, ".pm2")
-	}
-
-	logsDir := filepath.Join(pm2Home, "logs")
-
-	// Try to read the error log file first (more likely to have interesting content)
 	var allLogs []string
 
-	// PM2 log file naming: <app-name>-error.log and <app-name>-out.log
-	errorLogPath := filepath.Join(logsDir, appName+"-error.log")
-	if logs := lc.readLastLines(errorLogPath, 50); len(logs) > 0 {
-		allLogs = append(allLogs, logs...)
+	// Use exact log paths from pm2_env if available
+	if proc.PM2Env.ErrLogPath != "" {
+		if logs := lc.readLastLines(proc.PM2Env.ErrLogPath, 50); len(logs) > 0 {
+			allLogs = append(allLogs, logs...)
+		}
+	}
+	if proc.PM2Env.OutLogPath != "" {
+		if logs := lc.readLastLines(proc.PM2Env.OutLogPath, 50); len(logs) > 0 {
+			allLogs = append(allLogs, logs...)
+		}
 	}
 
-	// Also check stdout log for errors
-	outLogPath := filepath.Join(logsDir, appName+"-out.log")
-	if logs := lc.readLastLines(outLogPath, 50); len(logs) > 0 {
-		allLogs = append(allLogs, logs...)
+	// Fallback: construct paths from PM2_HOME or default location
+	if len(allLogs) == 0 {
+		pm2Home := proc.PM2Env.PM2Home
+		if pm2Home == "" {
+			pm2Home = os.Getenv("PM2_HOME")
+		}
+		if pm2Home == "" {
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return nil
+			}
+			pm2Home = filepath.Join(homeDir, ".pm2")
+		}
+		logsDir := filepath.Join(pm2Home, "logs")
+		if logs := lc.readLastLines(filepath.Join(logsDir, proc.Name+"-error.log"), 50); len(logs) > 0 {
+			allLogs = append(allLogs, logs...)
+		}
+		if logs := lc.readLastLines(filepath.Join(logsDir, proc.Name+"-out.log"), 50); len(logs) > 0 {
+			allLogs = append(allLogs, logs...)
+		}
 	}
 
-	// Filter for interesting lines
 	return lc.filterLogLines(strings.Join(allLogs, "\n"))
 }
 
-// findPM2AppByPID finds pm2 application name by its PID
-func (lc *LogCollector) findPM2AppByPID(pid int) string {
+// findPM2AppByPID finds pm2 process by its PID using pm2 jlist
+func (lc *LogCollector) findPM2AppByPID(pid int) *pm2Process {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	// Use pm2 jlist to get JSON list of all processes
 	cmd := exec.CommandContext(ctx, "pm2", "jlist")
 	output, err := cmd.Output()
 	if err != nil {
-		return ""
+		return nil
 	}
+
+	// pm2 jlist may output ANSI codes or warnings before JSON - find the JSON array
+	raw := string(output)
+	start := strings.Index(raw, "[")
+	if start == -1 {
+		return nil
+	}
+	raw = raw[start:]
 
 	var processes []pm2Process
-	if err := json.Unmarshal(output, &processes); err != nil {
-		return ""
+	if err := json.Unmarshal([]byte(raw), &processes); err != nil {
+		return nil
 	}
 
-	for _, proc := range processes {
-		if proc.PID == pid {
-			return proc.Name
+	for i := range processes {
+		if processes[i].PID == pid {
+			return &processes[i]
 		}
 	}
 
-	return ""
+	return nil
 }
 
 // readLastLines reads the last N lines from a file
@@ -481,37 +491,6 @@ func (lc *LogCollector) isInterestingLine(line string) bool {
 		}
 	}
 	return false
-}
-
-// isSystemService checks if the service type is typically managed by systemd
-func (lc *LogCollector) isSystemService(serviceType ServiceType) bool {
-	switch serviceType {
-	case ServiceTypeNginx, ServiceTypeApache, ServiceTypeRedis,
-		ServiceTypePostgres, ServiceTypeMySQL, ServiceTypeMongoDB:
-		return true
-	default:
-		return false
-	}
-}
-
-// getSystemdUnitName returns the systemd unit name for a service type
-func (lc *LogCollector) getSystemdUnitName(serviceType ServiceType) string {
-	switch serviceType {
-	case ServiceTypeNginx:
-		return "nginx"
-	case ServiceTypeApache:
-		return "apache2" // or httpd on RHEL
-	case ServiceTypeRedis:
-		return "redis-server" // or redis on some systems
-	case ServiceTypePostgres:
-		return "postgresql"
-	case ServiceTypeMySQL:
-		return "mysql" // or mariadb
-	case ServiceTypeMongoDB:
-		return "mongod"
-	default:
-		return ""
-	}
 }
 
 // GetAllServiceLogs collects logs for all detected services

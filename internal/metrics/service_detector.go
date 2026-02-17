@@ -21,6 +21,18 @@ type procCpuCacheEntry struct {
 	sampleTime time.Time
 }
 
+// cleanProcCpuTimesCache removes stale entries older than 2 minutes to prevent memory leak.
+func cleanProcCpuTimesCache() {
+	cutoff := time.Now().Add(-2 * time.Minute)
+	procCpuTimesCacheMu.Lock()
+	defer procCpuTimesCacheMu.Unlock()
+	for pid, entry := range procCpuTimesCache {
+		if entry.sampleTime.Before(cutoff) {
+			delete(procCpuTimesCache, pid)
+		}
+	}
+}
+
 // getProcessCPUPercent calculates CPU% for a process using delta from cached values.
 // Non-blocking - uses process.Times() which just reads /proc/[pid]/stat.
 func getProcessCPUPercent(proc *process.Process) float64 {
@@ -97,6 +109,9 @@ func NewServiceDetector() *ServiceDetector {
 
 // DetectServices detects all running services on the system
 func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
+	// Clean stale process CPU cache entries to prevent memory leak
+	cleanProcCpuTimesCache()
+
 	// First, collect all listening ports
 	if err := d.collectListeningPorts(); err != nil {
 		// Continue even if we can't get ports - we can still detect by cmdline

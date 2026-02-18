@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -157,9 +158,23 @@ func runDaemon() {
 				if m, err := metrics.CollectAllMetrics(); err != nil {
 					logger.Warning("Metrics collection error: %v", err)
 				} else if m != nil && m.Summary != nil {
-					logger.Info("[COLLECT] CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%, Procs: %d, Containers: %d",
+					// Count total logs across containers and services
+					totalLogs := 0
+					for _, c := range m.Containers {
+						totalLogs += len(c.RecentLogs)
+					}
+					for _, s := range m.Services {
+						totalLogs += len(s.RecentLogs)
+					}
+					containerInfo := ""
+					for _, c := range m.Containers {
+						if len(c.RecentLogs) > 0 {
+							containerInfo += fmt.Sprintf(" [%s:%dlogs]", c.ContainerName, len(c.RecentLogs))
+						}
+					}
+					logger.Info("[COLLECT] CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%, Procs: %d, Containers: %d, Logs: %d%s",
 						m.Summary.CPUUsage, m.Summary.MemoryUsage, m.Summary.DiskUsage,
-						len(m.Processes), len(m.Containers))
+						len(m.Processes), len(m.Containers), totalLogs, containerInfo)
 				}
 			}
 

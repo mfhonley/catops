@@ -63,6 +63,8 @@ func NewLogCollector() *LogCollector {
 			regexp.MustCompile(`(?i)(timeout|timed out|connection refused|connection reset)`),
 			regexp.MustCompile(`(?i)(out of memory|oom|killed|segfault)`),
 			regexp.MustCompile(`(?i)(denied|unauthorized|forbidden|permission)`),
+			// Node.js stack traces and module errors
+			regexp.MustCompile(`(?i)(throw |MODULE_NOT_FOUND|requireStack|node:internal|at [A-Z])`),
 		},
 		dockerContainers: make(map[string]DockerContainer),
 		sentLogHashes:    make(map[string]time.Time),

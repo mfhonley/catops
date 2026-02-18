@@ -132,21 +132,30 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 		}
 
 		// Quick check by name first - skip unknown processes early
-		// This avoids expensive Cmdline() call for most processes
 		serviceType, framework := d.detectServiceTypeByName(name)
+
+		// If name didn't match, try cmdline (handles processes that rename themselves,
+		// e.g. Node.js apps that set process.title, PM2 workers showing as "MainThread")
+		var cmdline string
 		if serviceType == ServiceTypeUnknown {
-			continue // Skip unknown services - no need for Cmdline()
-		}
-
-		// Only get cmdline for known service types (for framework detection)
-		cmdline, _ := proc.Cmdline()
-		if cmdline == "" {
-			cmdline = name
-		}
-
-		// Refine detection with cmdline if needed
-		if framework == "" {
-			_, framework = d.detectServiceType(name, cmdline)
+			cmdline, _ = proc.Cmdline()
+			if cmdline == "" {
+				continue
+			}
+			serviceType, framework = d.detectServiceType(name, cmdline)
+			if serviceType == ServiceTypeUnknown {
+				continue
+			}
+		} else {
+			// Only get cmdline for framework detection
+			cmdline, _ = proc.Cmdline()
+			if cmdline == "" {
+				cmdline = name
+			}
+			// Refine detection with cmdline if needed
+			if framework == "" {
+				_, framework = d.detectServiceType(name, cmdline)
+			}
 		}
 
 		// Get process stats - only for detected services (not all 200+ processes)

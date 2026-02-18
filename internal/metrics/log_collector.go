@@ -343,12 +343,45 @@ func getPPid(pid int) int {
 	return 0
 }
 
+// findPM2Binary returns the path to pm2 binary, searching common locations
+func findPM2Binary() string {
+	// Try PATH first
+	if path, err := exec.LookPath("pm2"); err == nil {
+		return path
+	}
+	// Common locations when installed via nvm or npm globally
+	candidates := []string{
+		"/usr/local/bin/pm2",
+		"/usr/bin/pm2",
+	}
+	// Also search nvm paths under common home dirs
+	for _, home := range []string{"/root", "/home/ubuntu", "/home/node"} {
+		nvmBase := home + "/.nvm/versions/node"
+		if entries, err := os.ReadDir(nvmBase); err == nil {
+			for _, e := range entries {
+				candidates = append(candidates, nvmBase+"/"+e.Name()+"/bin/pm2")
+			}
+		}
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
 // globalGetPM2AppByPID finds pm2 process by walking up the parent PID chain (up to 4 levels)
 func globalGetPM2AppByPID(pid int) *pm2Process {
+	pm2bin := findPM2Binary()
+	if pm2bin == "" {
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pm2", "jlist")
+	cmd := exec.CommandContext(ctx, pm2bin, "jlist")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil

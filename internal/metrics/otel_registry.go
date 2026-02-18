@@ -649,6 +649,7 @@ func registerContainerMetrics() error {
 				if c.ExitCode != nil {
 					exitCode = int64(*c.ExitCode)
 				}
+				logsJSON, _ := json.Marshal(c.RecentLogs)
 				attrs := []attribute.KeyValue{
 					attribute.String("container_id", c.ContainerID),
 					attribute.String("container_name", c.ContainerName),
@@ -670,6 +671,7 @@ func registerContainerMetrics() error {
 					attribute.Int("pids_limit", int(c.PIDsLimit)),
 					attribute.String("ports", c.Ports),
 					attribute.String("labels", c.Labels),
+					attribute.String("recent_logs", string(logsJSON)),
 				}
 				o.Observe(c.CPUPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "cpu"))...))
 				o.Observe(c.MemoryPercent, metric.WithAttributes(append(attrs, attribute.String("metric", "memory"))...))
@@ -681,10 +683,14 @@ func registerContainerMetrics() error {
 }
 
 func registerLogMetrics() error {
-	// catops.log - Log entries from containers (sent as individual metrics)
+	// catops.log - Log entries from containers and services
+	// Value is always 1 (presence indicator); uniqueness guaranteed by message_hash attribute.
+	// Using message_hash instead of sequential idx prevents OTel SDK from deduplicating
+	// observations that share the same attribute set (which happened when idx=0 was used
+	// for the first line of every container).
 	_, err := meter.Int64ObservableGauge(
 		"catops.log",
-		metric.WithDescription("Log entries from containers"),
+		metric.WithDescription("Log entries from containers and services"),
 		metric.WithUnit("{entries}"),
 		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
 			m := GetCachedMetrics()
@@ -692,13 +698,10 @@ func registerLogMetrics() error {
 				return nil
 			}
 
-			// Send logs from containers (simple approach like self-hosted)
+			// Logs from containers
 			for _, c := range m.Containers {
-				if len(c.RecentLogs) == 0 {
-					continue
-				}
-
-				for idx, logLine := range c.RecentLogs {
+				for _, logLine := range c.RecentLogs {
+					msgHash := hashLogMessage(c.ContainerID + logLine)
 					level := detectLogLevel(logLine)
 					attrs := []attribute.KeyValue{
 						attribute.String("source", "docker"),
@@ -707,15 +710,54 @@ func registerLogMetrics() error {
 						attribute.String("message", truncateString(logLine, 500)),
 						attribute.String("service", c.ContainerName),
 						attribute.String("container_id", c.ContainerID),
+						attribute.String("message_hash", msgHash),
 						attribute.Int("pid", 0),
 					}
-					o.Observe(int64(idx), metric.WithAttributes(attrs...))
+					o.Observe(1, metric.WithAttributes(attrs...))
+				}
+			}
+
+			// Logs from services (PM2, non-docker)
+			for _, s := range m.Services {
+				if s.IsContainer || len(s.RecentLogs) == 0 {
+					continue
+				}
+				for _, logLine := range s.RecentLogs {
+					msgHash := hashLogMessage(s.ServiceName + logLine)
+					level := detectLogLevel(logLine)
+					attrs := []attribute.KeyValue{
+						attribute.String("source", s.LogSource),
+						attribute.String("source_path", s.ServiceName),
+						attribute.String("level", level),
+						attribute.String("message", truncateString(logLine, 500)),
+						attribute.String("service", s.ServiceName),
+						attribute.String("container_id", s.ContainerID),
+						attribute.String("message_hash", msgHash),
+						attribute.Int("pid", s.PID),
+					}
+					o.Observe(1, metric.WithAttributes(attrs...))
 				}
 			}
 			return nil
 		}),
 	)
 	return err
+}
+
+// hashLogMessage returns a short hex hash for use as a unique OTel attribute
+func hashLogMessage(s string) string {
+	h := uint64(14695981039346656037)
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= 1099511628211
+	}
+	const hex = "0123456789abcdef"
+	var buf [16]byte
+	for i := 15; i >= 0; i-- {
+		buf[i] = hex[h&0xf]
+		h >>= 4
+	}
+	return string(buf[:])
 }
 
 // detectLogLevel detects log level from log line content

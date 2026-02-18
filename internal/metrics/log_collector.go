@@ -323,7 +323,27 @@ func GetPM2AppName(pid int) string {
 	return proc.Name
 }
 
-// globalGetPM2AppByPID finds pm2 process by PID by checking /proc/<pid>/status parent chain
+// getPPid reads the parent PID of a process from /proc/<pid>/status
+func getPPid(pid int) int {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "PPid:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				ppid, err := strconv.Atoi(fields[1])
+				if err == nil {
+					return ppid
+				}
+			}
+		}
+	}
+	return 0
+}
+
+// globalGetPM2AppByPID finds pm2 process by walking up the parent PID chain (up to 4 levels)
 func globalGetPM2AppByPID(pid int) *pm2Process {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -346,32 +366,15 @@ func globalGetPM2AppByPID(pid int) *pm2Process {
 		return nil
 	}
 
-	// First try exact PID match
-	for i := range processes {
-		if processes[i].PID == pid {
-			return &processes[i]
-		}
-	}
-
-	// Then check if pid is a child of any pm2 process by reading /proc/<pid>/status
-	ppidBytes, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
-	if err != nil {
-		return nil
-	}
-	for _, line := range strings.Split(string(ppidBytes), "\n") {
-		if strings.HasPrefix(line, "PPid:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				ppid, err := strconv.Atoi(fields[1])
-				if err == nil {
-					for i := range processes {
-						if processes[i].PID == ppid {
-							return &processes[i]
-						}
-					}
-				}
+	// Walk up parent chain: node(2933) -> sh(2932) -> enrichment(2921) -> PM2 God(2276)
+	current := pid
+	for depth := 0; depth < 4 && current > 1; depth++ {
+		for i := range processes {
+			if processes[i].PID == current {
+				return &processes[i]
 			}
 		}
+		current = getPPid(current)
 	}
 
 	return nil

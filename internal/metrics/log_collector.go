@@ -314,13 +314,51 @@ type pm2Process struct {
 	} `json:"pm2_env"`
 }
 
-// GetPM2AppName returns the PM2 app name for a given PID (matches main pid or child pids)
+// GetPM2AppName returns the PM2 app name by reading ~/.pm2/dump.pm2 directly.
+// This avoids calling pm2 jlist which fails under systemd due to nvm PATH issues.
 func GetPM2AppName(pid int) string {
-	proc := globalGetPM2AppByPID(pid)
-	if proc == nil {
-		return ""
+	// dump.pm2 is the persisted process list, always readable as a file
+	candidates := []string{"/root/.pm2/dump.pm2"}
+	if home := os.Getenv("HOME"); home != "" && home != "/root" {
+		candidates = append([]string{filepath.Join(home, ".pm2", "dump.pm2")}, candidates...)
 	}
-	return proc.Name
+
+	type dumpEntry struct {
+		Name   string `json:"name"`
+		PID    int    `json:"pid"`
+		PM2Env struct {
+			Status string `json:"status"`
+		} `json:"pm2_env"`
+	}
+	type dumpFile struct {
+		List []dumpEntry `json:"list"`
+	}
+
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var dump dumpFile
+		if err := json.Unmarshal(data, &dump); err != nil {
+			continue
+		}
+		// Walk parent chain to match pid to a pm2 app
+		current := pid
+		for depth := 0; depth < 5 && current > 1; depth++ {
+			for _, entry := range dump.List {
+				if entry.PID == current {
+					return entry.Name
+				}
+			}
+			current = getPPid(current)
+		}
+		// Fallback: return first app name if any pm2 app exists
+		if len(dump.List) > 0 {
+			return dump.List[0].Name
+		}
+	}
+	return ""
 }
 
 // getPPid reads the parent PID of a process from /proc/<pid>/status

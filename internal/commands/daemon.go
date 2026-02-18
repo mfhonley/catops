@@ -172,9 +172,9 @@ func runDaemon() {
 							containerInfo += fmt.Sprintf(" [%s:%dlogs]", c.ContainerName, len(c.RecentLogs))
 						}
 					}
-					logger.Info("[COLLECT] CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%, Procs: %d, Containers: %d, Logs: %d%s",
+					logger.Info("[COLLECT] CPU: %.1f%%, Mem: %.1f%%, Disk: %.1f%%, Procs: %d, Services: %d, Containers: %d, Logs: %d%s",
 						m.Summary.CPUUsage, m.Summary.MemoryUsage, m.Summary.DiskUsage,
-						len(m.Processes), len(m.Containers), totalLogs, containerInfo)
+						len(m.Processes), len(m.Services), len(m.Containers), totalLogs, containerInfo)
 				}
 			}
 

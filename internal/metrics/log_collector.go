@@ -424,49 +424,46 @@ func globalGetPM2AppByPID(pid int) *pm2Process {
 	return nil
 }
 
-// collectPM2Logs collects logs from pm2 for Node.js applications
+// collectPM2Logs collects logs for Node.js apps managed by PM2.
+// Scans ~/.pm2/logs/ directly to avoid pm2 jlist which fails in systemd
+// due to nvm PATH not being available.
 func (lc *LogCollector) collectPM2Logs(pid int) []string {
-	proc := lc.findPM2AppByPID(pid)
-	if proc == nil {
-		return nil
+	// Build list of candidate pm2 log dirs
+	pm2LogsDirs := []string{"/root/.pm2/logs"}
+	if home := os.Getenv("HOME"); home != "" && home != "/root" {
+		pm2LogsDirs = append(pm2LogsDirs, filepath.Join(home, ".pm2", "logs"))
 	}
 
 	var allLogs []string
+	seen := map[string]bool{}
 
-	// Use exact log paths from pm2_env if available
-	if proc.PM2Env.ErrLogPath != "" {
-		if logs := lc.readLastLines(proc.PM2Env.ErrLogPath, 50); len(logs) > 0 {
-			allLogs = append(allLogs, logs...)
+	for _, logsDir := range pm2LogsDirs {
+		entries, err := os.ReadDir(logsDir)
+		if err != nil {
+			continue
 		}
-	}
-	if proc.PM2Env.OutLogPath != "" {
-		if logs := lc.readLastLines(proc.PM2Env.OutLogPath, 50); len(logs) > 0 {
-			allLogs = append(allLogs, logs...)
-		}
-	}
-
-	// Fallback: construct paths from PM2_HOME or default location
-	if len(allLogs) == 0 {
-		pm2Home := proc.PM2Env.PM2Home
-		if pm2Home == "" {
-			pm2Home = os.Getenv("PM2_HOME")
-		}
-		if pm2Home == "" {
-			homeDir, err := os.UserHomeDir()
-			if err != nil {
-				return nil
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
 			}
-			pm2Home = filepath.Join(homeDir, ".pm2")
-		}
-		logsDir := filepath.Join(pm2Home, "logs")
-		if logs := lc.readLastLines(filepath.Join(logsDir, proc.Name+"-error.log"), 50); len(logs) > 0 {
-			allLogs = append(allLogs, logs...)
-		}
-		if logs := lc.readLastLines(filepath.Join(logsDir, proc.Name+"-out.log"), 50); len(logs) > 0 {
-			allLogs = append(allLogs, logs...)
+			name := entry.Name()
+			if !strings.HasSuffix(name, "-error.log") && !strings.HasSuffix(name, "-out.log") {
+				continue
+			}
+			fullPath := filepath.Join(logsDir, name)
+			if seen[fullPath] {
+				continue
+			}
+			seen[fullPath] = true
+			if logs := lc.readLastLines(fullPath, 50); len(logs) > 0 {
+				allLogs = append(allLogs, logs...)
+			}
 		}
 	}
 
+	if len(allLogs) == 0 {
+		return nil
+	}
 	return lc.filterLogLines(strings.Join(allLogs, "\n"))
 }
 

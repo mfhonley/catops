@@ -65,6 +65,8 @@ func NewLogCollector() *LogCollector {
 			regexp.MustCompile(`(?i)(denied|unauthorized|forbidden|permission)`),
 			// Node.js stack traces and module errors
 			regexp.MustCompile(`(?i)(throw |MODULE_NOT_FOUND|requireStack|node:internal|at [A-Z])`),
+			// Python tracebacks
+			regexp.MustCompile(`(Traceback \(most recent call last\)|File ".*", line \d+|raise [A-Z])`),
 		},
 		dockerContainers: make(map[string]DockerContainer),
 		sentLogHashes:    make(map[string]time.Time),

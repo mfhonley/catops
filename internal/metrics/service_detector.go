@@ -181,6 +181,13 @@ func (d *ServiceDetector) DetectServices() ([]ServiceInfo, error) {
 			primaryPort = ports[0]
 		}
 
+		// For Node.js apps, try to get the real app name from PM2
+		if serviceType == ServiceTypeNodeApp {
+			if pm2Name := GetPM2AppName(int(proc.Pid)); pm2Name != "" {
+				framework = pm2Name
+			}
+		}
+
 		// Generate service name
 		serviceName := d.generateServiceName(serviceType, framework, primaryPort)
 

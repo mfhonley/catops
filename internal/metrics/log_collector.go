@@ -305,13 +305,76 @@ func (lc *LogCollector) deduplicateLogs(logs []string) []string {
 
 // pm2Process represents a pm2 process from jlist output
 type pm2Process struct {
-	Name   string `json:"name"`
-	PID    int    `json:"pid"`
-	PM2Env struct {
+	Name     string `json:"name"`
+	PID      int    `json:"pid"`
+	PM2Env   struct {
 		PM2Home    string `json:"PM2_HOME"`
 		ErrLogPath string `json:"pm_err_log_path"`
 		OutLogPath string `json:"pm_out_log_path"`
 	} `json:"pm2_env"`
+}
+
+// GetPM2AppName returns the PM2 app name for a given PID (matches main pid or child pids)
+func GetPM2AppName(pid int) string {
+	proc := globalGetPM2AppByPID(pid)
+	if proc == nil {
+		return ""
+	}
+	return proc.Name
+}
+
+// globalGetPM2AppByPID finds pm2 process by PID by checking /proc/<pid>/status parent chain
+func globalGetPM2AppByPID(pid int) *pm2Process {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pm2", "jlist")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	raw := string(output)
+	start := strings.Index(raw, "[")
+	if start == -1 {
+		return nil
+	}
+	raw = raw[start:]
+
+	var processes []pm2Process
+	if err := json.Unmarshal([]byte(raw), &processes); err != nil {
+		return nil
+	}
+
+	// First try exact PID match
+	for i := range processes {
+		if processes[i].PID == pid {
+			return &processes[i]
+		}
+	}
+
+	// Then check if pid is a child of any pm2 process by reading /proc/<pid>/status
+	ppidBytes, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return nil
+	}
+	for _, line := range strings.Split(string(ppidBytes), "\n") {
+		if strings.HasPrefix(line, "PPid:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				ppid, err := strconv.Atoi(fields[1])
+				if err == nil {
+					for i := range processes {
+						if processes[i].PID == ppid {
+							return &processes[i]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // collectPM2Logs collects logs from pm2 for Node.js applications
@@ -361,36 +424,9 @@ func (lc *LogCollector) collectPM2Logs(pid int) []string {
 }
 
 // findPM2AppByPID finds pm2 process by its PID using pm2 jlist
+// Also checks parent PID to handle forked worker processes
 func (lc *LogCollector) findPM2AppByPID(pid int) *pm2Process {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "pm2", "jlist")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	// pm2 jlist may output ANSI codes or warnings before JSON - find the JSON array
-	raw := string(output)
-	start := strings.Index(raw, "[")
-	if start == -1 {
-		return nil
-	}
-	raw = raw[start:]
-
-	var processes []pm2Process
-	if err := json.Unmarshal([]byte(raw), &processes); err != nil {
-		return nil
-	}
-
-	for i := range processes {
-		if processes[i].PID == pid {
-			return &processes[i]
-		}
-	}
-
-	return nil
+	return globalGetPM2AppByPID(pid)
 }
 
 // readLastLines reads the last N lines from a file

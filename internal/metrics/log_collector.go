@@ -401,13 +401,24 @@ func globalGetPM2AppByPID(pid int) *pm2Process {
 
 	// Walk up parent chain: node(2933) -> sh(2932) -> enrichment(2921) -> PM2 God(2276)
 	current := pid
-	for depth := 0; depth < 4 && current > 1; depth++ {
+	for depth := 0; depth < 5 && current > 1; depth++ {
 		for i := range processes {
 			if processes[i].PID == current {
 				return &processes[i]
 			}
 		}
 		current = getPPid(current)
+	}
+
+	// Fallback: if we found pm2 is running and this is a node process,
+	// return the first pm2 app that has log files (handles edge cases where
+	// PID chain doesn't match, e.g. due to process replacement)
+	if len(processes) > 0 {
+		for i := range processes {
+			if processes[i].PM2Env.ErrLogPath != "" || processes[i].PM2Env.OutLogPath != "" {
+				return &processes[i]
+			}
+		}
 	}
 
 	return nil
